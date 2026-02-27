@@ -104,6 +104,7 @@ let touchCurrentX = 0;
 let touchSwipe = 0;   // -1 to 1 continuous
 let touchMoved = false;
 let _lastTouchEnd = 0;
+let questTouchY = null;
 
 function getCanvasXY(e) {
   const rect = canvas.getBoundingClientRect();
@@ -195,12 +196,25 @@ canvas.addEventListener('touchstart', e => {
   const t = e.touches[0];
   touchActive = true; touchMoved = false;
   touchStartX = t.clientX; touchCurrentX = t.clientX;
+  questTouchY = t.clientY;
   touchSwipe = 0;
 }, { passive:false });
 
 canvas.addEventListener('touchmove', e => {
   e.preventDefault();
   if (!touchActive) return;
+
+  if (gs==='QUESTS') {
+    const t=e.touches[0];
+    if (questTouchY!==null) {
+      const dy=t.clientY-questTouchY;
+      if (Math.abs(dy)>2) touchMoved=true;
+      questScroll=clamp(questScroll+dy, minQuestScroll(), 0);
+    }
+    questTouchY=t.clientY;
+    return;
+  }
+
   touchCurrentX = e.touches[0].clientX;
   const delta = touchCurrentX - touchStartX;
   if (Math.abs(delta) > 8) touchMoved = true;
@@ -214,11 +228,11 @@ canvas.addEventListener('touchend', e => {
   if (!touchMoved) {
     handleTap(e);
   }
-  touchActive = false; touchSwipe = 0; touchMoved = false;
+  touchActive = false; touchSwipe = 0; touchMoved = false; questTouchY = null;
 }, { passive:false });
 
 canvas.addEventListener('touchcancel', () => {
-  touchActive = false; touchSwipe = 0; touchMoved = false;
+  touchActive = false; touchSwipe = 0; touchMoved = false; questTouchY = null;
 });
 
 // Mouse (desktop)
@@ -242,6 +256,13 @@ document.addEventListener('click', e => {
   if (Date.now() - _lastTouchEnd < 450) return;
   handleTap(e);
 });
+
+
+document.addEventListener('wheel', e => {
+  if (gs!=='QUESTS') return;
+  e.preventDefault();
+  questScroll=clamp(questScroll - e.deltaY*0.6, minQuestScroll(), 0);
+}, { passive:false });
 
 // Keyboard
 window.addEventListener('keydown', e => {
@@ -1549,8 +1570,15 @@ function drawModeSelect(t) {
 
 // ── QUESTS SCREEN ─────────────────────────────────────────────────
 let questScroll=0;
+function minQuestScroll() {
+  const rows=(ACTIVE_OBJECTIVES?.length||0);
+  const contentH=Math.max(0, rows*72);
+  const viewH=(LH-150)-8;
+  return Math.min(0, viewH-contentH);
+}
 function drawQuestsScreen(t) {
   refreshHourlyObjectives();
+  questScroll=clamp(questScroll,minQuestScroll(),0);
   ctx.fillStyle=CFG.BG; ctx.fillRect(0,0,LW,LH);
   drawPerspGrid(0,0.06); drawBgSquares();
   ctx.save(); ctx.fillStyle='rgba(2,5,8,0.9)'; ctx.fillRect(0,0,LW,LH);
