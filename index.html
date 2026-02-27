@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>SLOPE v0.9</title>
+<title>SLOPE</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
   *, *::before, *::after {
@@ -51,6 +51,7 @@ const SETTINGS = {
 const GFX_LABELS = ['LOW','MED','HIGH'];
 const FPS_LABELS = ['30','60','∞'];
 const FPS_VALUES = [30,60,0]; // 0=unlimited
+const VERSION = '0.9.1';
 
 // Adventure stage configs
 const ADV_STAGES = [
@@ -119,6 +120,7 @@ const BTNS = {
   shopSkip:null, shopBack:null,
   charBack:null, charPrev:null, charNext:null, charShop:null,
   modeEndless:null, modeAdventure:null,
+  about:null,
   quests:null, questsBack:null,
   optimizeBtn:null, confirmYes:null, confirmNo:null,
 };
@@ -139,6 +141,7 @@ function handleTap(e) {
   if (gs === 'MENU') {
     if (hitBtn(p, BTNS.start))    { doTransition('MODESELECT'); return; }
     if (hitBtn(p, BTNS.settings)) { doTransition('SETTINGS');   return; }
+    if (hitBtn(p, BTNS.about))    { doTransition('ABOUT');      return; }
     if (hitBtn(p, BTNS.quests))   { doTransition('QUESTS');     return; }
     if (hitBtn(p, BTNS.charShop)) { doTransition('CHARSHOP'); charShopPage=0; return; }
     return;
@@ -167,6 +170,10 @@ function handleTap(e) {
   }
   if (gs === 'QUESTS') {
     if (hitBtn(p, BTNS.questsBack)) { doTransition('MENU'); return; }
+    return;
+  }
+  if (gs === 'ABOUT') {
+    if (hitBtn(p, BTNS.back)) { doTransition('MENU'); return; }
     return;
   }
   if (gs === 'OVER') {
@@ -203,7 +210,7 @@ canvas.addEventListener('touchmove', e => {
 canvas.addEventListener('touchend', e => {
   e.preventDefault();
   _lastTouchEnd = Date.now();
-  if (!touchMoved && (gs !== 'PLAY')) {
+  if (!touchMoved) {
     handleTap(e);
   }
   touchActive = false; touchSwipe = 0; touchMoved = false;
@@ -247,6 +254,7 @@ window.addEventListener('keydown', e => {
   if (e.key==='Escape' && gs==='CHARSHOP')  { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='MODESELECT'){ doTransition('MENU'); }
   if (e.key==='Escape' && gs==='QUESTS')    { doTransition('MENU'); }
+  if (e.key==='Escape' && gs==='ABOUT')     { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='SETTINGS')  { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='PLAY')   togglePause();
   if (e.key==='Escape' && gs==='PAUSE')  togglePause();
@@ -1056,7 +1064,8 @@ function drawHUD() {
 
   ctx.save(); ctx.translate(LW/2,pdY+12); ctx.scale(scalePop,scalePop);
   setFont(11,'400',"'Share Tech Mono',monospace"); txt('SCORE',0,0,'rgba(0,245,255,0.5)');
-  const multiStr=multi>1?`  ×${multi}`:'';
+  const shownMult=scoreMultiplier();
+  const multiStr=shownMult>1?`  ×${shownMult}`:'';
   setFont(22,'900'); glow(CFG.CY,14); txt(`${Math.floor(score)}${multiStr}`,0,22,CFG.CY);
   ctx.restore();
 
@@ -1195,7 +1204,7 @@ function drawHUD() {
   }
 
   ctx.save(); noGlow(); setFont(8,'400',"'Share Tech Mono',monospace");
-  txt('v0.9',LW-pdX,LH-pdY,'rgba(0,245,255,0.2)','right'); ctx.restore();
+  txt(`v${VERSION}`,LW-pdX,LH-pdY,'rgba(0,245,255,0.2)','right'); ctx.restore();
 }
 
 function drawScanlines() {
@@ -1267,7 +1276,7 @@ function drawLoadingScreen(t) {
 
   setFont(11,'400',"'Share Tech Mono',monospace"); glow(CFG.CY,6);
   txt('NEON RUSH',LW/2,titleY+32,'rgba(0,245,255,0.6)');
-  txt('VERSION 0.9',LW/2,titleY+48,'rgba(0,245,255,0.35)');
+  txt(`VERSION ${VERSION}`,LW/2,titleY+48,'rgba(0,245,255,0.35)');
 
   // Progress bar
   const bw=240,bh=6,bx=(LW-bw)/2,by=LH*0.58;
@@ -1332,7 +1341,7 @@ function drawStartScreen(t) {
   ctx.fillStyle=CFG.CY; ctx.textAlign='center'; ctx.fillText('SLOPE',LW/2,titleY);
   setFont(11,'400',"'Share Tech Mono',monospace"); glow(CFG.CY,8);
   txt('NEON RUSH',LW/2,titleY+30,'rgba(0,245,255,0.7)');
-  txt('VERSION 0.9',LW/2,titleY+46,'rgba(0,245,255,0.35)');
+  txt(`VERSION ${VERSION}`,LW/2,titleY+46,'rgba(0,245,255,0.35)');
 
   // Divider
   ctx.save();
@@ -1342,10 +1351,20 @@ function drawStartScreen(t) {
   ctx.strokeStyle=dg; ctx.lineWidth=1; glow(CFG.CY,8);
   ctx.beginPath(); ctx.moveTo(lx2,ly); ctx.lineTo(lx2+lw2,ly); ctx.stroke(); ctx.restore();
 
+  // v0.9.1 visual accents
+  ctx.save();
+  const pulse=0.35+0.25*Math.sin(t*2.8);
+  ctx.globalAlpha=pulse;
+  glow(CFG.CY,12); ctx.strokeStyle='rgba(0,245,255,0.45)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(34,titleY+10); ctx.lineTo(108,titleY+10); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(LW-34,titleY+10); ctx.lineTo(LW-108,titleY+10); ctx.stroke();
+  circle(30,titleY+10,2.5,CFG.CY); circle(LW-30,titleY+10,2.5,CFG.CY);
+  ctx.restore();
+
   // Vertical button list
-  const btnW=200, btnH=42, btnX=(LW-btnW)/2;
+  const btnW=200, btnH=40, btnX=(LW-btnW)/2;
   let btnY=LH*0.40;
-  const gap=12;
+  const gap=8;
 
   // START GAME
   BTNS.start={x:btnX,y:btnY,w:btnW,h:btnH};
@@ -1357,50 +1376,37 @@ function drawStartScreen(t) {
   drawNeonBtn(btnX,btnY,btnW,btnH,CFG.PU,'⚙  SETTINGS',13,0.85,Math.sin(t*2));
   btnY+=btnH+gap;
 
+  // ABOUT
+  BTNS.about={x:btnX,y:btnY,w:btnW,h:btnH};
+  drawNeonBtn(btnX,btnY,btnW,btnH,CFG.PK,'ℹ  ABOUT',13,0.9,Math.sin(t*2.1));
+  btnY+=btnH+gap;
+
   // QUESTS
   BTNS.quests={x:btnX,y:btnY,w:btnW,h:btnH};
   drawNeonBtn(btnX,btnY,btnW,btnH,CFG.YL,'📋 QUESTS',13,0.85,Math.sin(t*2.4));
   btnY+=btnH+gap;
 
-  // SKINS (rainbow animated border)
+  // SHOP (rainbow animated border)
   BTNS.charShop={x:btnX,y:btnY,w:btnW,h:btnH};
-  // Fill + bg
   ctx.save(); ctx.fillStyle='rgba(255,230,0,0.06)'; ctx.fillRect(btnX,btnY,btnW,btnH);
-  setFont(13,'900'); glow(CFG.YL,12); txt('🎨 SKINS',LW/2,btnY+btnH/2+5,CFG.YL);
+  setFont(13,'900'); glow(CFG.YL,12); txt('🛒 SHOP',LW/2,btnY+btnH/2+5,CFG.YL);
   ctx.restore();
   drawRainbowBorder(btnX,btnY,btnW,btnH,t,2.5);
-  // NEW! badge
   ctx.save(); ctx.fillStyle='#ffe600'; ctx.fillRect(btnX+btnW-28,btnY-2,28,13);
   setFont(7,'900',"'Share Tech Mono',monospace"); noGlow();
   ctx.fillStyle='#000'; ctx.textAlign='center'; ctx.fillText('NEW!',btnX+btnW-14,btnY+9);
   ctx.restore();
   btnY+=btnH+gap;
 
-  // Controls box at bottom
-  const cbY=btnY+12, cbX=16, cbW=LW-32, cbH=70;
+  // Controls box (no overlap)
+  const cbY=btnY+8, cbX=16, cbW=LW-32, cbH=54;
   ctx.save(); ctx.globalAlpha=0.7;
   ctx.strokeStyle='rgba(0,245,255,0.2)'; ctx.lineWidth=1; ctx.fillStyle='rgba(0,0,0,0.5)';
   ctx.fillRect(cbX,cbY,cbW,cbH); ctx.strokeRect(cbX,cbY,cbW,cbH);
   setFont(8,'700'); glow(CFG.CY,6); txt('CONTROLS',LW/2,cbY+14,'rgba(0,245,255,0.5)');
-  // Key boxes
-  const keys=[['←','A','Move Left'],['→','D','Move Right'],['ESC','P','Pause']];
-  const kw=80, kgap=(cbW-keys.length*kw)/(keys.length+1);
-  keys.forEach((k,i)=>{
-    const kx=cbX+kgap*(i+1)+kw*i, ky=cbY+22;
-    ctx.save(); ctx.globalAlpha=0.9;
-    ctx.fillStyle='rgba(0,245,255,0.08)'; ctx.fillRect(kx,ky,kw,36);
-    ctx.strokeStyle='rgba(0,245,255,0.35)'; ctx.lineWidth=1; ctx.strokeRect(kx,ky,kw,36);
-    setFont(11,'900'); glow(CFG.CY,6); txt(`${k[0]}  ${k[1]}`,kx+kw/2,ky+16,CFG.CY);
-    setFont(7,'400',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.6;
-    txt(k[2],kx+kw/2,ky+29,'rgba(0,245,255,0.6)');
-    ctx.restore();
-  });
-  // Touch hint in box
-  if ('ontouchstart' in window) {
-    ctx.save(); ctx.globalAlpha=0.55; setFont(8,'400',"'Share Tech Mono',monospace"); noGlow();
-    txt('TOUCH: Hold + Swipe Left/Right to move',LW/2,cbY+cbH-8,'rgba(0,245,255,0.5)');
-    ctx.restore();
-  }
+  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.8;
+  txt('KEYBOARD: A/D or ←/→ MOVE  •  ESC/P PAUSE',LW/2,cbY+30,'rgba(0,245,255,0.62)');
+  txt('TOUCH: HOLD + SWIPE LEFT/RIGHT TO MOVE',LW/2,cbY+43,'rgba(0,245,255,0.52)');
   ctx.restore();
 
   if (SETTINGS.showFPS) {
@@ -1410,6 +1416,54 @@ function drawStartScreen(t) {
   ctx.save(); noGlow(); setFont(10,'700'); glow(CFG.CY,8); ctx.globalAlpha=0.7;
   txt(`◆ ${totalGems}`,LW-14,LH-8,CFG.CY,'right'); ctx.restore();
   ctx.restore(); // menuSlideY translate
+}
+
+
+function drawAboutScreen(t) {
+  drawPerspGrid(terrain.scrollY,0.03); drawTerrain();
+  drawBgSquares();
+  ctx.save(); ctx.fillStyle='rgba(2,5,8,0.9)'; ctx.fillRect(0,0,LW,LH);
+
+  setFont(34,'900'); glow(CFG.GR,22); txt('ABOUT',LW/2,58,CFG.GR);
+  setFont(10,'400',"'Share Tech Mono',monospace"); noGlow();
+  txt(`SLOPE v${VERSION} — Neon update`,LW/2,79,'rgba(57,255,20,0.65)');
+
+  const boxX=24, boxY=108, boxW=LW-48, boxH=488;
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.58)'; ctx.fillRect(boxX,boxY,boxW,boxH);
+  ctx.strokeStyle='rgba(57,255,20,0.35)'; ctx.lineWidth=1.5; ctx.strokeRect(boxX,boxY,boxW,boxH);
+  ctx.restore();
+
+  const lines=[
+    'v0.9 FEATURES ADDED',
+    '• Adventure mode with 6 escalating stages',
+    '• New powerups: Stage Boost & Health Boost',
+    '• Starter powerup shop and skin shop',
+    '• Quest system with gem rewards',
+    '• Neon HUD, particles, rings, and screen shake',
+    '• Pause menu and improved touch swipe controls',
+    '',
+    'v0.9.1 HOTFIX + ENHANCEMENTS',
+    '• Added ABOUT page and menu cleanup',
+    '• Fixed pause touch/click responsiveness',
+    '• Jetpack now grants +10 score multiplier bonus',
+    '• Refined controls panel to remove overlap',
+    '• Extra menu polish and animated visual accents'
+  ];
+
+  let y=boxY+28;
+  lines.forEach((line,i)=>{
+    if (!line) { y+=10; return; }
+    const head=i===0||i===8;
+    setFont(head?11:9,head?'900':'700',"'Share Tech Mono',monospace");
+    if (head) glow(CFG.CY,10); else noGlow();
+    txt(line,boxX+14,y,head?CFG.CY:'rgba(230,255,255,0.82)','left');
+    y+=head?24:20;
+  });
+
+  BTNS.back={x:(LW-150)/2,y:LH-54,w:150,h:32};
+  drawNeonBtn(BTNS.back.x,BTNS.back.y,BTNS.back.w,BTNS.back.h,CFG.PK,'← BACK',11,0.9,Math.sin(t*2.2));
+  ctx.restore();
 }
 
 // ── MODE SELECT ───────────────────────────────────────────────────
@@ -1584,7 +1638,7 @@ function drawGameOver(t) {
   BTNS.home={x:bX,y:homeY,w:bW,h:bH};
   drawNeonBtn(bX,homeY,bW,bH,CFG.PK,'⌂  MAIN MENU',12,0.9,Math.sin(t*2.5));
   noGlow(); ctx.globalAlpha=0.3; setFont(9,'400',"'Share Tech Mono',monospace");
-  txt('v0.9',LW-14,LH-10,'rgba(0,245,255,0.2)','right');
+  txt(`v${VERSION}`,LW-14,LH-10,'rgba(0,245,255,0.2)','right');
   ctx.restore(); ctx.restore();
 }
 
@@ -1615,7 +1669,7 @@ function drawPause() {
   drawNeonBtn(bX,mmY,bW,bH,CFG.PK,'⌂  MAIN MENU',13,0.9,Math.sin(menuT*2.2));
   ctx.save(); noGlow(); ctx.globalAlpha=0.25;
   setFont(8,'400',"'Share Tech Mono',monospace");
-  txt('ESC TO RESUME',LW/2,mmY+bH+14,'rgba(0,245,255,0.4)'); ctx.restore();
+  txt('ESC / TAP PAUSE TO RESUME',LW/2,mmY+bH+14,'rgba(0,245,255,0.4)'); ctx.restore();
   ctx.restore();
 }
 
@@ -2042,7 +2096,7 @@ let score=0, bestScore=0, lives=0, maxLives=CFG.LIVES, multi=1, gemStreak=0, max
 let gemsCollected=0;
 let worldSpeedMult=1;
 let activePwr=null, pwrTimer=0;
-let transAlpha=1, transDir=1, pendingGS='MENU';
+transAlpha=1; transDir=1; pendingGS='MENU';
 
 // Health boost state
 let healthBoostActive=false, healthBoostTimer=0, healthBoostMax=60;
@@ -2055,7 +2109,7 @@ let stageBoostNext=rnd(20,30), stageBoostElapsed=0;
 let gemTimer=0, gemNext=0, pwrTimer2=0, pwrNext=0, obsTimer=0, obsNext=0;
 let fps=0, fpsFrames=0, fpsTimer=0;
 let menuT=0, gameTime=0, scorePopT=0;
-let overShakePow=0, lastMilestone=0, clusterTimer=0, clusterNext=8;
+let lastMilestone=0, clusterTimer=0, clusterNext=8;
 
 const gems=[], powerups=[], obstacles=[];
 
@@ -2158,6 +2212,8 @@ function togglePause() {
   else if (gs==='PAUSE') { gs='PLAY'; SFX.resume(); }
 }
 
+const scoreMultiplier = () => multi + (player.jetpackActive ? 10 : 0);
+
 function loseLife() {
   if (player.shield) {
     player.shield=false;
@@ -2195,7 +2251,7 @@ function collectGem(gem) {
   else if (gemStreak>=5)  multi=2;
   else                     multi=1;
   if (multi>maxCombo) maxCombo=multi;
-  const pts=gem.type.pts*multi*(activePwr==='BOOST'?2:1);
+  const pts=gem.type.pts*scoreMultiplier()*(activePwr==='BOOST'?2:1);
   score+=pts; scorePopT=0.3;
   const earned=gem.type.gemVal;
   totalGems=addToBank(earned);
@@ -2203,7 +2259,7 @@ function collectGem(gem) {
   SFX.gem(tier);
   burst(gem.x,gem.y,gem.type.col,12,180);
   flashAlpha=0.12; flashCol=gem.type.col;
-  addFloat(gem.x,gem.y-10,`+${pts}${multi>1?` ×${multi}`:''}`,gem.type.col);
+  addFloat(gem.x,gem.y-10,`+${pts}${scoreMultiplier()>1?` ×${scoreMultiplier()}`:''}`,gem.type.col);
   addFloat(gem.x,gem.y-28,`+${earned}◆`,gem.type.col);
 }
 
@@ -2386,6 +2442,14 @@ function loop(ts) {
     requestAnimationFrame(loop); return;
   }
 
+  // ── ABOUT ───────────────────────────────────────────────────
+  if (gs==='ABOUT') {
+    terrain.update(dt*0.28);
+    drawAboutScreen(menuT);
+    drawTransition();
+    requestAnimationFrame(loop); return;
+  }
+
   // ── MODE SELECT ─────────────────────────────────────────────
   if (gs==='MODESELECT') {
     terrain.update(dt*0.35);
@@ -2480,9 +2544,9 @@ function loop(ts) {
     }
   }
 
-  // Score (×10 during jetpack)
-  const scoreMult=player.jetpackActive?10:stageBoostActive?3:1;
-  score+=(CFG.SPS*terrain.speedFrac()*3*dt*multi+CFG.SPS*dt)*scoreMult;
+  // Score (+10 multiplier during jetpack)
+  const stageMult=stageBoostActive?3:1;
+  score+=(CFG.SPS*terrain.speedFrac()*3*dt*scoreMultiplier()+CFG.SPS*dt)*stageMult;
   if (scorePopT>0) scorePopT=Math.max(0,scorePopT-dt*3);
   if (flashAlpha>0) flashAlpha=Math.max(0,flashAlpha-dt*3.5);
 
