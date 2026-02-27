@@ -51,6 +51,7 @@ const SETTINGS = {
 const GFX_LABELS = ['LOW','MED','HIGH'];
 const FPS_LABELS = ['30','60','∞'];
 const FPS_VALUES = [30,60,0]; // 0=unlimited
+const VERSION = '0.9.2';
 const VERSION = '0.9.1';
 
 // Adventure stage configs
@@ -784,14 +785,14 @@ class Gem {
 }
 
 const PWR_TYPES={
-  SHIELD:       {col:CFG.BL, label:'SHIELD',       icon:'🛡', dur:0   },
+  SHIELD:       {col:CFG.BL, label:'SHIELD',       icon:'🛡', dur:150 },
   SLOW:         {col:CFG.GR, label:'SLOW-MO',       icon:'⏱', dur:4.5 },
-  BOOST:        {col:CFG.YL, label:'SCORE ×2',      icon:'⚡', dur:5.5 },
-  MAGNET:       {col:CFG.PU, label:'MAGNET',         icon:'✦', dur:4.0 },
+  BOOST:        {col:CFG.YL, label:'SCORE ×2',      icon:'⚡', dur:10.0},
+  MAGNET:       {col:CFG.PU, label:'MAGNET',         icon:'✦', dur:10.0},
   JETPACK:      {col:CFG.OR, label:'JETPACK',        icon:'🚀', dur:5.0 },
   HEALTH_BOOST: {col:'#ff44aa',label:'HEALTH BOOST', icon:'❤', dur:30  },
   REGEN:        {col:'#ff6699',label:'REGENERATION', icon:'✚', dur:0   },
-  STAGE_BOOST:  {col:'#88ffcc',label:'STAGE BOOST',  icon:'🌀', dur:5.0 },
+  STAGE_BOOST:  {col:'#88ffcc',label:'STAGE BOOST',  icon:'🌀', dur:10.0},
 };
 const PWR_WEIGHTED=[
   ...Array(4).fill('SHIELD'),
@@ -982,7 +983,7 @@ function drawPlayer() {
   for (let i=1;i<trail.length;i++) {
     const t2=1-i/trail.length;
     const charD=CHAR_CATALOG.find(c=>c.id===selectedChar)||CHAR_CATALOG[0];
-    const tc=jetpackActive?CFG.OR:activePwr==='SLOW'?CFG.GR:activePwr==='BOOST'?CFG.YL:activePwr==='MAGNET'?CFG.PU:activePwr==='HEALTH_BOOST'?'#ff44aa':charD.trailCol;
+    const tc=stageBoostActive?'#88ccff':jetpackActive?CFG.OR:activePwr==='SLOW'?CFG.GR:activePwr==='BOOST'?CFG.YL:activePwr==='MAGNET'?CFG.PU:activePwr==='HEALTH_BOOST'?'#ff44aa':charD.trailCol;
     ctx.save(); ctx.globalAlpha=t2*0.5;
     glow(tc,8); circle(trail[i].x,trail[i].y,CFG.PR*t2*0.65,tc);
     ctx.restore(); spark(trail[i].x,trail[i].y,tc);
@@ -1045,15 +1046,16 @@ function drawPlayer() {
 }
 
 function drawJetpackFog() {
-  if (!player.jetpackActive) return;
-  const progress=(player.jetpackMax-player.jetpackT)/player.jetpackMax;
-  const a=Math.min(1,progress*2)*0.18;
+  if (!player.jetpackActive&&!stageBoostActive) return;
+  const jp=player.jetpackActive?((player.jetpackMax-player.jetpackT)/Math.max(0.01,player.jetpackMax)):0.6;
+  const base=stageBoostActive?0.22:0.18;
+  const a=Math.min(1,jp*2)*base;
   ctx.save();
   const g1=ctx.createLinearGradient(0,0,120,0);
-  g1.addColorStop(0,`rgba(255,100,0,${a})`); g1.addColorStop(1,'transparent');
+  g1.addColorStop(0,`rgba(${stageBoostActive?'120,190,255':'255,100,0'},${a})`); g1.addColorStop(1,'transparent');
   ctx.fillStyle=g1; ctx.fillRect(0,0,120,LH);
   const g2=ctx.createLinearGradient(LW,0,LW-120,0);
-  g2.addColorStop(0,`rgba(255,100,0,${a})`); g2.addColorStop(1,'transparent');
+  g2.addColorStop(0,`rgba(${stageBoostActive?'120,190,255':'255,100,0'},${a})`); g2.addColorStop(1,'transparent');
   ctx.fillStyle=g2; ctx.fillRect(LW-120,0,120,LH);
   ctx.restore();
 }
@@ -1351,6 +1353,7 @@ function drawStartScreen(t) {
   ctx.strokeStyle=dg; ctx.lineWidth=1; glow(CFG.CY,8);
   ctx.beginPath(); ctx.moveTo(lx2,ly); ctx.lineTo(lx2+lw2,ly); ctx.stroke(); ctx.restore();
 
+  // v0.9.2 visual accents
   // v0.9.1 visual accents
   ctx.save();
   const pulse=0.35+0.25*Math.sin(t*2.8);
@@ -1443,6 +1446,10 @@ function drawAboutScreen(t) {
     '• Neon HUD, particles, rings, and screen shake',
     '• Pause menu and improved touch swipe controls',
     '',
+    'v0.9.2 PATCH + ENHANCEMENTS',
+    '• Added 400-quest system with hourly rotation',
+    '• Added stage boost zoom/fog and jetpack shake effects',
+    '• Stage boost now grants +5 multiplier for 10s',
     'v0.9.1 HOTFIX + ENHANCEMENTS',
     '• Added ABOUT page and menu cleanup',
     '• Fixed pause touch/click responsiveness',
@@ -1543,6 +1550,7 @@ function drawModeSelect(t) {
 // ── QUESTS SCREEN ─────────────────────────────────────────────────
 let questScroll=0;
 function drawQuestsScreen(t) {
+  refreshHourlyObjectives();
   ctx.fillStyle=CFG.BG; ctx.fillRect(0,0,LW,LH);
   drawPerspGrid(0,0.06); drawBgSquares();
   ctx.save(); ctx.fillStyle='rgba(2,5,8,0.9)'; ctx.fillRect(0,0,LW,LH);
@@ -1554,13 +1562,13 @@ function drawQuestsScreen(t) {
   // Stats summary
   setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.55;
   const done=OBJECTIVES.filter(o=>doneObjs.includes(o.id)).length;
-  txt(`${done}/${OBJECTIVES.length} completed  ·  ◆ ${totalGems} total gems`,LW/2,82,'rgba(255,230,0,0.6)');
+  txt(`${done}/${OBJECTIVES.length} total completed  ·  ${ACTIVE_OBJECTIVES.length} active this hour`,LW/2,82,'rgba(255,230,0,0.6)');
   ctx.globalAlpha=1;
 
   // Objectives list (scrollable clip)
   ctx.save();
   ctx.beginPath(); ctx.rect(0,90,LW,LH-150); ctx.clip();
-  OBJECTIVES.forEach((obj,i)=>{
+  ACTIVE_OBJECTIVES.forEach((obj,i)=>{
     const done=doneObjs.includes(obj.id);
     const y=98+i*72+questScroll;
     if (y<80||y>LH-80) return;
@@ -1736,7 +1744,7 @@ function drawShopScreen(t) {
     txt(offer.desc,cx+cardW/2,cy+76,'#fff'); ctx.restore();
     // Duration
     const info=PWR_TYPES[offer.key];
-    const durStr=offer.key==='SHIELD'?'1 HIT':offer.key==='JETPACK'?'10 SEC':offer.key==='HEALTH_BOOST'?'60 SEC':`${info?.dur||'?'}s`;
+    const durStr=offer.key==='SHIELD'?'150 SEC':offer.key==='JETPACK'?'10 SEC':offer.key==='HEALTH_BOOST'?'60 SEC':`${info?.dur||'?'}s`;
     ctx.save(); setFont(8,'700'); glow(col,6); ctx.globalAlpha=0.7;
     txt(`⏱ ${durStr}`,cx+cardW/2,cy+92,col); ctx.restore();
     ctx.save(); ctx.globalAlpha=0.85;
@@ -1881,27 +1889,75 @@ function drawSettingsScreen(t) {
 <!--  SCRIPT 10b · OBJECTIVES & CHARACTER DATA                   -->
 <!-- ============================================================ -->
 <script id="s-objectives">
-const OBJECTIVES=[
-  {id:'gems10',    label:'Collect 10 Gems',    desc:'In a single run',         reward:100,  check:()=>gemsCollected>=10},
-  {id:'gems50',    label:'Collect 50 Gems',    desc:'In a single run',         reward:200,  check:()=>gemsCollected>=50},
-  {id:'gems200',   label:'Collect 200 Gems',   desc:'In a single run',         reward:500,  check:()=>gemsCollected>=200},
-  {id:'score500',  label:'Score 500',           desc:'Reach 500 points',        reward:100,  check:()=>score>=500},
-  {id:'score2000', label:'Score 2000',          desc:'Reach 2000 points',       reward:200,  check:()=>score>=2000},
-  {id:'score5000', label:'Score 5000',          desc:'Reach 5000 points',       reward:500,  check:()=>score>=5000},
-  {id:'survive30', label:'Survive 30s',         desc:'Stay alive 30 seconds',   reward:100,  check:()=>gameTime>=30},
-  {id:'survive60', label:'Survive 60s',         desc:'Stay alive 60 seconds',   reward:200,  check:()=>gameTime>=60},
-  {id:'combo4',    label:'Hit ×4 Combo',        desc:'Collect 15 gems in a row',reward:500,  check:()=>maxCombo>=4},
-  {id:'jetpack3',  label:'Use Jetpack',         desc:'Collect jetpack powerup', reward:200,  check:()=>jetpackCount>=1},
-  {id:'fullhp',    label:'5 Lives!',            desc:'Activate Health Boost',   reward:300,  check:()=>maxLives>=5},
-  {id:'stage3',    label:'Reach Stage 3',       desc:'Adventure mode',          reward:400,  check:()=>gameMode==='ADVENTURE'&&adventureStage>=2},
-  {id:'stage6',    label:'Reach Stage 6',       desc:'Adventure: final stage',  reward:1000, check:()=>gameMode==='ADVENTURE'&&adventureStage>=5},
-  {id:'regen',     label:'Regen 3 Lives',       desc:'Use REGEN powerup x3',    reward:250,  check:()=>regenUsed>=3},
-];
-let jetpackCount=0, regenUsed=0;
+const QUEST_POOL_SIZE=400;
+const QUESTS_PER_HOUR=20;
 
-const objAnims=[];
+let jetpackCount=0, regenUsed=0;
+let pwrCounts={JETPACK:0,MAGNET:0,BOOST:0,SHIELD:0,SLOW:0,HEALTH_BOOST:0,STAGE_BOOST:0,REGEN:0};
+
+function makeQuest(id,label,desc,reward,check){ return {id,label,desc,reward,check}; }
+
+function buildObjectivePool() {
+  const q=[];
+  const add=(label,desc,reward,check)=>q.push(makeQuest(`q${q.length+1}`,label,desc,reward,check));
+  const addId=(id,label,desc,reward,check)=>q.push(makeQuest(id,label,desc,reward,check));
+
+  // Legacy quest IDs kept for skin unlock compatibility
+  addId('combo4','Hit ×4 Combo','Collect 15 gems in a row',500,()=>maxCombo>=4);
+  addId('survive60','Survive 60s','Stay alive 60 seconds',200,()=>gameTime>=60);
+  addId('gems200','Collect 200 Gems','In a single run',500,()=>gemsCollected>=200);
+  addId('score5000','Score 5000','Reach 5000 points',500,()=>score>=5000);
+
+  for (let t=10;t<=400;t+=5) add(`Collect ${t} Gems`,`In a single run`,80+Math.floor(t*1.8),()=>gemsCollected>=t);
+  for (let t=500;t<=25000;t+=250) add(`Score ${t}`,`Reach ${t} points`,90+Math.floor(t/40),()=>score>=t);
+  for (let t=20;t<=500;t+=10) add(`Survive ${t}s`,`Stay alive ${t} seconds`,100+Math.floor(t*3.2),()=>gameTime>=t);
+  for (let t=2;t<=30;t++) add(`Hit ×${t} Combo`,`Build combo to ×${t}`,120+t*40,()=>maxCombo>=t);
+
+  for (let t=1;t<=30;t++) add(`Use Jetpack x${t}`,`Collect ${t} jetpack powerups`,120+t*55,()=>pwrCounts.JETPACK>=t);
+  for (let t=1;t<=30;t++) add(`Use Magnet x${t}`,`Collect ${t} magnet powerups`,120+t*50,()=>pwrCounts.MAGNET>=t);
+  for (let t=1;t<=30;t++) add(`Use Score ×2 x${t}`,`Collect ${t} boost powerups`,120+t*50,()=>pwrCounts.BOOST>=t);
+  for (let t=1;t<=25;t++) add(`Use Shield x${t}`,`Collect ${t} shield powerups`,120+t*55,()=>pwrCounts.SHIELD>=t);
+  for (let t=1;t<=20;t++) add(`Use Regen x${t}`,`Restore life ${t} times`,140+t*70,()=>regenUsed>=t);
+  for (let t=2;t<=6;t++) add(`Reach Stage ${t}`,`Adventure mode`,280+t*120,()=>gameMode==='ADVENTURE'&&adventureStage>=t-1);
+
+  for (let t=2;t<=80;t+=2) add(`Collect ${t} Powerups`,`Any powerup type`,100+t*18,()=>Object.values(pwrCounts).reduce((a,b)=>a+b,0)>=t);
+
+  // trim/fill to exactly 400
+  while (q.length<QUEST_POOL_SIZE) {
+    const t=q.length+1;
+    add(`Precision Run ${t}`,`Score ${t*120} with no wall hit`,200+Math.floor(t*3.5),()=>score>=t*120&&lives===maxLives);
+  }
+  return q.slice(0,QUEST_POOL_SIZE);
+}
+
+const OBJECTIVES=buildObjectivePool();
+let ACTIVE_OBJECTIVES=[];
+let activeQuestHourKey='';
+
+function getHourKey() {
+  const d=new Date();
+  return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}-${d.getHours()}`;
+}
+function hashStr(str){ let h=2166136261>>>0; for(let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619);} return h>>>0; }
+function mulberry32(seed){ return function(){ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+
+function refreshHourlyObjectives(force=false) {
+  const k=getHourKey();
+  if (!force && k===activeQuestHourKey && ACTIVE_OBJECTIVES.length) return;
+  activeQuestHourKey=k;
+  const rand=mulberry32(hashStr(`slope-${k}-${VERSION}`));
+  const idx=[...Array(OBJECTIVES.length).keys()];
+  for (let i=idx.length-1;i>0;i--) {
+    const j=Math.floor(rand()*(i+1));
+    const t=idx[i]; idx[i]=idx[j]; idx[j]=t;
+  }
+  ACTIVE_OBJECTIVES=idx.slice(0,QUESTS_PER_HOUR).map(i=>OBJECTIVES[i]);
+  questScroll=0;
+}
+
 function tickObjectives() {
-  OBJECTIVES.forEach(obj=>{
+  refreshHourlyObjectives();
+  ACTIVE_OBJECTIVES.forEach(obj=>{
     if (doneObjs.includes(obj.id)) return;
     if (obj.check()) {
       doneObjs.push(obj.id); saveDoneObjs(doneObjs);
@@ -1936,7 +1992,8 @@ function drawObjAnims() {
 }
 
 function drawObjectivesPanel() {
-  const active=OBJECTIVES.filter(o=>!doneObjs.includes(o.id)).slice(0,3);
+  refreshHourlyObjectives();
+  const active=ACTIVE_OBJECTIVES.filter(o=>!doneObjs.includes(o.id)).slice(0,3);
   if (!active.length) return;
   ctx.save();
   active.forEach((obj,i)=>{
@@ -1953,6 +2010,8 @@ function drawObjectivesPanel() {
   });
   ctx.restore();
 }
+
+const objAnims=[];
 
 const CHAR_CATALOG=[
   {id:'default', name:'DEFAULT', col:CFG.CY,      trailCol:CFG.CY,    unlock:'free'},
@@ -2115,6 +2174,7 @@ const gems=[], powerups=[], obstacles=[];
 
 // Stage transition animation
 let stageTransT=0, stageTransLabel='';
+let camZoom=1;
 
 function goMenu() {
   gs='MENU'; menuSlideY=0;
@@ -2138,6 +2198,7 @@ function startGame(starterPwr=null) {
   obsTimer=0; obsNext=rnd(...CFG.OBS_INT);
   lastMilestone=0; clusterTimer=0; clusterNext=8;
   jetpackCount=0; regenUsed=0;
+  pwrCounts={JETPACK:0,MAGNET:0,BOOST:0,SHIELD:0,SLOW:0,HEALTH_BOOST:0,STAGE_BOOST:0,REGEN:0};
   // Adventure setup
   adventureStage=0; adventureStageTimer=0;
   stageBoostActive=false; stageBoostTimer=0;
@@ -2153,7 +2214,7 @@ function startGame(starterPwr=null) {
 
   if (starterPwr) {
     if (starterPwr==='SHIELD') {
-      player.shield=true;
+      activatePwr('SHIELD',150); player.shield=true;
     } else if (starterPwr==='JETPACK') {
       setTimeout(()=>{ if(gs==='PLAY'){ player.activateJetpack(10.0); worldSpeedMult=1.3; }},200);
     } else if (starterPwr==='HEALTH_BOOST') {
@@ -2212,11 +2273,12 @@ function togglePause() {
   else if (gs==='PAUSE') { gs='PLAY'; SFX.resume(); }
 }
 
+const scoreMultiplier = () => multi + (player.jetpackActive ? 10 : 0) + (stageBoostActive ? 5 : 0);
 const scoreMultiplier = () => multi + (player.jetpackActive ? 10 : 0);
 
 function loseLife() {
-  if (player.shield) {
-    player.shield=false;
+  if (player.shield||activePwr==='SHIELD') {
+    if (activePwr!=='SHIELD') player.shield=false;
     addNotif('SHIELD BLOCKED!',CFG.CY); SFX.shieldBlock();
     addRing(player.x,player.y,CFG.BL,80,280,3);
     addRing(player.x,player.y,CFG.CY,110,220,2);
@@ -2266,14 +2328,14 @@ function collectGem(gem) {
 function collectPwr(pwr) {
   pwr.collected=true; pwr.active=false;
   const col=pwr.info.col;
-  if      (pwr.key==='JETPACK')      { SFX.jetpack(); player.activateJetpack(5.0); worldSpeedMult=1.3; jetpackCount++; }
-  else if (pwr.key==='SHIELD')       { SFX.pwr(); player.shield=true; addRing(pwr.x,pwr.y,CFG.BL,70,240,2.5); }
-  else if (pwr.key==='SLOW')         { SFX.slow(); activatePwr('SLOW',4.5); worldSpeedMult=0.42; }
-  else if (pwr.key==='BOOST')        { SFX.boost(); activatePwr('BOOST',5.5); }
-  else if (pwr.key==='MAGNET')       { SFX.magnet(); activatePwr('MAGNET',4.0); }
-  else if (pwr.key==='HEALTH_BOOST') { SFX.regen(); activateHealthBoost(30); }
-  else if (pwr.key==='REGEN')        { SFX.regen(); collectRegen(pwr.x,pwr.y); }
-  else if (pwr.key==='STAGE_BOOST')  { SFX.stage(); activateStageBoost(); }
+  if      (pwr.key==='JETPACK')      { SFX.jetpack(); player.activateJetpack(10.0); worldSpeedMult=1.3; jetpackCount++; pwrCounts.JETPACK++; }
+  else if (pwr.key==='SHIELD')       { SFX.pwr(); activatePwr('SHIELD',150); pwrCounts.SHIELD++; addRing(pwr.x,pwr.y,CFG.BL,70,240,2.5); }
+  else if (pwr.key==='SLOW')         { SFX.slow(); activatePwr('SLOW',4.5); worldSpeedMult=0.42; pwrCounts.SLOW++; }
+  else if (pwr.key==='BOOST')        { SFX.boost(); activatePwr('BOOST',10.0); pwrCounts.BOOST++; }
+  else if (pwr.key==='MAGNET')       { SFX.magnet(); activatePwr('MAGNET',10.0); pwrCounts.MAGNET++; }
+  else if (pwr.key==='HEALTH_BOOST') { SFX.regen(); activateHealthBoost(30); pwrCounts.HEALTH_BOOST++; }
+  else if (pwr.key==='REGEN')        { SFX.regen(); collectRegen(pwr.x,pwr.y); pwrCounts.REGEN++; }
+  else if (pwr.key==='STAGE_BOOST')  { SFX.stage(); activateStageBoost(); pwrCounts.STAGE_BOOST++; }
   else SFX.pwr();
   burst(pwr.x,pwr.y,col,24,220); ringBurst(pwr.x,pwr.y,col);
   addShake(6,0.2); flashAlpha=0.35; flashCol=col;
@@ -2285,7 +2347,9 @@ function collectPwr(pwr) {
 
 function activatePwr(key,dur) {
   if (activePwr==='SLOW') worldSpeedMult=1;
+  if (activePwr==='SHIELD'&&key!=='SHIELD') player.shield=false;
   activePwr=key; pwrTimer=dur;
+  if (key==='SHIELD') player.shield=true;
 }
 
 function collectRegen(x,y) {
@@ -2298,10 +2362,13 @@ function collectRegen(x,y) {
 }
 
 function activateStageBoost() {
-  stageBoostActive=true; stageBoostTimer=5.0;
-  addNotif('🌀 STAGE BOOST!','#88ffcc');
-  addFloat(player.x,player.y-20,'🌀 STAGE BOOST!','#88ffcc');
-  score+=200; scorePopT=0.5;
+  stageBoostActive=true; stageBoostTimer=10.0;
+  player.activateJetpack(10.0);
+  addNotif('🌀 STAGE BOOST! +5 MULTI','#88ccff');
+  addFloat(player.x,player.y-20,'🌀 STAGE BOOST!','#88ccff');
+  burst(player.x,player.y,'#88ccff',30,240);
+  addRing(player.x,player.y,'#88ccff',140,320,3);
+  score+=300; scorePopT=0.6;
 }
 
 function spawnObjects(dt) {
@@ -2524,6 +2591,7 @@ function loop(ts) {
     pwrTimer-=dt;
     if (pwrTimer<=0) {
       if (activePwr==='SLOW') worldSpeedMult=1;
+      if (activePwr==='SHIELD') player.shield=false;
       addNotif(`${PWR_TYPES[activePwr].label} ENDED`,'rgba(0,245,255,0.7)');
       activePwr=null; pwrTimer=0;
     }
@@ -2540,10 +2608,17 @@ function loop(ts) {
     stageBoostTimer-=dt;
     if (stageBoostTimer<=0) {
       stageBoostActive=false;
+      camZoom=1;
+      addRing(player.x,player.y,'#88ccff',180,360,3.5);
+      burst(player.x,player.y,'#88ccff',40,300);
+      burst(player.x,player.y,'#66ddff',26,260);
+      addShake(14,0.5);
       advanceAdventureStage();
     }
   }
 
+  // Score multiplier: combo + jetpack(+10) + stage boost(+5)
+  score+=(CFG.SPS*terrain.speedFrac()*3*dt*scoreMultiplier()+CFG.SPS*dt);
   // Score (+10 multiplier during jetpack)
   const stageMult=stageBoostActive?3:1;
   score+=(CFG.SPS*terrain.speedFrac()*3*dt*scoreMultiplier()+CFG.SPS*dt)*stageMult;
@@ -2604,7 +2679,15 @@ function loop(ts) {
   }
 
   // ── DRAW ────────────────────────────────────────────────────
+  if (player.jetpackActive) addShake(2.4,0.05);
+  const targetZoom=stageBoostActive?1.10:(player.jetpackActive?1.04:1);
+  camZoom=lerp(camZoom,targetZoom,dt*3);
   ctx.save(); applyShake();
+  if (camZoom!==1) {
+    ctx.translate(player.x,player.y);
+    ctx.scale(camZoom,camZoom);
+    ctx.translate(-player.x,-player.y);
+  }
   drawPerspGrid(terrain.scrollY,terrain.speedFrac());
   drawTerrain();
   drawExhaust();
@@ -2618,8 +2701,8 @@ function loop(ts) {
 
   // Stage boost visual
   if (stageBoostActive) {
-    const a=0.06+0.04*Math.sin(menuT*8);
-    ctx.save(); ctx.globalAlpha=a; ctx.fillStyle='#88ffcc'; ctx.fillRect(0,0,LW,LH); ctx.restore();
+    const a=0.08+0.05*Math.sin(menuT*9);
+    ctx.save(); ctx.globalAlpha=a; ctx.fillStyle='#77bbff'; ctx.fillRect(0,0,LW,LH); ctx.restore();
   }
 
   // Stage transition banner
