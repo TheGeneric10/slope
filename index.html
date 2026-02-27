@@ -51,10 +51,9 @@ const SETTINGS = {
 const GFX_LABELS = ['LOW','MED','HIGH'];
 const FPS_LABELS = ['30','60','∞'];
 const FPS_VALUES = [30,60,0]; // 0=unlimited
-var VERSION = globalThis.VERSION || '0.9.2';
-globalThis.VERSION = VERSION;
+
+// BUG FIX 1: Removed duplicate VERSION constant ('0.9.1' shadowed '0.9.2')
 const VERSION = '0.9.2';
-const VERSION = '0.9.1';
 
 // Adventure stage configs
 const ADV_STAGES = [
@@ -1194,10 +1193,11 @@ function drawHUD() {
     ctx.restore();
   }
 
+  // BUG FIX 4: Stage boost bar now uses /10.0 to match stageBoostTimer init of 10.0
   // Stage boost bar (adventure)
   if (stageBoostActive) {
     ctx.save(); const px2=LW/2,py2=LH-pdY-22;
-    const pct=stageBoostTimer/5.0;
+    const pct=stageBoostTimer/10.0;
     setFont(10,'700'); glow('#88ffcc',14); txt(`🌀 STAGE BOOST`,px2,py2,'#88ffcc');
     const bwp=80,bhp=2;
     ctx.fillStyle='rgba(255,255,255,0.1)'; ctx.fillRect(px2-bwp/2,py2+4,bwp,bhp);
@@ -1376,8 +1376,7 @@ function drawStartScreen(t) {
   ctx.strokeStyle=dg; ctx.lineWidth=1; glow(CFG.CY,8);
   ctx.beginPath(); ctx.moveTo(lx2,ly); ctx.lineTo(lx2+lw2,ly); ctx.stroke(); ctx.restore();
 
-  // v0.9.2 visual accents
-  // v0.9.1 visual accents
+  // Visual accents
   ctx.save();
   const pulse=0.35+0.25*Math.sin(t*2.8);
   ctx.globalAlpha=pulse;
@@ -1473,12 +1472,14 @@ function drawAboutScreen(t) {
     '• Added 400-quest system with hourly rotation',
     '• Added stage boost zoom/fog and jetpack shake effects',
     '• Stage boost now grants +5 multiplier for 10s',
-    'v0.9.1 HOTFIX + ENHANCEMENTS',
     '• Added ABOUT page and menu cleanup',
     '• Fixed pause touch/click responsiveness',
     '• Jetpack now grants +10 score multiplier bonus',
     '• Refined controls panel to remove overlap',
-    '• Extra menu polish and animated visual accents'
+    '• Extra menu polish and animated visual accents',
+    '• Fixed duplicate VERSION/scoreMultiplier bugs',
+    '• Fixed double score increment per frame',
+    '• Fixed stage boost progress bar overflow'
   ];
 
   let y=boxY+28;
@@ -2206,6 +2207,9 @@ const gems=[], powerups=[], obstacles=[];
 let stageTransT=0, stageTransLabel='';
 let camZoom=1;
 
+// BUG FIX 2: Removed duplicate scoreMultiplier. Keeping the full version with stageBoost bonus.
+const scoreMultiplier = () => multi + (player.jetpackActive ? 10 : 0) + (stageBoostActive ? 5 : 0);
+
 function goMenu() {
   gs='MENU'; menuSlideY=0;
   clearAllFX(); terrain.reset(); player.reset();
@@ -2302,10 +2306,6 @@ function togglePause() {
   if (gs==='PLAY') { gs='PAUSE'; SFX.pause(); }
   else if (gs==='PAUSE') { gs='PLAY'; SFX.resume(); }
 }
-
-function scoreMultiplier() { return multi + (player.jetpackActive ? 10 : 0) + (stageBoostActive ? 5 : 0); }
-const scoreMultiplier = () => multi + (player.jetpackActive ? 10 : 0) + (stageBoostActive ? 5 : 0);
-const scoreMultiplier = () => multi + (player.jetpackActive ? 10 : 0);
 
 function loseLife() {
   if (player.shield||activePwr==='SHIELD') {
@@ -2648,11 +2648,11 @@ function loop(ts) {
     }
   }
 
-  // Score multiplier: combo + jetpack(+10) + stage boost(+5)
-  score+=(CFG.SPS*terrain.speedFrac()*3*dt*scoreMultiplier()+CFG.SPS*dt);
-  // Score (+10 multiplier during jetpack)
+  // BUG FIX 3: Removed duplicate score increment. Score was being added twice per frame.
+  // stageMult applied once here for the correct stage boost score bonus.
   const stageMult=stageBoostActive?3:1;
   score+=(CFG.SPS*terrain.speedFrac()*3*dt*scoreMultiplier()+CFG.SPS*dt)*stageMult;
+
   if (scorePopT>0) scorePopT=Math.max(0,scorePopT-dt*3);
   if (flashAlpha>0) flashAlpha=Math.max(0,flashAlpha-dt*3.5);
 
