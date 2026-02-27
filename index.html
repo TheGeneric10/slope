@@ -2042,7 +2042,7 @@ let score=0, bestScore=0, lives=0, maxLives=CFG.LIVES, multi=1, gemStreak=0, max
 let gemsCollected=0;
 let worldSpeedMult=1;
 let activePwr=null, pwrTimer=0;
-let transAlpha=1, transDir=1, pendingGS='MENU';
+transAlpha=1; transDir=1; pendingGS='MENU';
 
 // Health boost state
 let healthBoostActive=false, healthBoostTimer=0, healthBoostMax=60;
@@ -2055,7 +2055,7 @@ let stageBoostNext=rnd(20,30), stageBoostElapsed=0;
 let gemTimer=0, gemNext=0, pwrTimer2=0, pwrNext=0, obsTimer=0, obsNext=0;
 let fps=0, fpsFrames=0, fpsTimer=0;
 let menuT=0, gameTime=0, scorePopT=0;
-let overShakePow=0, lastMilestone=0, clusterTimer=0, clusterNext=8;
+let lastMilestone=0, clusterTimer=0, clusterNext=8;
 
 const gems=[], powerups=[], obstacles=[];
 
