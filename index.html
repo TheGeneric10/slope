@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>SLOPE</title>
+<title>SLOPE — SEASON 1</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <link rel="icon" href="./favicon.ico">
 <style>
@@ -182,6 +182,14 @@ function handleTap(e) {
     const fOpts=[BTNS.questsFilterOpt0,BTNS.questsFilterOpt1,BTNS.questsFilterOpt2,BTNS.questsFilterOpt3];
     for (let i=0;i<fOpts.length;i++) {
       if (hitBtn(p, fOpts[i])) { questFilter=i; questFilterOpen=false; questScroll=0; return; }
+    }
+    return;
+  }
+  if (gs === 'LEADERBOARD') {
+    if (hitBtn(p, BTNS.leaderboardBack)) {
+      if (leaderboardReturnState==='PAUSE') doTransition('PAUSE');
+      else doTransition('MENU');
+      return;
     }
     return;
   }
