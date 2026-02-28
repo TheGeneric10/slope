@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>SLOPE — SEASON 1</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="icon" href="./favicon.ico">
 <style>
   *, *::before, *::after {
     margin:0; padding:0; box-sizing:border-box;
@@ -53,7 +54,7 @@ const FPS_LABELS = ['30','60','∞'];
 const FPS_VALUES = [30,60,0]; // 0=unlimited
 
 // BUG FIX 1: Removed duplicate VERSION constant ('0.9.1' shadowed '0.9.2')
-const VERSION = '0.9.4';
+const VERSION = '0.9.5';
 
 // Adventure stage configs
 const ADV_STAGES = [
@@ -89,7 +90,7 @@ function resizeCanvas() {
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 200));
-setInterval(resizeCanvas, 50); // auto-fit every 50ms
+setInterval(resizeCanvas, 250); // auto-fit every 250ms (less input overhead)
 </script>
 
 <!-- ============================================================ -->
@@ -147,7 +148,7 @@ function handleTap(e) {
     if (hitBtn(p, BTNS.settings)) { doTransition('SETTINGS');   return; }
     if (hitBtn(p, BTNS.about))    { doTransition('ABOUT');      return; }
     if (hitBtn(p, BTNS.quests))   { doTransition('QUESTS');     return; }
-    if (hitBtn(p, BTNS.leaderboard)) { doTransition('LEADERBOARD'); triggerLeaderboardFetch(); return; }
+    if (hitBtn(p, BTNS.leaderboard)) { leaderboardReturnState='MENU'; doTransition('LEADERBOARD'); triggerLeaderboardFetch(); return; }
     if (hitBtn(p, BTNS.charShop)) { doTransition('CHARSHOP'); charShopPage=0; return; }
     return;
   }
@@ -178,7 +179,11 @@ function handleTap(e) {
     return;
   }
   if (gs === 'LEADERBOARD') {
-    if (hitBtn(p, BTNS.leaderboardBack)) { doTransition('MENU'); return; }
+    if (hitBtn(p, BTNS.leaderboardBack)) {
+      if (leaderboardReturnState==='PAUSE') doTransition('PAUSE');
+      else doTransition('MENU');
+      return;
+    }
     return;
   }
   if (gs === 'ABOUT') {
@@ -193,7 +198,7 @@ function handleTap(e) {
   if (gs === 'PAUSE') {
     if (hitBtn(p, BTNS.resume))        { togglePause(); return; }
     if (hitBtn(p, BTNS.menuFromPause)) { goMenu();      return; }
-    if (hitBtn(p, BTNS.leaderboardPause)) { togglePause(); doTransition('LEADERBOARD'); triggerLeaderboardFetch(); return; }
+    if (hitBtn(p, BTNS.leaderboardPause)) { togglePause(); leaderboardReturnState='PAUSE'; doTransition('LEADERBOARD'); triggerLeaderboardFetch(); return; }
     togglePause(); return;
   }
 }
@@ -285,7 +290,7 @@ window.addEventListener('keydown', e => {
   if (e.key==='Escape' && gs==='MODESELECT'){ doTransition('MENU'); }
   if (e.key==='Escape' && gs==='QUESTS')    { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='ABOUT')     { doTransition('MENU'); }
-  if (e.key==='Escape' && gs==='LEADERBOARD'){ doTransition('MENU'); }
+  if (e.key==='Escape' && gs==='LEADERBOARD'){ doTransition(leaderboardReturnState==='PAUSE'?'PAUSE':'MENU'); }
   if (e.key==='Escape' && gs==='SETTINGS')  { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='PLAY')   togglePause();
   if (e.key==='Escape' && gs==='PAUSE')  togglePause();
@@ -832,7 +837,8 @@ const PWR_TYPES={
   JETPACK:      {col:CFG.OR, label:'JETPACK',        icon:'🚀', dur:5.0 },
   HEALTH_BOOST: {col:'#ff44aa',label:'HEALTH BOOST', icon:'❤', dur:30  },
   REGEN:        {col:'#ff6699',label:'REGENERATION', icon:'✚', dur:0   },
-  STAGE_BOOST:  {col:'#88ffcc',label:'MINI JETPACK', icon:'🛸', dur:10.0},
+  MINI_JETPACK:{col:'#88ffcc',label:'MINI JETPACK', icon:'🛸', dur:10.0},
+  NEW_STAGE:   {col:'#66bbff',label:'NEW STAGE',    icon:'🌀', dur:6.0},
 };
 const PWR_WEIGHTED=[
   ...Array(4).fill('SHIELD'),
@@ -1195,8 +1201,11 @@ function drawHUD() {
   if (player.jetpackActive) {
     activeTimers.push({icon:'🚀',label:'JETPACK',col:CFG.OR,time:player.jetpackT});
   }
-  if (stageBoostActive) {
-    activeTimers.push({icon:'🛸',label:'MINI JETPACK',col:'#88ffcc',time:stageBoostTimer});
+  if (miniJetpackActive) {
+    activeTimers.push({icon:'🛸',label:'MINI JETPACK',col:'#88ffcc',time:miniJetpackTimer});
+  }
+  if (newStageActive) {
+    activeTimers.push({icon:'🌀',label:'NEW STAGE',col:'#66bbff',time:newStageTimer});
   }
   if (immunityActive) {
     activeTimers.push({icon:'🟢',label:'IMMUNITY',col:CFG.GR,time:immunityTimer});
@@ -1366,17 +1375,15 @@ function drawStartScreen(t) {
   if (Math.sin(t*1.3)>0.85) {
     const ox=(Math.random()-.5)*10,oy2=(Math.random()-.5)*4;
     ctx.globalAlpha=0.7; setFont(60,'900');
-    ctx.fillStyle=CFG.PK; ctx.textAlign='center'; ctx.fillText('SLOPE SEASON 1',LW/2+ox,titleY+oy2);
-    ctx.fillStyle=CFG.CY; ctx.fillText('SLOPE SEASON 1',LW/2-ox,titleY-oy2);
+    ctx.fillStyle=CFG.PK; ctx.textAlign='center'; ctx.fillText('SLOPE',LW/2+ox,titleY+oy2);
+    ctx.fillStyle=CFG.CY; ctx.fillText('SLOPE',LW/2-ox,titleY-oy2);
     ctx.globalAlpha=1;
   }
   setFont(60,'900'); glow(CFG.CY,30);
-  ctx.fillStyle=CFG.CY; ctx.textAlign='center'; ctx.fillText('SLOPE SEASON 1',LW/2,titleY);
-  setFont(13,'900'); glow(CFG.CY,10);
-  txt('SEASON 1',LW/2+seasonScrollX,titleY+34,'rgba(0,245,255,0.8)');
+  ctx.fillStyle=CFG.CY; ctx.textAlign='center'; ctx.fillText('SLOPE',LW/2,titleY);
   setFont(11,'400',"'Share Tech Mono',monospace"); glow(CFG.CY,8);
-  txt('NEON RUSH',LW/2,titleY+50,'rgba(0,245,255,0.7)');
-  txt(`VERSION ${VERSION}`,LW/2,titleY+64,'rgba(0,245,255,0.35)');
+  txt('NEON RUSH',LW/2,titleY+34,'rgba(0,245,255,0.7)');
+  txt(`VERSION ${VERSION}`,LW/2,titleY+48,'rgba(0,245,255,0.35)');
 
   // Divider
   ctx.save();
@@ -1475,26 +1482,22 @@ function drawAboutScreen(t) {
   ctx.restore();
 
   const lines=[
-    'v0.9 FEATURES ADDED',
-    '• Adventure mode with 6 escalating stages',
-    '• New powerups: Mini Jetpack & Health Boost',
-    '• Starter powerup shop and skin shop',
-    '• Quest system with gem rewards',
-    '• Neon HUD, particles, rings, and screen shake',
-    '• Pause menu and improved touch swipe controls',
+    'v0.9.5 WHATS NEW',
+    '• Main title now cleanly shows SLOPE only',
+    '• Added New Stage + Mini Jetpack split system',
+    '• New Stage powerup now spawns in straight-line waves',
+    '• Max stage now swaps New Stage drops to Mini Jetpack',
+    '• Leaderboard from pause now returns back to pause',
+    '• Hit flow fixed: lose life first, then grant immunity',
     '',
-    'v0.9.2 PATCH + ENHANCEMENTS',
-    '• Added 400-quest system with hourly rotation',
-    '• Added stage boost zoom/fog and jetpack shake effects',
-    '• Stage boost now grants +5 multiplier for 10s',
-    '• Added ABOUT page and menu cleanup',
-    '• Fixed pause touch/click responsiveness',
-    '• Jetpack now grants +10 score multiplier bonus',
-    '• Refined controls panel to remove overlap',
-    '• Extra menu polish and animated visual accents',
-    '• Fixed duplicate VERSION/scoreMultiplier bugs',
-    '• Fixed double score increment per frame',
-    '• Fixed stage boost progress bar overflow'
+    'v0.9.4 + v0.9.3 CORE UPDATES',
+    '• Leaderboard page with loading + offline placeholder',
+    '• Pause menu quest list + quests scrollbar improvements',
+    '• Shield break behavior and pause/resume lag fixes',
+    '• Adventure progression and stage transition polish',
+    '• Compact active-powerup timer list on HUD',
+    '• Border collision reset + obstacle clear grace window',
+    '• Stability fixes for runtime/input edge cases'
   ];
 
   let y=boxY+28;
@@ -1703,7 +1706,7 @@ function drawLeaderboardScreen(t) {
   }
 
   BTNS.leaderboardBack={x:(LW-140)/2,y:LH-48,w:140,h:34};
-  drawNeonBtn((LW-140)/2,LH-48,140,34,CFG.PK,'← BACK',11,1,Math.sin(t*2.5));
+  drawNeonBtn((LW-140)/2,LH-48,140,34,CFG.PK,leaderboardReturnState==='PAUSE'?'← PAUSE':'← BACK',11,1,Math.sin(t*2.5));
   ctx.restore();
 }
 
@@ -2288,6 +2291,7 @@ let healthBoostActive=false, healthBoostTimer=0, healthBoostMax=60;
 // Adventure state
 let adventureStage=0, adventureStageTimer=0;
 let miniJetpackActive=false, miniJetpackTimer=0;
+let stageBoostActive=false; // compatibility alias to avoid stale references
 let newStageActive=false, newStageTimer=0;
 let stagePowerupNext=rnd(20,30), stagePowerupElapsed=0;
 
@@ -2304,40 +2308,15 @@ let camZoom=1;
 let immunityActive=false, immunityTimer=0;
 let obstacleClearTimer=0;
 let pauseToggleLock=0;
-let seasonScrollX=0, seasonDir=1;
 
 let leaderboardState='idle';
 let leaderboardTimer=0;
 let leaderboardData=[];
 let leaderboardNextRefresh=0;
+let leaderboardReturnState='MENU';
 
-function triggerLeaderboardFetch(force=false) {
-  if (!force && leaderboardState==='loading') return;
-  if (!force && Date.now()<leaderboardNextRefresh && leaderboardState==='loaded') return;
-  leaderboardState='loading';
-  leaderboardTimer=0;
-  leaderboardData=[];
-  leaderboardNextRefresh=Date.now()+3600*1000;
-}
-
-function activateImmunity(sec=3) {
-  immunityActive=true;
-  immunityTimer=Math.max(immunityTimer,sec);
-  player.inv=true;
-  player.blink=true;
-  player.blinkT=0;
-  addNotif('IMMUNITY ONLINE!',CFG.GR);
-}
-
-function centerPlayerToTrack() {
-  const w=terrain.getWalls(player.y);
-  player.x=(w.left+w.right)/2;
-}
-
-function clearObstaclesTemporarily() {
-  obstacles.length=0;
-  obstacleClearTimer=1.0;
-}
+// Score multiplier (includes mini jetpack bonus).
+const scoreMultiplier = () => multi + (player.jetpackActive ? 10 : 0) + (miniJetpackActive ? 5 : 0);
 
 function triggerLeaderboardFetch(force=false) {
   if (!force && leaderboardState==='loading') return;
@@ -2467,7 +2446,7 @@ function advanceAdventureStage() {
 function togglePause() {
   const now=performance.now();
   if (now<pauseToggleLock) return;
-  pauseToggleLock=now+140;
+  pauseToggleLock=now+110;
   if (gs==='PLAY') { gs='PAUSE'; SFX.pause(); }
   else if (gs==='PAUSE') {
     gs='PLAY'; SFX.resume();
@@ -2476,7 +2455,7 @@ function togglePause() {
 }
 
 function loseLife() {
-  if (immunityActive||player.inv||player.jetpackActive) return;
+  if (immunityActive||player.jetpackActive) return;
   if (player.shield||activePwr==='SHIELD') {
     player.shield=false;
     if (activePwr==='SHIELD') { activePwr=null; pwrTimer=0; }
@@ -2569,6 +2548,7 @@ function activateMiniJetpack() {
   miniJetpackActive=true; miniJetpackTimer=10.0;
   newStageActive=false; newStageTimer=0;
   player.activateJetpack(10.0);
+  worldSpeedMult=1.12;
   addNotif('🛸 MINI JETPACK! +5 MULTI','#88ccff');
   addFloat(player.x,player.y-20,'🛸 MINI JETPACK!','#88ccff');
   burst(player.x,player.y,'#88ccff',30,240);
@@ -2584,6 +2564,24 @@ function activateNewStagePowerup() {
   addFloat(player.x,player.y-20,'🌀 NEW STAGE','#66bbff');
   burst(player.x,player.y,'#66bbff',28,220);
   addRing(player.x,player.y,'#66bbff',120,280,2.8);
+}
+
+
+function spawnNewStageLine(count=8) {
+  const w=terrain.getWalls(CFG.SEG_H*2);
+  const pad=24;
+  const start=w.left+pad;
+  const end=w.right-pad;
+  if (end<=start) return;
+  for (let i=0;i<count;i++) {
+    const p=new PowerUp(terrain);
+    p.key='NEW_STAGE';
+    p.info=PWR_TYPES.NEW_STAGE;
+    p.x=lerp(start,end,(i+0.5)/count);
+    p.y=-18;
+    p.t=i*0.06;
+    powerups.push(p);
+  }
 }
 
 function spawnObjects(dt) {
@@ -2603,13 +2601,17 @@ function spawnObjects(dt) {
   pwrTimer2+=dt;
   if (pwrTimer2>=pwrNext) { pwrTimer2=0; pwrNext=rnd(...CFG.PWR_INT); powerups.push(new PowerUp(terrain)); }
 
-  // Adventure: stage boost spawn timing (separate from regular powerups)
+  // Adventure stage powerup timing
   if (gameMode==='ADVENTURE'&&!newStageActive) {
     stagePowerupElapsed+=dt;
     if (stagePowerupElapsed>=stagePowerupNext) {
-      stagePowerupElapsed=0; stagePowerupNext=rnd(20,30);
-      const p=new PowerUp(terrain); p.key='NEW_STAGE'; p.info=PWR_TYPES.NEW_STAGE;
-      powerups.push(p);
+      stagePowerupElapsed=0; stagePowerupNext=rnd(18,26);
+      if (adventureStage>=ADV_STAGES.length-1) {
+        const p=new PowerUp(terrain); p.key='MINI_JETPACK'; p.info=PWR_TYPES.MINI_JETPACK;
+        powerups.push(p);
+      } else {
+        spawnNewStageLine(rndI(7,10));
+      }
     }
   }
 
@@ -2668,8 +2670,6 @@ function loop(ts) {
   if (fpsTimer>=0.5) { fps=Math.round(fpsFrames/fpsTimer); fpsFrames=0; fpsTimer=0; }
 
   menuT+=dt;
-  seasonScrollX+=seasonDir*90*dt;
-  if (Math.abs(seasonScrollX)>90) seasonDir*=-1;
   if (leaderboardState==='loading') {
     leaderboardTimer+=dt;
     if (leaderboardTimer>1.2) { leaderboardState='loaded'; leaderboardData=[]; }
@@ -2840,11 +2840,22 @@ function loop(ts) {
 
   if (obstacleClearTimer>0) obstacleClearTimer=Math.max(0,obstacleClearTimer-dt);
 
-  // Stage boost countdown (adventure)
-  if (stageBoostActive) {
-    stageBoostTimer-=dt;
-    if (stageBoostTimer<=0) {
-      stageBoostActive=false;
+  if (miniJetpackActive) {
+    miniJetpackTimer-=dt;
+    if (miniJetpackTimer<=0) {
+      miniJetpackActive=false; miniJetpackTimer=0;
+      if (!newStageActive) worldSpeedMult=1;
+      addRing(player.x,player.y,'#88ccff',160,320,3);
+    }
+  }
+
+  stageBoostActive = miniJetpackActive || newStageActive;
+
+  if (newStageActive) {
+    newStageTimer-=dt;
+    if (newStageTimer<=0) {
+      newStageActive=false; newStageTimer=0;
+      worldSpeedMult=1;
       camZoom=1;
       addRing(player.x,player.y,'#66bbff',180,360,3.5);
       burst(player.x,player.y,'#66bbff',40,300);
@@ -2866,7 +2877,7 @@ function loop(ts) {
   const hitResult=player.update(dt,terrain);
   if (hitResult==='SIDE_TOUCH' || hitResult==='WALL') {
     centerPlayerToTrack();
-    if (!immunityActive && !player.jetpackActive) activateImmunity(IMMUNITY_COLLISION_COOLDOWN);
+    if (!immunityActive && !player.jetpackActive) loseLife();
   }
   updateParticles(dt); updateRings(dt);
   updateFloats(dt); updateNotifs(dt); updateObjAnims(dt);
@@ -2914,7 +2925,7 @@ function loop(ts) {
           obs.hit=true; obs.active=false; obstacles.splice(i,1);
           centerPlayerToTrack();
           clearObstaclesTemporarily();
-          activateImmunity(IMMUNITY_COLLISION_COOLDOWN);
+          if (!immunityActive && !player.jetpackActive) loseLife();
         }
       }
     }
