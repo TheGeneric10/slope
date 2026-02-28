@@ -52,7 +52,33 @@ const SETTINGS = {
   showFPS:true, sfx:true,
   gfxQuality:2,   // 0=LOW 1=MED 2=HIGH
   fpsLimit:1,     // 0=30 1=60 2=∞
+  touchSensitivity:1.0,
+  keyboardSensitivity:1.0,
+  controllerSensitivity:1.0,
 };
+
+
+const SETTINGS_KEY='slope_settings';
+function loadSettingsPrefs(){
+  try {
+    const v=JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}');
+    if (typeof v!=='object' || !v) return;
+    if (typeof v.particles==='boolean') SETTINGS.particles=v.particles;
+    if (typeof v.scanlines==='boolean') SETTINGS.scanlines=v.scanlines;
+    if (typeof v.screenShake==='boolean') SETTINGS.screenShake=v.screenShake;
+    if (typeof v.showFPS==='boolean') SETTINGS.showFPS=v.showFPS;
+    if (typeof v.sfx==='boolean') SETTINGS.sfx=v.sfx;
+    if (Number.isFinite(v.gfxQuality)) SETTINGS.gfxQuality=clamp(v.gfxQuality,0,2);
+    if (Number.isFinite(v.fpsLimit)) SETTINGS.fpsLimit=clamp(v.fpsLimit,0,2);
+    if (Number.isFinite(v.touchSensitivity)) SETTINGS.touchSensitivity=clamp(v.touchSensitivity,0.5,2);
+    if (Number.isFinite(v.keyboardSensitivity)) SETTINGS.keyboardSensitivity=clamp(v.keyboardSensitivity,0.5,2);
+    if (Number.isFinite(v.controllerSensitivity)) SETTINGS.controllerSensitivity=clamp(v.controllerSensitivity,0.5,2);
+  } catch {}
+}
+function saveSettingsPrefs(){
+  localStorage.setItem(SETTINGS_KEY,JSON.stringify(SETTINGS));
+}
+loadSettingsPrefs();
 const GFX_LABELS = ['LOW','MED','HIGH'];
 const FPS_LABELS = ['30','60','∞'];
 const FPS_VALUES = [30,60,0]; // 0=unlimited
@@ -923,9 +949,19 @@ class Player {
     }
 
     // Horizontal movement (keyboard or swipe)
-    const spd = CFG.PSPD * (1 + (touchSwipe!==0 ? Math.abs(touchSwipe)*0.4 : 0));
-    if (goL()) this.x-=spd*dt;
-    if (goR()) this.x+=spd*dt;
+    const touchBoost=(1 + (touchSwipe!==0 ? Math.abs(touchSwipe)*0.4 : 0));
+    const lMul=Math.max(
+      K.left?SETTINGS.keyboardSensitivity:0,
+      (touchSwipe<-0.1||joyL)?SETTINGS.touchSensitivity*touchBoost:0,
+      GP.left?SETTINGS.controllerSensitivity:0
+    );
+    const rMul=Math.max(
+      K.right?SETTINGS.keyboardSensitivity:0,
+      (touchSwipe>0.1||joyR)?SETTINGS.touchSensitivity*touchBoost:0,
+      GP.right?SETTINGS.controllerSensitivity:0
+    );
+    if (lMul>0) this.x-=CFG.PSPD*lMul*dt;
+    if (rMul>0) this.x+=CFG.PSPD*rMul*dt;
     this.x=clamp(this.x,CFG.PR,LW-CFG.PR);
 
     const walls=terr.getWalls(this.y);
@@ -2338,7 +2374,7 @@ function drawShopScreen(t) {
 let showOptimizeConfirm=false;
 function applyOptimize() {
   SETTINGS.gfxQuality=0; SETTINGS.fpsLimit=0;
-  SETTINGS.particles=false; SETTINGS.scanlines=false; SETTINGS.screenShake=false; OPTION_PREFS.showFPS=true; saveOptionPrefs();
+  SETTINGS.particles=false; SETTINGS.scanlines=false; SETTINGS.screenShake=false; OPTION_PREFS.showFPS=true; saveOptionPrefs(); saveSettingsPrefs();
   addNotif('GAME OPTIMIZED!',CFG.GR);
 }
 
@@ -2350,6 +2386,7 @@ const SETTING_DEFS=[
   {key:'showFPS',    label:'SHOW FPS',     desc:'FPS counter display'},
 ];
 const SETTING_RECTS=[];
+const SENS_MIN=0.5, SENS_MAX=2.0, SENS_STEP=0.1;
 
 function handleSettingsTap(p) {
   SETTING_RECTS.forEach(({key,rect})=>{ if(!hitBtn(p,rect)) return; if (key==='showFPS') OPTION_PREFS.showFPS=!OPTION_PREFS.showFPS; else SETTINGS[key]=!SETTINGS[key]; saveOptionPrefs(); });
@@ -2359,6 +2396,13 @@ function handleSettingsTap(p) {
   // FPS slider
   if (BTNS._fpsLeft&&hitBtn(p,BTNS._fpsLeft))   SETTINGS.fpsLimit=Math.max(0,SETTINGS.fpsLimit-1);
   if (BTNS._fpsRight&&hitBtn(p,BTNS._fpsRight))  SETTINGS.fpsLimit=Math.min(2,SETTINGS.fpsLimit+1);
+  if (BTNS._touchSensLeft&&hitBtn(p,BTNS._touchSensLeft)) SETTINGS.touchSensitivity=clamp(SETTINGS.touchSensitivity-SENS_STEP,SENS_MIN,SENS_MAX);
+  if (BTNS._touchSensRight&&hitBtn(p,BTNS._touchSensRight)) SETTINGS.touchSensitivity=clamp(SETTINGS.touchSensitivity+SENS_STEP,SENS_MIN,SENS_MAX);
+  if (BTNS._kbSensLeft&&hitBtn(p,BTNS._kbSensLeft)) SETTINGS.keyboardSensitivity=clamp(SETTINGS.keyboardSensitivity-SENS_STEP,SENS_MIN,SENS_MAX);
+  if (BTNS._kbSensRight&&hitBtn(p,BTNS._kbSensRight)) SETTINGS.keyboardSensitivity=clamp(SETTINGS.keyboardSensitivity+SENS_STEP,SENS_MIN,SENS_MAX);
+  if (BTNS._padSensLeft&&hitBtn(p,BTNS._padSensLeft)) SETTINGS.controllerSensitivity=clamp(SETTINGS.controllerSensitivity-SENS_STEP,SENS_MIN,SENS_MAX);
+  if (BTNS._padSensRight&&hitBtn(p,BTNS._padSensRight)) SETTINGS.controllerSensitivity=clamp(SETTINGS.controllerSensitivity+SENS_STEP,SENS_MIN,SENS_MAX);
+  saveSettingsPrefs();
 }
 
 function drawSettingsScreen(t) {
@@ -2413,18 +2457,46 @@ function drawSettingsScreen(t) {
   setFont(11,'900'); glow(CFG.CY,12); txt(FPS_LABELS[SETTINGS.fpsLimit],LW/2,fArY+17,CFG.CY);
   drawNeonBtn(LW/2+42,fArY,gArW,gArH,CFG.CY,'▶',10,0.8,0);
 
+  // Input sensitivity sliders
+  const sensY1=slY2+58;
+  ctx.save(); ctx.globalAlpha=0.06; ctx.fillStyle=CFG.PU; ctx.fillRect(16,sensY1,LW-32,50); ctx.restore();
+  setFont(10,'700'); glow(CFG.PU,10); txt('TOUCH SENSITIVITY',LW/2,sensY1+16,CFG.PU);
+  BTNS._touchSensLeft={x:LW/2-70,y:sensY1+24,w:gArW,h:gArH};
+  BTNS._touchSensRight={x:LW/2+42,y:sensY1+24,w:gArW,h:gArH};
+  drawNeonBtn(BTNS._touchSensLeft.x,BTNS._touchSensLeft.y,gArW,gArH,CFG.PU,'◀',10,0.8,0);
+  setFont(11,'900'); glow(CFG.PU,12); txt(`${SETTINGS.touchSensitivity.toFixed(1)}x`,LW/2,sensY1+41,CFG.PU);
+  drawNeonBtn(BTNS._touchSensRight.x,BTNS._touchSensRight.y,gArW,gArH,CFG.PU,'▶',10,0.8,0);
+
+  const sensY2=sensY1+58;
+  ctx.save(); ctx.globalAlpha=0.06; ctx.fillStyle=CFG.GR; ctx.fillRect(16,sensY2,LW-32,50); ctx.restore();
+  setFont(10,'700'); glow(CFG.GR,10); txt('KEYBOARD SENSITIVITY',LW/2,sensY2+16,CFG.GR);
+  BTNS._kbSensLeft={x:LW/2-70,y:sensY2+24,w:gArW,h:gArH};
+  BTNS._kbSensRight={x:LW/2+42,y:sensY2+24,w:gArW,h:gArH};
+  drawNeonBtn(BTNS._kbSensLeft.x,BTNS._kbSensLeft.y,gArW,gArH,CFG.GR,'◀',10,0.8,0);
+  setFont(11,'900'); glow(CFG.GR,12); txt(`${SETTINGS.keyboardSensitivity.toFixed(1)}x`,LW/2,sensY2+41,CFG.GR);
+  drawNeonBtn(BTNS._kbSensRight.x,BTNS._kbSensRight.y,gArW,gArH,CFG.GR,'▶',10,0.8,0);
+
+  const sensY3=sensY2+58;
+  ctx.save(); ctx.globalAlpha=0.06; ctx.fillStyle=CFG.CY; ctx.fillRect(16,sensY3,LW-32,50); ctx.restore();
+  setFont(10,'700'); glow(CFG.CY,10); txt('CONTROLLER SENSITIVITY',LW/2,sensY3+16,CFG.CY);
+  BTNS._padSensLeft={x:LW/2-70,y:sensY3+24,w:gArW,h:gArH};
+  BTNS._padSensRight={x:LW/2+42,y:sensY3+24,w:gArW,h:gArH};
+  drawNeonBtn(BTNS._padSensLeft.x,BTNS._padSensLeft.y,gArW,gArH,CFG.CY,'◀',10,0.8,0);
+  setFont(11,'900'); glow(CFG.CY,12); txt(`${SETTINGS.controllerSensitivity.toFixed(1)}x`,LW/2,sensY3+41,CFG.CY);
+  drawNeonBtn(BTNS._padSensRight.x,BTNS._padSensRight.y,gArW,gArH,CFG.CY,'▶',10,0.8,0);
+
   // Optimize button
-  const optY=slY2+58, optW=180, optH=36, optX=(LW-optW)/2;
+  const optY=sensY3+58, optW=180, optH=36, optX=(LW-optW)/2;
   BTNS.optimizeBtn={x:optX,y:optY,w:optW,h:optH};
   drawNeonBtn(optX,optY,optW,optH,CFG.GR,'⚡ OPTIMIZE GAME',12,1,Math.sin(t*2.5));
 
   // Reset everything
-  const rW=220,rH=34,rX=(LW-rW)/2,rY=LH-94;
+  const rW=220,rH=34,rX=(LW-rW)/2,rY=LH-118;
   BTNS.resetBtn={x:rX,y:rY,w:rW,h:rH};
   drawNeonBtn(rX,rY,rW,rH,CFG.PK,'RESET EVERYTHING',11,0.9,Math.sin(t*2));
 
   // Back button
-  const bW=140,bH=36,bX=(LW-bW)/2,bY=LH-52;
+  const bW=140,bH=36,bX=(LW-bW)/2,bY=LH-68;
   BTNS.back={x:bX,y:bY,w:bW,h:bH};
   drawNeonBtn(bX,bY,bW,bH,CFG.PU,'← BACK',13,1,Math.sin(t*2.5));
 
@@ -2613,43 +2685,98 @@ function drawTutorialHint() {
 const objAnims=[];
 
 const CHAR_CATALOG=[
-  {id:'default', name:'DEFAULT', col:CFG.CY,      trailCol:CFG.CY,    unlock:'free'},
-  {id:'crimson', name:'CRIMSON', col:'#ff2244',    trailCol:'#ff4466', unlock:'buy', cost:2000},
-  {id:'jade',    name:'JADE',    col:'#00ff88',    trailCol:'#00cc66', unlock:'buy', cost:2000},
-  {id:'gold',    name:'GOLD',    col:'#ffcc00',    trailCol:'#ffaa00', unlock:'buy', cost:2500},
-  {id:'violet',  name:'VIOLET',  col:'#cc44ff',    trailCol:'#aa22dd', unlock:'buy', cost:2500},
-  {id:'solar',   name:'SOLAR',   col:'#ff7700',    trailCol:'#ff5500', unlock:'buy', cost:3000},
-  {id:'arctic',  name:'ARCTIC',  col:'#88ddff',    trailCol:'#44bbee', unlock:'buy', cost:3000},
-  {id:'void',    name:'VOID',    col:'#440088',    trailCol:'#8800cc', unlock:'buy', cost:3000},
-  {id:'nova',    name:'NOVA',    col:'#ffffff',    trailCol:'#ccccff', unlock:'buy', cost:3500},
-  {id:'inferno', name:'INFERNO', col:'#ff3300',    trailCol:'#ffaa00', unlock:'buy', cost:3500},
-  {id:'streak',  name:'STREAK',  col:CFG.YL,       trailCol:CFG.YL,   unlock:'obj', objId:'combo4',  objLabel:'Hit ×4 Combo'},
-  {id:'veteran', name:'VETERAN', col:'#39ff14',    trailCol:'#22cc00', unlock:'obj', objId:'survive60',objLabel:'Survive 60s'},
-  {id:'hoarder', name:'HOARDER', col:CFG.PK,       trailCol:CFG.PK,   unlock:'obj', objId:'gems200', objLabel:'200 Gems Run'},
-  {id:'legend',  name:'LEGEND',  col:'#ffe600',    trailCol:'#ff7700', unlock:'obj', objId:'score5000',objLabel:'Score 5000'},
+  {id:'default', name:'DEFAULT', col:CFG.CY,      trailCol:CFG.CY,    unlock:'free', icon:'●'},
+  {id:'crimson', name:'CRIMSON', col:'#ff2244',    trailCol:'#ff4466', unlock:'buy', cost:2000, icon:'●'},
+  {id:'jade',    name:'JADE',    col:'#00ff88',    trailCol:'#00cc66', unlock:'buy', cost:2000, icon:'●'},
+  {id:'gold',    name:'GOLD',    col:'#ffcc00',    trailCol:'#ffaa00', unlock:'buy', cost:2500, icon:'●'},
+  {id:'violet',  name:'VIOLET',  col:'#cc44ff',    trailCol:'#aa22dd', unlock:'buy', cost:2500, icon:'●'},
+  {id:'solar',   name:'SOLAR',   col:'#ff7700',    trailCol:'#ff5500', unlock:'buy', cost:3000, icon:'●'},
+  {id:'arctic',  name:'ARCTIC',  col:'#88ddff',    trailCol:'#44bbee', unlock:'buy', cost:3000, icon:'●'},
+  {id:'void',    name:'VOID',    col:'#440088',    trailCol:'#8800cc', unlock:'buy', cost:3000, icon:'●'},
+  {id:'nova',    name:'NOVA',    col:'#ffffff',    trailCol:'#ccccff', unlock:'buy', cost:3500, icon:'●'},
+  {id:'inferno', name:'INFERNO', col:'#ff3300',    trailCol:'#ffaa00', unlock:'buy', cost:3500, icon:'●'},
+  {id:'streak',  name:'STREAK',  col:CFG.YL,       trailCol:CFG.YL,   unlock:'obj', objId:'combo4',  objLabel:'Hit ×4 Combo', icon:'●'},
+  {id:'veteran', name:'VETERAN', col:'#39ff14',    trailCol:'#22cc00', unlock:'obj', objId:'survive60',objLabel:'Survive 60s', icon:'●'},
+  {id:'hoarder', name:'HOARDER', col:CFG.PK,       trailCol:CFG.PK,   unlock:'obj', objId:'gems200', objLabel:'200 Gems Run', icon:'●'},
+  {id:'legend',  name:'LEGEND',  col:'#ffe600',    trailCol:'#ff7700', unlock:'obj', objId:'score5000',objLabel:'Score 5000', icon:'●'},
+];
+
+const AURA_CATALOG=[
+  {id:'none',name:'NO AURA',col:'#66aacc',unlock:'free',icon:'◌'},
+  {id:'pulse',name:'PULSE',col:'#44ddff',unlock:'buy',cost:1500,icon:'◉'},
+  {id:'nova',name:'NOVA',col:'#ffee66',unlock:'buy',cost:2200,icon:'✹'},
+  {id:'toxic',name:'TOXIC',col:'#55ff55',unlock:'buy',cost:2400,icon:'☢'},
+  {id:'ember',name:'EMBER',col:'#ff8844',unlock:'buy',cost:2600,icon:'✦'},
+  {id:'mythic',name:'MYTHIC',col:'#cc88ff',unlock:'obj',objId:'survive60',objLabel:'Survive 60s',icon:'✶'},
+];
+const THEME_CATALOG=[
+  {id:'classic',name:'CLASSIC',col:'#00f5ff',unlock:'free',icon:'▦'},
+  {id:'night',name:'NIGHT',col:'#4488ff',unlock:'buy',cost:1800,icon:'☾'},
+  {id:'dawn',name:'DAWN',col:'#ffaa55',unlock:'buy',cost:2200,icon:'☀'},
+  {id:'forest',name:'FOREST',col:'#66dd66',unlock:'buy',cost:2400,icon:'♣'},
+  {id:'void',name:'VOID',col:'#bb66ff',unlock:'buy',cost:2600,icon:'◈'},
+  {id:'obsidian',name:'OBSIDIAN',col:'#999999',unlock:'obj',objId:'score5000',objLabel:'Score 5000',icon:'⬢'},
+];
+
+const SHOP_PAGES=[
+  {title:'SKINS SHOP', key:'skins', list:CHAR_CATALOG},
+  {title:'AURAS SHOP', key:'auras', list:AURA_CATALOG},
+  {title:'THEMES SHOP', key:'themes', list:THEME_CATALOG},
 ];
 
 let charShopPage=0;
-const CHARS_PER_PAGE=6;
+const SHOP_ITEMS_PER_PAGE=6;
 const charBtnRects=[];
 let charShopMsg='', charShopMsgT=0;
+
+function loadAuraUnlocks(){ try{return JSON.parse(localStorage.getItem('slope_auras')||'["none"]');}catch{return['none'];} }
+function saveAuraUnlocks(arr){ localStorage.setItem('slope_auras',JSON.stringify(arr)); if (typeof queueCloudSync==='function') queueCloudSync(); }
+function loadThemeUnlocks(){ try{return JSON.parse(localStorage.getItem('slope_themes')||'["classic"]');}catch{return['classic'];} }
+function saveThemeUnlocks(arr){ localStorage.setItem('slope_themes',JSON.stringify(arr)); if (typeof queueCloudSync==='function') queueCloudSync(); }
+let unlockedAuras=loadAuraUnlocks();
+let unlockedThemes=loadThemeUnlocks();
+let selectedAura=localStorage.getItem('slope_selectedAura')||'none';
+let selectedTheme=localStorage.getItem('slope_selectedTheme')||'classic';
+function setSelectedAura(id){ selectedAura=id; localStorage.setItem('slope_selectedAura',id); if (typeof queueCloudSync==='function') queueCloudSync(); }
+function setSelectedTheme(id){ selectedTheme=id; localStorage.setItem('slope_selectedTheme',id); if (typeof queueCloudSync==='function') queueCloudSync(); }
+
+function unlockGeneric(id, store, saver){ if (!store.includes(id)){ store.push(id); saver(store); } }
+
+function handleShopCategoryItem(item, pageKey){
+  if (pageKey==='skins') {
+    if (unlockedChars.includes(item.id)) { setSelectedChar(item.id); charShopMsg=`${item.name} selected!`; charShopMsgT=2; return; }
+    if (item.unlock==='buy') {
+      if (totalGems>=item.cost) { totalGems-=item.cost; saveBank(totalGems); unlockChar(item.id); unlockedChars=loadUnlocked(); setSelectedChar(item.id); charShopMsg=`${item.name} unlocked!`; charShopMsgT=2.5; SFX.pwr(); }
+      else { charShopMsg=`Need ${item.cost}◆ gems!`; charShopMsgT=1.5; SFX.hit(); }
+    } else { charShopMsg=`Complete: ${item.objLabel}`; charShopMsgT=2; }
+    return;
+  }
+  if (pageKey==='auras') {
+    if (unlockedAuras.includes(item.id)) { setSelectedAura(item.id); charShopMsg=`${item.name} aura selected!`; charShopMsgT=2; return; }
+    if (item.unlock==='buy') {
+      if (totalGems>=item.cost) { totalGems-=item.cost; saveBank(totalGems); unlockGeneric(item.id,unlockedAuras,saveAuraUnlocks); setSelectedAura(item.id); charShopMsg=`${item.name} aura unlocked!`; charShopMsgT=2.5; SFX.pwr(); }
+      else { charShopMsg=`Need ${item.cost}◆ gems!`; charShopMsgT=1.5; SFX.hit(); }
+    } else { charShopMsg=`Complete: ${item.objLabel}`; charShopMsgT=2; }
+    return;
+  }
+  if (pageKey==='themes') {
+    if (unlockedThemes.includes(item.id)) { setSelectedTheme(item.id); charShopMsg=`${item.name} theme selected!`; charShopMsgT=2; return; }
+    if (item.unlock==='buy') {
+      if (totalGems>=item.cost) { totalGems-=item.cost; saveBank(totalGems); unlockGeneric(item.id,unlockedThemes,saveThemeUnlocks); setSelectedTheme(item.id); charShopMsg=`${item.name} theme unlocked!`; charShopMsgT=2.5; SFX.pwr(); }
+      else { charShopMsg=`Need ${item.cost}◆ gems!`; charShopMsgT=1.5; SFX.hit(); }
+    } else { charShopMsg=`Complete: ${item.objLabel}`; charShopMsgT=2; }
+  }
+}
 
 function handleCharShopTap(p) {
   if (hitBtn(p,BTNS.charBack)) { SFX.click(); doTransition('MENU'); return; }
   if (hitBtn(p,BTNS.charPrev)) { SFX.click(); charShopPage=Math.max(0,charShopPage-1); return; }
-  if (hitBtn(p,BTNS.charNext)) { SFX.click(); charShopPage=Math.min(Math.ceil(CHAR_CATALOG.length/CHARS_PER_PAGE)-1,charShopPage+1); return; }
+  if (hitBtn(p,BTNS.charNext)) { SFX.click(); charShopPage=Math.min(SHOP_PAGES.length-1,charShopPage+1); return; }
+  const page=SHOP_PAGES[charShopPage]||SHOP_PAGES[0];
   charBtnRects.forEach((r,i)=>{
-    const idx=charShopPage*CHARS_PER_PAGE+i;
-    if (idx>=CHAR_CATALOG.length||!hitBtn(p,r)) return;
-    const ch=CHAR_CATALOG[idx];
-    if (unlockedChars.includes(ch.id)) { setSelectedChar(ch.id); charShopMsg=`${ch.name} selected!`; charShopMsgT=2; }
-    else if (ch.unlock==='buy') {
-      if (totalGems>=ch.cost) {
-        totalGems-=ch.cost; saveBank(totalGems);
-        unlockChar(ch.id); unlockedChars=loadUnlocked();
-        setSelectedChar(ch.id); charShopMsg=`${ch.name} unlocked!`; charShopMsgT=2.5; SFX.pwr();
-      } else { charShopMsg=`Need ${ch.cost}◆ gems!`; charShopMsgT=1.5; SFX.hit(); }
-    } else { charShopMsg=`Complete: ${ch.objLabel}`; charShopMsgT=2; }
+    const item=page.list[i];
+    if (!item||!hitBtn(p,r)) return;
+    handleShopCategoryItem(item,page.key);
   });
 }
 
@@ -2657,63 +2784,67 @@ function drawCharShop(t) {
   ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
   drawPerspGrid(0,0.08); drawBgSquares();
   ctx.save(); ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
-  setFont(28,'900'); glow(CFG.YL,18); txt('SKINS SHOP',LW/2,52,CFG.YL);
+
+  const page=SHOP_PAGES[charShopPage]||SHOP_PAGES[0];
+  setFont(28,'900'); glow(CFG.YL,18); txt(page.title,LW/2,52,CFG.YL);
   setFont(11,'700'); glow(CFG.CY,10); txt(`◆ ${totalGems} GEMS`,LW/2,70,CFG.CY);
   ctx.save(); ctx.strokeStyle='rgba(255,230,0,0.3)'; ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(40,80); ctx.lineTo(LW-40,80); ctx.stroke(); ctx.restore();
+
   charBtnRects.length=0;
-  const start=charShopPage*CHARS_PER_PAGE;
   const cols=3,cW=120,cH=108,gapX=7,gapY=7;
   const gridW=cols*(cW+gapX)-gapX,gridX=(LW-gridW)/2;
-  for (let i=0;i<CHARS_PER_PAGE;i++) {
-    const idx=start+i;
-    if (idx>=CHAR_CATALOG.length) break;
-    const ch=CHAR_CATALOG[idx];
+  for (let i=0;i<SHOP_ITEMS_PER_PAGE;i++) {
+    const item=page.list[i];
+    if (!item) break;
     const col=i%cols,row=Math.floor(i/cols);
     const bx=gridX+col*(cW+gapX),by=88+row*(cH+gapY);
     charBtnRects.push({x:bx,y:by,w:cW,h:cH});
-    const isOwned=unlockedChars.includes(ch.id);
-    const isSel=selectedChar===ch.id;
-    const acol=ch.col;
+
+    const owned = page.key==='skins'?unlockedChars.includes(item.id):page.key==='auras'?unlockedAuras.includes(item.id):unlockedThemes.includes(item.id);
+    const selected = page.key==='skins'?selectedChar===item.id:page.key==='auras'?selectedAura===item.id:selectedTheme===item.id;
+    const acol=item.col||CFG.CY;
+
     ctx.save();
-    ctx.globalAlpha=isSel?0.28:isOwned?0.14:0.06;
+    ctx.globalAlpha=selected?0.28:owned?0.14:0.06;
     ctx.fillStyle=acol; ctx.fillRect(bx,by,cW,cH);
-    ctx.globalAlpha=isSel?1:isOwned?0.7:0.35;
-    ctx.strokeStyle=acol; ctx.lineWidth=isSel?2.5:1.5;
-    glow(acol,isSel?20:isOwned?10:4); ctx.strokeRect(bx,by,cW,cH); ctx.globalAlpha=1;
+    ctx.globalAlpha=selected?1:owned?0.7:0.35;
+    ctx.strokeStyle=acol; ctx.lineWidth=selected?2.5:1.5;
+    glow(acol,selected?20:8); ctx.strokeRect(bx,by,cW,cH); ctx.globalAlpha=1;
+
     const bpx=bx+cW/2,bpy=by+33;
-    glow(acol,20); ctx.strokeStyle=acol; ctx.lineWidth=2;
-    circle(bpx,bpy,12,acol,false);
-    const grad=ctx.createRadialGradient(bpx-4,bpy-4,0,bpx,bpy,12);
-    grad.addColorStop(0,'rgba(255,255,255,0.9)'); grad.addColorStop(0.4,acol); grad.addColorStop(1,'rgba(0,0,0,0.4)');
-    ctx.beginPath(); ctx.arc(bpx,bpy,11,0,Math.PI*2); ctx.fillStyle=grad; ctx.fill();
-    if (isSel) { glow(acol,24); ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; circle(bpx,bpy,16,acol,false); }
-    setFont(9,'900'); glow(acol,8); txt(ch.name,bx+cW/2,by+58,acol);
+    glow(acol,18); setFont(24,'900'); txt(item.icon||'●',bpx,bpy+6,acol);
+    if (selected) { glow(acol,24); ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; circle(bpx,bpy,16,acol,false); }
+
+    setFont(9,'900'); glow(acol,8); txt(item.name,bx+cW/2,by+58,acol);
     ctx.save();
-    if (isSel) {
+    if (selected) {
       ctx.fillStyle=hexToRgba(acol,0.3); ctx.fillRect(bx+10,by+cH-20,cW-20,15);
       setFont(8,'700'); glow(acol,8); txt('EQUIPPED',bx+cW/2,by+cH-8,acol);
-    } else if (isOwned) {
+    } else if (owned) {
       ctx.fillStyle='rgba(57,255,20,0.15)'; ctx.fillRect(bx+10,by+cH-20,cW-20,15);
       setFont(8,'700'); noGlow(); txt('OWNED',bx+cW/2,by+cH-8,CFG.GR);
-    } else if (ch.unlock==='buy') {
-      ctx.fillStyle=totalGems>=ch.cost?hexToRgba(CFG.YL,0.12):'rgba(255,0,0,0.08)';
+    } else if (item.unlock==='buy') {
+      ctx.fillStyle=totalGems>=item.cost?hexToRgba(CFG.YL,0.12):'rgba(255,0,0,0.08)';
       ctx.fillRect(bx+10,by+cH-20,cW-20,15);
-      const cc=totalGems>=ch.cost?CFG.YL:'rgba(255,100,100,0.8)';
-      setFont(8,'700'); noGlow(); txt(`◆${ch.cost}`,bx+cW/2,by+cH-8,cc);
+      const cc=totalGems>=item.cost?CFG.YL:'rgba(255,100,100,0.8)';
+      setFont(8,'700'); noGlow(); txt(`◆${item.cost}`,bx+cW/2,by+cH-8,cc);
     } else {
       ctx.fillStyle='rgba(0,245,255,0.08)'; ctx.fillRect(bx+10,by+cH-20,cW-20,15);
       setFont(7,'400',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.6;
       txt('CHALLENGE',bx+cW/2,by+cH-8,'rgba(0,245,255,0.7)');
     }
-    ctx.restore(); ctx.restore();
+    ctx.restore();
+    ctx.restore();
   }
-  const totalPages=Math.ceil(CHAR_CATALOG.length/CHARS_PER_PAGE),pgY=LH-76;
+
+  const totalPages=SHOP_PAGES.length,pgY=LH-76;
   BTNS.charPrev={x:20,y:pgY,w:50,h:28}; BTNS.charNext={x:LW-70,y:pgY,w:50,h:28};
   if (charShopPage>0) drawNeonBtn(20,pgY,50,28,CFG.CY,'◀',12,0.7,0);
   if (charShopPage<totalPages-1) drawNeonBtn(LW-70,pgY,50,28,CFG.CY,'▶',12,0.7,0);
   setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.4;
   txt(`${charShopPage+1}/${totalPages}`,LW/2,pgY+18,CFG.CY);
+
   if (charShopMsgT>0) {
     ctx.save(); ctx.globalAlpha=Math.min(1,charShopMsgT);
     setFont(11,'700'); glow(CFG.YL,14); txt(charShopMsg,LW/2,pgY-12,CFG.YL); ctx.restore();
@@ -2995,7 +3126,11 @@ function buildLocalProgressPayload(){
     gems:loadBank(),
     upgrades:loadUpgrades(),
     unlocked:loadUnlocked(),
+    unlockedAuras:unlockedAuras||['none'],
+    unlockedThemes:unlockedThemes||['classic'],
     selectedChar:selectedChar||'default',
+    selectedAura:selectedAura||'none',
+    selectedTheme:selectedTheme||'classic',
     doneObjs:loadDoneObjs(),
     options:OPTION_PREFS,
     bestScore:bestScore||0,
@@ -3035,7 +3170,11 @@ async function loadCloudProfileAndProgress() {
       if (p.upgrades) { upgrades={...upgrades,...p.upgrades}; saveUpgrades(upgrades); }
       if (Array.isArray(p.unlocked)) { unlockedChars=p.unlocked.slice(); saveUnlocked(unlockedChars); }
       if (Array.isArray(p.doneObjs)) { doneObjs=p.doneObjs.slice(); saveDoneObjs(doneObjs); }
+      if (Array.isArray(p.unlockedAuras)) { unlockedAuras=p.unlockedAuras.slice(); saveAuraUnlocks(unlockedAuras); }
+      if (Array.isArray(p.unlockedThemes)) { unlockedThemes=p.unlockedThemes.slice(); saveThemeUnlocks(unlockedThemes); }
       if (p.selectedChar) { setSelectedChar(p.selectedChar); }
+      if (p.selectedAura) { setSelectedAura(p.selectedAura); }
+      if (p.selectedTheme) { setSelectedTheme(p.selectedTheme); }
       if (typeof p.bestScore==='number') bestScore=Math.max(bestScore,p.bestScore);
       if (p.options && typeof p.options==='object') { OPTION_PREFS={...OPTION_PREFS,...p.options}; saveOptionPrefs(); }
     }
@@ -3104,40 +3243,64 @@ function handleSignUpTap(p){
 
 function drawProfileScreen(t){
   ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
-  const x=26,y=86,w=LW-52,h=560;
-  ctx.fillStyle='#ffffff'; ctx.fillRect(x,y,w,h); ctx.strokeStyle='rgba(0,0,0,0.12)'; ctx.strokeRect(x,y,w,h);
-  setFont(24,'900','Arial'); txt('My Profile',x+20,y+44,'#1c1c1c','left');
-  setFont(10,'700','Arial'); txt(isSignedIn?'Status: cloud synced':'Status: guest local save',x+20,y+64,'#777','left');
+  drawPerspGrid(terrain.scrollY*0.1,0.04); drawBgSquares();
 
-  const avatarX=x+w-84, avatarY=y+22, avatarR=24;
+  const x=18,y=78,w=LW-36,h=590;
+  ctx.save();
+  ctx.fillStyle='rgba(6,10,14,0.95)'; ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle='rgba(0,245,255,0.35)'; ctx.lineWidth=1.5; glow(CFG.CY,8); ctx.strokeRect(x,y,w,h);
+
+  setFont(32,'900'); glow(CFG.CY,18); txt('PROFILE',LW/2,y+40,CFG.CY);
+  setFont(9,'700',"'Share Tech Mono',monospace"); noGlow();
+  txt(isSignedIn?'CLOUD SAVE ENABLED':'GUEST LOCAL SAVE',LW/2,y+58,isSignedIn?CFG.GR:CFG.YL);
+
+  const avatarX=x+64, avatarY=y+104, avatarR=34;
+  ctx.save();
   if (profileAvatar) {
     const img=new Image(); img.src=profileAvatar;
-    ctx.save(); ctx.beginPath(); ctx.arc(avatarX,avatarY,avatarR,0,Math.PI*2); ctx.clip();
-    ctx.drawImage(img,avatarX-avatarR,avatarY-avatarR,avatarR*2,avatarR*2); ctx.restore();
+    ctx.beginPath(); ctx.arc(avatarX,avatarY,avatarR,0,Math.PI*2); ctx.clip();
+    ctx.drawImage(img,avatarX-avatarR,avatarY-avatarR,avatarR*2,avatarR*2);
   } else {
-    circle(avatarX,avatarY,avatarR,'#cfd7df');
-    setFont(16,'900','Arial'); noGlow(); txt('⬆',avatarX,avatarY+6,'#4a5865');
+    glow('#9fb8cc',10); circle(avatarX,avatarY,avatarR,'#9fb8cc');
+    setFont(18,'900'); noGlow(); txt('⬆',avatarX,avatarY+6,'#1f2c36');
   }
+  ctx.restore();
+  glow(CFG.CY,12); ctx.strokeStyle='rgba(0,245,255,0.55)'; ctx.lineWidth=2; circle(avatarX,avatarY,avatarR+3,CFG.CY,false);
 
-  const rows=[
-    `Display Name: ${auth.name||'Player'}`,
-    `Email: ${auth.email||'guest@slope.local'}`,
-    `Verified: ${auth.verified?'YES':'NO'}`,
-    `Best Score: ${Math.floor(bestScore)}`,
-    `Avg Run Time: ${runAvgTime().toFixed(1)}s`,
-    `Bio: ${profileBio||'Tap UPDATE BIO to set one.'}`
+  const left=x+118, right=x+w-16;
+  const lines=[
+    ['Display Name',auth.name||'Player'],
+    ['Email',auth.email||'guest@slope.local'],
+    ['Verified',auth.verified?'YES':'NO'],
+    ['Best Score',String(Math.floor(bestScore))],
+    ['Avg Run Time',`${runAvgTime().toFixed(1)}s`],
+    ['Active Skin',String((CHAR_CATALOG.find(c=>c.id===selectedChar)||CHAR_CATALOG[0]).name)],
+    ['Active Aura',String((AURA_CATALOG.find(a=>a.id===selectedAura)||AURA_CATALOG[0]).name)],
+    ['Active Theme',String((THEME_CATALOG.find(t2=>t2.id===selectedTheme)||THEME_CATALOG[0]).name)],
   ];
-  rows.forEach((r,i)=>{ setFont(10,'700','Arial'); txt(r,x+20,y+108+i*30,'#2a2a2a','left'); });
+  lines.forEach((entry,i)=>{
+    const yy=y+84+i*34;
+    setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt(entry[0],left,yy,'rgba(0,245,255,0.7)','left');
+    setFont(10,'700'); glow('#d8f6ff',6); txt(entry[1],left,yy+14,'#d8f6ff','left');
+  });
 
-  BTNS.profileUpload={x:x+20,y:y+h-170,w:w-40,h:30};
+  const bioY=y+376;
+  ctx.fillStyle='rgba(0,245,255,0.06)'; ctx.fillRect(x+14,bioY,w-28,74);
+  ctx.strokeStyle='rgba(0,245,255,0.25)'; ctx.lineWidth=1; ctx.strokeRect(x+14,bioY,w-28,74);
+  setFont(9,'700',"'Share Tech Mono',monospace"); noGlow(); txt('BIO',x+24,bioY+14,CFG.CY,'left');
+  const bioTxt=(profileBio||'Tap UPDATE BIO to set one.').slice(0,140);
+  setFont(9,'400',"'Share Tech Mono',monospace"); txt(bioTxt,x+24,bioY+32,'rgba(220,245,255,0.9)','left');
+
+  BTNS.profileUpload={x:x+14,y:y+h-164,w:w-28,h:34};
   drawNeonBtn(BTNS.profileUpload.x,BTNS.profileUpload.y,BTNS.profileUpload.w,BTNS.profileUpload.h,CFG.CY,'UPLOAD ICON (<256KB)',10,1,0);
-  BTNS.profileBio={x:x+20,y:y+h-132,w:w-40,h:30};
+  BTNS.profileBio={x:x+14,y:y+h-122,w:w-28,h:34};
   drawNeonBtn(BTNS.profileBio.x,BTNS.profileBio.y,BTNS.profileBio.w,BTNS.profileBio.h,CFG.GR,'UPDATE BIO',10,1,0);
-  BTNS.profileSignOut={x:x+20,y:y+h-94,w:w-40,h:30};
+  BTNS.profileSignOut={x:x+14,y:y+h-80,w:w-28,h:34};
   drawNeonBtn(BTNS.profileSignOut.x,BTNS.profileSignOut.y,BTNS.profileSignOut.w,BTNS.profileSignOut.h,CFG.PK,'SIGN OUT',10,1,0);
 
   BTNS.authBack={x:(LW-140)/2,y:LH-44,w:140,h:30};
   drawNeonBtn(BTNS.authBack.x,BTNS.authBack.y,140,30,CFG.PK,'← BACK',11,1,Math.sin(t*2));
+  ctx.restore();
 }
 
 function handleProfileTap(p){
