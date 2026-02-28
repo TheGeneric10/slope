@@ -3114,6 +3114,7 @@ const FIREBASE_CONFIG={
   measurementId:"G-N068FXTMC7"
 };
 const CLOUD_INFO_ROOT='SLOPE/user/encrypted/info';
+const CLOUD_SLOPE_ROOT='slope/users';
 const CLOUD_INFO_ROOT_FALLBACKS=[
   CLOUD_INFO_ROOT,
   'SLOPE/userencrypted/info',
@@ -3133,6 +3134,42 @@ function fmtCloudTs(ts){
   const d=new Date(ts);
   if (Number.isNaN(d.getTime())) return '—';
   return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+}
+
+function getAvatarLinkId(avatar){
+  const src=String(avatar||'');
+  if (!src) return '';
+  return `pfp_${hashStr(src).toString(16)}`;
+}
+
+function buildSlopeUserPayload(extra={}){
+  const now=Date.now();
+  const localGems=loadBank();
+  const pfpLink=profileAvatar||'';
+  const payload={
+    uid:String((fbUser&&fbUser.uid)||auth.uid||''),
+    email:String((fbUser&&fbUser.email)||auth.email||''),
+    displayName:String((fbUser&&fbUser.displayName)||auth.name||'Runner'),
+    verified:String(!!((fbUser&&fbUser.emailVerified)||auth.verified)),
+    bio:String(profileBio||''),
+    pfpLink,
+    pfpLinkId:getAvatarLinkId(pfpLink),
+    gems:String(localGems),
+    bestScore:String(Math.floor(bestScore||0)),
+    selectedSkin:String(selectedChar||'default'),
+    selectedAura:String(selectedAura||'none'),
+    selectedTheme:String(selectedTheme||'classic'),
+    cloudRoot:String(cloudProfileRoot||CLOUD_INFO_ROOT),
+    updatedAt:String(now),
+    ...extra,
+  };
+  return payload;
+}
+
+async function syncSlopeMirror(extra={}){
+  if (!fbReady || !fbDb || !fbUser) return;
+  const payload=buildSlopeUserPayload(extra);
+  await fbDb.ref(`${CLOUD_SLOPE_ROOT}/${fbUser.uid}`).update(payload);
 }
 
 async function resolveCloudRoot(uid, preferExisting=false){
@@ -3357,6 +3394,7 @@ async function writeCloudUserInfo(extra={}) {
     ...extra,
   };
   await fbDb.ref(`${cloudProfileRoot}/${fbUser.uid}`).update(payload);
+  await syncSlopeMirror({updatedAt:String(payload.updatedAt)});
 }
 
 function buildLocalProgressPayload(){
@@ -3385,6 +3423,7 @@ async function syncProgressToCloud(reason='auto') {
     await fbDb.ref(`${cloudProfileRoot}/${fbUser.uid}/progress`).set(buildLocalProgressPayload());
     cloudGemCount=loadBank();
     cloudUpdatedAt=Date.now();
+    await syncSlopeMirror({gems:String(cloudGemCount),bestScore:String(Math.floor(bestScore||0)),updatedAt:String(cloudUpdatedAt)});
   } catch (e) {}
 }
 function queueCloudSync(delay=700){
@@ -3404,10 +3443,17 @@ async function loadCloudProfileAndProgress() {
       await syncProgressToCloud('init');
       cloudGemCount=loadBank();
       cloudUpdatedAt=Date.now();
+      await syncSlopeMirror({createdAt:String(cloudUpdatedAt),updatedAt:String(cloudUpdatedAt)});
       return;
     }
-    profileBio=val.bio||'';
-    profileAvatar=val.avatar||'';
+    let slopeMirror=null;
+    try {
+      const slopeSnap=await fbDb.ref(`${CLOUD_SLOPE_ROOT}/${fbUser.uid}`).get();
+      slopeMirror=slopeSnap&&slopeSnap.val?slopeSnap.val():null;
+    } catch (e) {}
+
+    profileBio=val.bio||((slopeMirror&&slopeMirror.bio)||'');
+    profileAvatar=val.avatar||((slopeMirror&&slopeMirror.pfpLink)||'');
     if (val.progress) {
       const p=val.progress;
       if (typeof p.gems==='number') saveBank(p.gems);
@@ -3422,9 +3468,9 @@ async function loadCloudProfileAndProgress() {
       if (typeof p.bestScore==='number') bestScore=Math.max(bestScore,p.bestScore);
       if (p.options && typeof p.options==='object') { OPTION_PREFS={...OPTION_PREFS,...p.options}; saveOptionPrefs(); }
     }
-    cloudGemCount=Number(val.progress&&val.progress.gems);
+    cloudGemCount=Number((val.progress&&val.progress.gems)|| (slopeMirror&&slopeMirror.gems));
     if (!Number.isFinite(cloudGemCount)) cloudGemCount=loadBank();
-    cloudUpdatedAt=Number((val.progress&&val.progress.updatedAt)||val.updatedAt||0)||0;
+    cloudUpdatedAt=Number((val.progress&&val.progress.updatedAt)||val.updatedAt||(slopeMirror&&slopeMirror.updatedAt)||0)||0;
     auth={...auth,signedIn:true,name:val.name||auth.name,email:val.email||auth.email,uid:fbUser.uid,verified:!!fbUser.emailVerified,bio:profileBio,avatar:profileAvatar};
     saveAuth(auth);
   } catch (e) {}
@@ -3523,6 +3569,7 @@ function drawProfileScreen(t){
     ['Gems (Local)',`${Math.floor(loadBank())}`],
     ['Gems (Cloud)',`${Math.floor(cloudGemCount||0)}`],
     ['Cloud Path',cloudProfileRoot.replace('SLOPE/','')],
+    ['PFP Link ID',getAvatarLinkId(profileAvatar)||'none'],
     ['Last Cloud Sync',fmtCloudTs(cloudUpdatedAt)],
     ['Avg Run Time',`${runAvgTime().toFixed(1)}s`],
     ['Active Skin',String((CHAR_CATALOG.find(c=>c.id===selectedChar)||CHAR_CATALOG[0]).name)],
@@ -3530,12 +3577,12 @@ function drawProfileScreen(t){
     ['Active Theme',String((THEME_CATALOG.find(t2=>t2.id===selectedTheme)||THEME_CATALOG[0]).name)],
   ];
   lines.forEach((entry,i)=>{
-    const yy=y+84+i*28;
+    const yy=y+84+i*24;
     setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt(entry[0],left,yy,'rgba(0,245,255,0.7)','left');
     setFont(10,'700'); glow('#d8f6ff',6); txt(entry[1],left,yy+14,'#d8f6ff','left');
   });
 
-  const bioY=y+410;
+  const bioY=y+390;
   ctx.fillStyle='rgba(0,245,255,0.06)'; ctx.fillRect(x+14,bioY,w-28,74);
   ctx.strokeStyle='rgba(0,245,255,0.25)'; ctx.lineWidth=1; ctx.strokeRect(x+14,bioY,w-28,74);
   setFont(9,'700',"'Share Tech Mono',monospace"); noGlow(); txt('BIO',x+24,bioY+14,CFG.CY,'left');
@@ -3676,7 +3723,16 @@ async function triggerLeaderboardFetch(force=false) {
     if (!fbReady || !fbDb) throw new Error('Sign in required');
     const root=await resolveCloudRoot(fbUser&&fbUser.uid,true);
     const snap=await fbDb.ref(root).get();
-    const all=snap&&snap.val?snap.val():{};
+    let all=snap&&snap.val?snap.val():{};
+    if (!all || !Object.keys(all).length) {
+      const slopeSnap=await fbDb.ref(CLOUD_SLOPE_ROOT).get();
+      const slopeAll=slopeSnap&&slopeSnap.val?slopeSnap.val():{};
+      all={};
+      Object.keys(slopeAll||{}).forEach(uid=>{
+        const u=slopeAll[uid]||{};
+        all[uid]={name:u.displayName||u.name||u.email||'Runner',email:u.email||'',progress:{bestScore:Number(u.bestScore||0)}};
+      });
+    }
     const rows=[];
     Object.keys(all||{}).forEach(uid=>{
       const u=all[uid]||{};
@@ -3936,22 +3992,6 @@ function tryContinueRun() {
     player.activateJetpack(10.0); worldSpeedMult=1.3;
     activatePwr('SHIELD',shieldDuration(90)); player.shield=true;
     activateHealthBoost(healthBoostDuration(30));
-  }
-}
-
-function collectNearbyDrops(cx,cy,radius=120) {
-  const r2=radius*radius;
-  for (let i=gems.length-1;i>=0;i--) {
-    const g=gems[i];
-    if (!g||g.collected||!g.active) continue;
-    const dx=g.x-cx,dy=g.y-cy;
-    if (dx*dx+dy*dy<=r2) collectGem(g);
-  }
-  for (let i=powerups.length-1;i>=0;i--) {
-    const p=powerups[i];
-    if (!p||p.collected||!p.active) continue;
-    const dx=p.x-cx,dy=p.y-cy;
-    if (dx*dx+dy*dy<=r2) collectPwr(p);
   }
 }
 
@@ -4273,6 +4313,15 @@ function loop(ts) {
     drawModeSelect(menuT);
     drawConfirmDialog();
     drawTransition();
+    requestAnimationFrame(loop); return;
+  }
+
+  if (gs==='IMPOSSIBLE_INTRO') {
+    impossibleIntroT+=dt;
+    drawImpossibleIntro(menuT);
+    if (impossibleIntroT>7.2 && !impossibleIntroDone) { impossibleIntroDone=true; startGame(null,true); }
+    drawTransition();
+    drawTopOverlays(menuT);
     requestAnimationFrame(loop); return;
   }
 
