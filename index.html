@@ -53,7 +53,7 @@ const FPS_LABELS = ['30','60','∞'];
 const FPS_VALUES = [30,60,0]; // 0=unlimited
 
 // BUG FIX 1: Removed duplicate VERSION constant ('0.9.1' shadowed '0.9.2')
-const VERSION = '0.9.3';
+const VERSION = '0.9.4';
 
 // Adventure stage configs
 const ADV_STAGES = [
@@ -845,8 +845,8 @@ const PWR_WEIGHTED=[
 ];
 function randPwrKey() {
   if (gameMode==='ADVENTURE') {
-    // In adventure, replace JETPACK with STAGE_BOOST
-    const pool=PWR_WEIGHTED.map(k=>k==='JETPACK'?'STAGE_BOOST':k);
+    const pool=PWR_WEIGHTED.map(k=>k==='JETPACK'?'NEW_STAGE':k);
+    if (Math.random()<0.28) return 'MINI_JETPACK';
     return pool[rndI(0,pool.length-1)];
   }
   return PWR_WEIGHTED[rndI(0,PWR_WEIGHTED.length-1)];
@@ -869,7 +869,7 @@ class PowerUp {
     if (!this.active) return;
     const {x,y,t,info,key}=this;
     ctx.save(); ctx.translate(x,y);
-    const isSpecial=key==='JETPACK'||key==='STAGE_BOOST';
+    const isSpecial=key==='JETPACK'||key==='NEW_STAGE'||key==='MINI_JETPACK';
     if (isSpecial) {
       glow(info.col,28);
       ctx.strokeStyle=info.col; ctx.lineWidth=2;
@@ -1023,7 +1023,7 @@ function drawPlayer() {
   for (let i=1;i<trail.length;i++) {
     const t2=1-i/trail.length;
     const charD=CHAR_CATALOG.find(c=>c.id===selectedChar)||CHAR_CATALOG[0];
-    const tc=stageBoostActive?'#88ccff':jetpackActive?CFG.OR:activePwr==='SLOW'?CFG.GR:activePwr==='BOOST'?CFG.YL:activePwr==='MAGNET'?CFG.PU:activePwr==='HEALTH_BOOST'?'#ff44aa':charD.trailCol;
+    const tc=miniJetpackActive?'#88ccff':newStageActive?'#66bbff':jetpackActive?CFG.OR:activePwr==='SLOW'?CFG.GR:activePwr==='BOOST'?CFG.YL:activePwr==='MAGNET'?CFG.PU:activePwr==='HEALTH_BOOST'?'#ff44aa':charD.trailCol;
     ctx.save(); ctx.globalAlpha=t2*0.5;
     glow(tc,8); circle(trail[i].x,trail[i].y,CFG.PR*t2*0.65,tc);
     ctx.restore(); spark(trail[i].x,trail[i].y,tc);
@@ -1093,16 +1093,16 @@ function drawPlayer() {
 }
 
 function drawJetpackFog() {
-  if (!player.jetpackActive&&!stageBoostActive) return;
+  if (!player.jetpackActive&&!miniJetpackActive&&!newStageActive) return;
   const jp=player.jetpackActive?((player.jetpackMax-player.jetpackT)/Math.max(0.01,player.jetpackMax)):0.6;
-  const base=stageBoostActive?0.22:0.18;
+  const base=(miniJetpackActive||newStageActive)?0.22:0.18;
   const a=Math.min(1,jp*2)*base;
   ctx.save();
   const g1=ctx.createLinearGradient(0,0,120,0);
-  g1.addColorStop(0,`rgba(${stageBoostActive?'120,190,255':'255,100,0'},${a})`); g1.addColorStop(1,'transparent');
+  g1.addColorStop(0,`rgba(${(miniJetpackActive||newStageActive)?'120,190,255':'255,100,0'},${a})`); g1.addColorStop(1,'transparent');
   ctx.fillStyle=g1; ctx.fillRect(0,0,120,LH);
   const g2=ctx.createLinearGradient(LW,0,LW-120,0);
-  g2.addColorStop(0,`rgba(${stageBoostActive?'120,190,255':'255,100,0'},${a})`); g2.addColorStop(1,'transparent');
+  g2.addColorStop(0,`rgba(${(miniJetpackActive||newStageActive)?'120,190,255':'255,100,0'},${a})`); g2.addColorStop(1,'transparent');
   ctx.fillStyle=g2; ctx.fillRect(LW-120,0,120,LH);
   ctx.restore();
 }
@@ -2018,7 +2018,7 @@ const QUEST_POOL_SIZE=400;
 const QUESTS_PER_HOUR=20;
 
 let jetpackCount=0, regenUsed=0;
-let pwrCounts={JETPACK:0,MAGNET:0,BOOST:0,SHIELD:0,SLOW:0,HEALTH_BOOST:0,STAGE_BOOST:0,REGEN:0};
+let pwrCounts={JETPACK:0,MAGNET:0,BOOST:0,SHIELD:0,SLOW:0,HEALTH_BOOST:0,MINI_JETPACK:0,NEW_STAGE:0,REGEN:0};
 
 function makeQuest(id,label,desc,reward,check){ return {id,label,desc,reward,check}; }
 
@@ -2287,8 +2287,9 @@ let healthBoostActive=false, healthBoostTimer=0, healthBoostMax=60;
 
 // Adventure state
 let adventureStage=0, adventureStageTimer=0;
-let stageBoostActive=false, stageBoostTimer=0;
-let stageBoostNext=rnd(20,30), stageBoostElapsed=0;
+let miniJetpackActive=false, miniJetpackTimer=0;
+let newStageActive=false, newStageTimer=0;
+let stagePowerupNext=rnd(20,30), stagePowerupElapsed=0;
 
 let gemTimer=0, gemNext=0, pwrTimer2=0, pwrNext=0, obsTimer=0, obsNext=0;
 let fps=0, fpsFrames=0, fpsTimer=0;
@@ -2310,8 +2311,33 @@ let leaderboardTimer=0;
 let leaderboardData=[];
 let leaderboardNextRefresh=0;
 
-// BUG FIX 2: Removed duplicate scoreMultiplier. Keeping the full version with stageBoost bonus.
-const scoreMultiplier = () => multi + (player.jetpackActive ? 10 : 0) + (stageBoostActive ? 5 : 0);
+function triggerLeaderboardFetch(force=false) {
+  if (!force && leaderboardState==='loading') return;
+  if (!force && Date.now()<leaderboardNextRefresh && leaderboardState==='loaded') return;
+  leaderboardState='loading';
+  leaderboardTimer=0;
+  leaderboardData=[];
+  leaderboardNextRefresh=Date.now()+3600*1000;
+}
+
+function activateImmunity(sec=3) {
+  immunityActive=true;
+  immunityTimer=Math.max(immunityTimer,sec);
+  player.inv=true;
+  player.blink=true;
+  player.blinkT=0;
+  addNotif('IMMUNITY ONLINE!',CFG.GR);
+}
+
+function centerPlayerToTrack() {
+  const w=terrain.getWalls(player.y);
+  player.x=(w.left+w.right)/2;
+}
+
+function clearObstaclesTemporarily() {
+  obstacles.length=0;
+  obstacleClearTimer=1.0;
+}
 
 function triggerLeaderboardFetch(force=false) {
   if (!force && leaderboardState==='loading') return;
@@ -2365,11 +2391,12 @@ function startGame(starterPwr=null) {
   obsTimer=0; obsNext=rnd(...CFG.OBS_INT);
   lastMilestone=0; clusterTimer=0; clusterNext=8;
   jetpackCount=0; regenUsed=0;
-  pwrCounts={JETPACK:0,MAGNET:0,BOOST:0,SHIELD:0,SLOW:0,HEALTH_BOOST:0,STAGE_BOOST:0,REGEN:0};
+  pwrCounts={JETPACK:0,MAGNET:0,BOOST:0,SHIELD:0,SLOW:0,HEALTH_BOOST:0,MINI_JETPACK:0,NEW_STAGE:0,REGEN:0};
   // Adventure setup
   adventureStage=0; adventureStageTimer=0;
-  stageBoostActive=false; stageBoostTimer=0;
-  stageBoostNext=rnd(20,30); stageBoostElapsed=0;
+  miniJetpackActive=false; miniJetpackTimer=0;
+  newStageActive=false; newStageTimer=0;
+  stagePowerupNext=rnd(20,30); stagePowerupElapsed=0;
   stageTransT=0;
   immunityActive=false; immunityTimer=0; obstacleClearTimer=0;
   terrain.reset(); player.reset();
@@ -2473,10 +2500,11 @@ function loseLife() {
     triggerGameOverFlash();
     transDir=1; transAlpha=1;
   } else {
-    SFX.loseLife(); player.startInv();
+    SFX.loseLife();
     const w=terrain.getWalls(player.y);
     player.x=(w.left+w.right)/2;
     addNotif(`-1 LIFE! (${lives}/${maxLives})`,CFG.PK);
+    activateImmunity(IMMUNITY_COLLISION_COOLDOWN);
   }
 }
 
@@ -2510,11 +2538,12 @@ function collectPwr(pwr) {
   else if (pwr.key==='MAGNET')       { SFX.magnet(); activatePwr('MAGNET',10.0); pwrCounts.MAGNET++; }
   else if (pwr.key==='HEALTH_BOOST') { SFX.regen(); activateHealthBoost(30); pwrCounts.HEALTH_BOOST++; }
   else if (pwr.key==='REGEN')        { SFX.regen(); collectRegen(pwr.x,pwr.y); pwrCounts.REGEN++; }
-  else if (pwr.key==='STAGE_BOOST')  { SFX.stage(); activateStageBoost(); pwrCounts.STAGE_BOOST++; }
+  else if (pwr.key==='MINI_JETPACK') { SFX.stage(); activateMiniJetpack(); pwrCounts.MINI_JETPACK++; }
+  else if (pwr.key==='NEW_STAGE')    { SFX.stage(); activateNewStagePowerup(); pwrCounts.NEW_STAGE++; }
   else SFX.pwr();
   burst(pwr.x,pwr.y,col,24,220); ringBurst(pwr.x,pwr.y,col);
   addShake(6,0.2); flashAlpha=0.35; flashCol=col;
-  if (pwr.key!=='HEALTH_BOOST'&&pwr.key!=='REGEN'&&pwr.key!=='STAGE_BOOST') {
+  if (pwr.key!=='HEALTH_BOOST'&&pwr.key!=='REGEN'&&pwr.key!=='MINI_JETPACK'&&pwr.key!=='NEW_STAGE') {
     addNotif(`${pwr.info.label} ACTIVATED!`,col);
     addFloat(pwr.x,pwr.y-16,pwr.info.icon+' '+pwr.info.label,col);
   }
@@ -2536,14 +2565,25 @@ function collectRegen(x,y) {
   addRing(x,y,'#ff6699',80,200,2.5);
 }
 
-function activateStageBoost() {
-  stageBoostActive=true; stageBoostTimer=10.0;
+function activateMiniJetpack() {
+  miniJetpackActive=true; miniJetpackTimer=10.0;
+  newStageActive=false; newStageTimer=0;
   player.activateJetpack(10.0);
   addNotif('🛸 MINI JETPACK! +5 MULTI','#88ccff');
   addFloat(player.x,player.y-20,'🛸 MINI JETPACK!','#88ccff');
   burst(player.x,player.y,'#88ccff',30,240);
   addRing(player.x,player.y,'#88ccff',140,320,3);
-  score+=300; scorePopT=0.6;
+}
+
+function activateNewStagePowerup() {
+  newStageActive=true; newStageTimer=6.0;
+  miniJetpackActive=false; miniJetpackTimer=0;
+  player.activateJetpack(6.0);
+  worldSpeedMult=1.18;
+  addNotif('🌀 NEW STAGE POWERUP!','#66bbff');
+  addFloat(player.x,player.y-20,'🌀 NEW STAGE','#66bbff');
+  burst(player.x,player.y,'#66bbff',28,220);
+  addRing(player.x,player.y,'#66bbff',120,280,2.8);
 }
 
 function spawnObjects(dt) {
@@ -2564,11 +2604,11 @@ function spawnObjects(dt) {
   if (pwrTimer2>=pwrNext) { pwrTimer2=0; pwrNext=rnd(...CFG.PWR_INT); powerups.push(new PowerUp(terrain)); }
 
   // Adventure: stage boost spawn timing (separate from regular powerups)
-  if (gameMode==='ADVENTURE'&&!stageBoostActive) {
-    stageBoostElapsed+=dt;
-    if (stageBoostElapsed>=stageBoostNext) {
-      stageBoostElapsed=0; stageBoostNext=rnd(20,30);
-      const p=new PowerUp(terrain); p.key='STAGE_BOOST'; p.info=PWR_TYPES.STAGE_BOOST;
+  if (gameMode==='ADVENTURE'&&!newStageActive) {
+    stagePowerupElapsed+=dt;
+    if (stagePowerupElapsed>=stagePowerupNext) {
+      stagePowerupElapsed=0; stagePowerupNext=rnd(20,30);
+      const p=new PowerUp(terrain); p.key='NEW_STAGE'; p.info=PWR_TYPES.NEW_STAGE;
       powerups.push(p);
     }
   }
@@ -2806,17 +2846,16 @@ function loop(ts) {
     if (stageBoostTimer<=0) {
       stageBoostActive=false;
       camZoom=1;
-      addRing(player.x,player.y,'#88ccff',180,360,3.5);
-      burst(player.x,player.y,'#88ccff',40,300);
-      burst(player.x,player.y,'#66ddff',26,260);
+      addRing(player.x,player.y,'#66bbff',180,360,3.5);
+      burst(player.x,player.y,'#66bbff',40,300);
       addShake(14,0.5);
       advanceAdventureStage();
     }
   }
 
   // BUG FIX 3: Removed duplicate score increment. Score was being added twice per frame.
-  // stageMult applied once here for the correct stage boost score bonus.
-  const stageMult=stageBoostActive?3:1;
+  // stageMult kept as 1; special multipliers are in scoreMultiplier().
+  const stageMult=1;
   score+=(CFG.SPS*terrain.speedFrac()*3*dt*scoreMultiplier()+CFG.SPS*dt)*stageMult;
 
   if (scorePopT>0) scorePopT=Math.max(0,scorePopT-dt*3);
@@ -2883,7 +2922,7 @@ function loop(ts) {
 
   // ── DRAW ────────────────────────────────────────────────────
   if (player.jetpackActive) addShake(2.4,0.05);
-  const targetZoom=stageBoostActive?1.10:(player.jetpackActive?1.04:1);
+  const targetZoom=(miniJetpackActive||newStageActive)?1.08:(player.jetpackActive?1.04:1);
   camZoom=lerp(camZoom,targetZoom,dt*3);
   ctx.save(); applyShake();
   if (camZoom!==1) {
@@ -2903,7 +2942,7 @@ function loop(ts) {
   ctx.restore();
 
   // Stage boost visual
-  if (stageBoostActive) {
+  if (miniJetpackActive||newStageActive) {
     const a=0.08+0.05*Math.sin(menuT*9);
     ctx.save(); ctx.globalAlpha=a; ctx.fillStyle='#77bbff'; ctx.fillRect(0,0,LW,LH); ctx.restore();
   }
