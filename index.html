@@ -54,7 +54,7 @@ const FPS_LABELS = ['30','60','∞'];
 const FPS_VALUES = [30,60,0]; // 0=unlimited
 
 // BUG FIX 1: Removed duplicate VERSION constant ('0.9.1' shadowed '0.9.2')
-const VERSION = '0.9.5';
+const VERSION = '0.9.6';
 
 // Adventure stage configs
 const ADV_STAGES = [
@@ -127,6 +127,8 @@ const BTNS = {
   about:null,
   quests:null, questsBack:null,
   leaderboard:null, leaderboardPause:null, leaderboardBack:null,
+  continueBuy:null, continueGiveUp:null,
+  questsFilter:null, questsFilterOpt0:null, questsFilterOpt1:null, questsFilterOpt2:null, questsFilterOpt3:null,
   optimizeBtn:null, confirmYes:null, confirmNo:null,
 };
 
@@ -176,6 +178,19 @@ function handleTap(e) {
   }
   if (gs === 'QUESTS') {
     if (hitBtn(p, BTNS.questsBack)) { doTransition('MENU'); return; }
+    if (hitBtn(p, BTNS.questsFilter)) { questFilterOpen=!questFilterOpen; return; }
+    const fOpts=[BTNS.questsFilterOpt0,BTNS.questsFilterOpt1,BTNS.questsFilterOpt2,BTNS.questsFilterOpt3];
+    for (let i=0;i<fOpts.length;i++) {
+      if (hitBtn(p, fOpts[i])) { questFilter=i; questFilterOpen=false; questScroll=0; return; }
+    }
+    return;
+  }
+  if (gs === 'LEADERBOARD') {
+    if (hitBtn(p, BTNS.leaderboardBack)) {
+      if (leaderboardReturnState==='PAUSE') doTransition('PAUSE');
+      else doTransition('MENU');
+      return;
+    }
     return;
   }
   if (gs === 'LEADERBOARD') {
@@ -191,6 +206,10 @@ function handleTap(e) {
     return;
   }
   if (gs === 'OVER') {
+    if (continueOfferTimer>0) {
+      if (hitBtn(p, BTNS.continueBuy)) { tryContinueRun(); return; }
+      if (hitBtn(p, BTNS.continueGiveUp)) { continueOfferTimer=0; return; }
+    }
     if (hitBtn(p, BTNS.retry)) { doTransition('SHOP'); return; }
     if (hitBtn(p, BTNS.home))  { doTransition('MENU'); goMenu(); return; }
     return;
@@ -198,7 +217,7 @@ function handleTap(e) {
   if (gs === 'PAUSE') {
     if (hitBtn(p, BTNS.resume))        { togglePause(); return; }
     if (hitBtn(p, BTNS.menuFromPause)) { goMenu();      return; }
-    if (hitBtn(p, BTNS.leaderboardPause)) { togglePause(); leaderboardReturnState='PAUSE'; doTransition('LEADERBOARD'); triggerLeaderboardFetch(); return; }
+    if (hitBtn(p, BTNS.leaderboardPause)) { leaderboardReturnState='PAUSE'; doTransition('LEADERBOARD'); triggerLeaderboardFetch(); return; }
     togglePause(); return;
   }
 }
@@ -1357,6 +1376,7 @@ function drawLoadingScreen(t) {
 
 // ── MAIN MENU ─────────────────────────────────────────────────────
 let menuSlideY=0; // for slide-in animation
+let seasonScrollX=0, seasonDir=1;
 
 function drawStartScreen(t) {
   drawPerspGrid(terrain.scrollY,0); drawTerrain();
@@ -1381,9 +1401,11 @@ function drawStartScreen(t) {
   }
   setFont(60,'900'); glow(CFG.CY,30);
   ctx.fillStyle=CFG.CY; ctx.textAlign='center'; ctx.fillText('SLOPE',LW/2,titleY);
+  setFont(13,'900'); glow(CFG.CY,10);
+  txt('SEASON 1',LW/2+seasonScrollX,titleY+34,'rgba(0,245,255,0.8)');
   setFont(11,'400',"'Share Tech Mono',monospace"); glow(CFG.CY,8);
-  txt('NEON RUSH',LW/2,titleY+34,'rgba(0,245,255,0.7)');
-  txt(`VERSION ${VERSION}`,LW/2,titleY+48,'rgba(0,245,255,0.35)');
+  txt('NEON RUSH',LW/2,titleY+50,'rgba(0,245,255,0.7)');
+  txt(`VERSION ${VERSION}`,LW/2,titleY+64,'rgba(0,245,255,0.35)');
 
   // Divider
   ctx.save();
@@ -1591,8 +1613,18 @@ function drawModeSelect(t) {
 
 // ── QUESTS SCREEN ─────────────────────────────────────────────────
 let questScroll=0;
+let questFilter=0, questFilterOpen=false;
+const QUEST_FILTERS=['DEFAULT','SCORE','SURVIVE','COLLECT'];
+function getFilteredObjectives() {
+  const all=(ACTIVE_OBJECTIVES||[]);
+  if (questFilter===1) return all.filter(o=>o.id.startsWith('score_'));
+  if (questFilter===2) return all.filter(o=>o.id.startsWith('time_'));
+  if (questFilter===3) return all.filter(o=>o.id.startsWith('gems_')||o.id.startsWith('collect_'));
+  return all;
+}
+
 function minQuestScroll() {
-  const rows=(ACTIVE_OBJECTIVES?.length||0);
+  const rows=(getFilteredObjectives().length||0);
   const contentH=Math.max(0, rows*72);
   const viewH=(LH-150)-8;
   return Math.min(0, viewH-contentH);
@@ -1609,15 +1641,30 @@ function drawQuestsScreen(t) {
   ctx.beginPath(); ctx.moveTo(40,66); ctx.lineTo(LW-40,66); ctx.stroke(); ctx.restore();
 
   // Stats summary
+  const filteredObjectives=getFilteredObjectives();
   setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.55;
   const done=OBJECTIVES.filter(o=>doneObjs.includes(o.id)).length;
-  txt(`${done}/${OBJECTIVES.length} total completed  ·  ${ACTIVE_OBJECTIVES.length} active this hour`,LW/2,82,'rgba(255,230,0,0.6)');
+  txt(`${done}/${OBJECTIVES.length} total completed  ·  ${filteredObjectives.length} shown`,LW/2,82,'rgba(255,230,0,0.6)');
   ctx.globalAlpha=1;
+
+  // Filter dropdown
+  const fx=18,fy=70,fw=126,fh=18;
+  BTNS.questsFilter={x:fx,y:fy,w:fw,h:fh};
+  drawNeonBtn(fx,fy,fw,fh,CFG.CY,`FILTER: ${QUEST_FILTERS[questFilter]} ▾`,8,0.7,0);
+  if (questFilterOpen) {
+    for (let i=0;i<QUEST_FILTERS.length;i++) {
+      const oy=fy+fh+2+i*(fh+2);
+      BTNS[`questsFilterOpt${i}`]={x:fx,y:oy,w:fw,h:fh};
+      drawNeonBtn(fx,oy,fw,fh,i===questFilter?CFG.GR:CFG.PU,QUEST_FILTERS[i],8,0.65,0);
+    }
+  } else {
+    BTNS.questsFilterOpt0=BTNS.questsFilterOpt1=BTNS.questsFilterOpt2=BTNS.questsFilterOpt3=null;
+  }
 
   // Objectives list (scrollable clip)
   ctx.save();
   ctx.beginPath(); ctx.rect(0,90,LW,LH-150); ctx.clip();
-  ACTIVE_OBJECTIVES.forEach((obj,i)=>{
+  filteredObjectives.forEach((obj,i)=>{
     const done=doneObjs.includes(obj.id);
     const y=98+i*72+questScroll;
     if (y<80||y>LH-80) return;
@@ -1653,7 +1700,7 @@ function drawQuestsScreen(t) {
   // Glitched scrollbar
   const viewTop=90, viewH=LH-150, trackX=LW-10;
   const minS=minQuestScroll();
-  const contentH=Math.max(viewH, ACTIVE_OBJECTIVES.length*72);
+  const contentH=Math.max(viewH, getFilteredObjectives().length*72);
   const thumbH=Math.max(24, viewH*(viewH/contentH));
   const scrollRange=Math.max(1, viewH-thumbH);
   const thumbY=viewTop + (minS===0?0:((-questScroll)/Math.abs(minS))*scrollRange);
@@ -1712,6 +1759,9 @@ function drawLeaderboardScreen(t) {
 
 // ── GAME OVER SCREEN ──────────────────────────────────────────────
 let overShakePow=0;
+let continueAttempts=0;
+let continueOfferTimer=0;
+const CONTINUE_COSTS=[1000,2500,5000];
 function drawGameOver(t) {
   ctx.save(); ctx.fillStyle='rgba(2,5,8,0.92)'; ctx.fillRect(0,0,LW,LH);
   const sx=SETTINGS.screenShake?Math.sin(t*40)*overShakePow*2*(1-clamp(t/1.2,0,1)):0;
@@ -1742,6 +1792,24 @@ function drawGameOver(t) {
   txt(`⏱ ${Math.floor(gameTime)}s SURVIVED   BANK: ${totalGems}◆`,LW/2,LH*0.54+17,CFG.CY);
   ctx.globalAlpha=1;
   const bW=170,bH=44,bX=(LW-bW)/2,retryY=LH*0.61;
+  if (continueOfferTimer>0&&continueAttempts<3) {
+    const boxX=34, boxY=LH*0.57, boxW=LW-68, boxH=130;
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(boxX,boxY,boxW,boxH);
+    ctx.strokeStyle='rgba(0,245,255,0.35)'; ctx.lineWidth=1.5; ctx.strokeRect(boxX,boxY,boxW,boxH);
+    setFont(12,'900'); glow(CFG.CY,12); txt('CONTINUE PLAYING',LW/2,boxY+18,CFG.CY);
+    const pct=continueOfferTimer/10;
+    ctx.fillStyle='rgba(0,245,255,0.15)'; ctx.fillRect(boxX+16,boxY+28,boxW-32,4);
+    ctx.fillStyle=CFG.CY; glow(CFG.CY,8); ctx.fillRect(boxX+16,boxY+28,(boxW-32)*pct,4);
+    const cost=CONTINUE_COSTS[continueAttempts];
+    BTNS.continueBuy={x:boxX+20,y:boxY+46,w:boxW-40,h:32};
+    drawNeonBtn(boxX+20,boxY+46,boxW-40,32,CFG.CY,`PURCHASE (${cost}◆)`,11,1,Math.sin(t*5));
+    BTNS.continueGiveUp={x:boxX+20,y:boxY+86,w:boxW-40,h:28};
+    drawNeonBtn(boxX+20,boxY+86,boxW-40,28,CFG.PK,'GIVE UP',10,0.9,Math.sin(t*2));
+    ctx.restore();
+  } else {
+    BTNS.continueBuy=null; BTNS.continueGiveUp=null;
+  }
   BTNS.retry={x:bX,y:retryY,w:bW,h:bH};
   drawNeonBtn(bX,retryY,bW,bH,CFG.CY,'↺  PLAY AGAIN',14,1,Math.sin(t*3.2));
   const homeY=retryY+54;
@@ -2354,11 +2422,13 @@ function goMenu() {
   activePwr=null; pwrTimer=0; worldSpeedMult=1;
   immunityActive=false; immunityTimer=0; obstacleClearTimer=0;
   pauseToggleLock=0;
+  continueOfferTimer=0;
   shuffleShop();
 }
 
 function startGame(starterPwr=null) {
   score=0; maxLives=CFG.LIVES; lives=maxLives;
+  continueAttempts=0; continueOfferTimer=0;
   multi=1; gemStreak=0; maxCombo=1; gemsCollected=0;
   worldSpeedMult=1; activePwr=null; pwrTimer=0;
   flashAlpha=0; scorePopT=0; gameTime=0; overShakePow=0;
@@ -2473,6 +2543,7 @@ function loseLife() {
   flashAlpha=0.45; flashCol=CFG.PK;
   if (lives<=0) {
     gs='OVER'; SFX.gameOver();
+    continueOfferTimer=10;
     if (score>bestScore) bestScore=score;
     burst(player.x,player.y,CFG.PK,60,420);
     addShake(20,0.8); overShakePow=12;
@@ -2485,6 +2556,32 @@ function loseLife() {
     addNotif(`-1 LIFE! (${lives}/${maxLives})`,CFG.PK);
     activateImmunity(IMMUNITY_COLLISION_COOLDOWN);
   }
+}
+
+
+function tryContinueRun() {
+  if (continueOfferTimer<=0||continueAttempts>=3) return;
+  const cost=CONTINUE_COSTS[continueAttempts];
+  if (totalGems<cost) { addNotif(`Need ${cost}◆`,CFG.PK); SFX.hit(); return; }
+  totalGems-=cost; saveBank(totalGems);
+  continueAttempts++;
+  continueOfferTimer=0;
+  gs='PLAY';
+  lives=Math.max(1,lives);
+  player.startInv();
+  centerPlayerToTrack();
+  obstacles.length=0;
+  if (continueAttempts===1) {
+    player.activateJetpack(15.0); worldSpeedMult=1.3;
+  } else if (continueAttempts===2) {
+    player.activateJetpack(10.0); worldSpeedMult=1.3;
+    activatePwr('SHIELD',120); player.shield=true;
+  } else {
+    player.activateJetpack(10.0); worldSpeedMult=1.3;
+    activatePwr('SHIELD',90); player.shield=true;
+    activateHealthBoost(30);
+  }
+  addNotif('CONTINUE PURCHASED!',CFG.CY);
 }
 
 function collectGem(gem) {
@@ -2670,6 +2767,8 @@ function loop(ts) {
   if (fpsTimer>=0.5) { fps=Math.round(fpsFrames/fpsTimer); fpsFrames=0; fpsTimer=0; }
 
   menuT+=dt;
+  seasonScrollX+=seasonDir*90*dt;
+  if (Math.abs(seasonScrollX)>90) seasonDir*=-1;
   if (leaderboardState==='loading') {
     leaderboardTimer+=dt;
     if (leaderboardTimer>1.2) { leaderboardState='loaded'; leaderboardData=[]; }
@@ -2694,6 +2793,7 @@ function loop(ts) {
 
   // Wipeout shake
   if (overShakePow>0) overShakePow=Math.max(0,overShakePow-dt*18);
+  if (gs==='OVER'&&continueOfferTimer>0) continueOfferTimer=Math.max(0,continueOfferTimer-dt);
 
   // Clear
   ctx.fillStyle=CFG.BG; ctx.fillRect(0,0,LW,LH);
@@ -2801,7 +2901,7 @@ function loop(ts) {
     ctx.save(); applyShake();
     drawPerspGrid(terrain.scrollY,terrain.speedFrac());
     drawTerrain();
-    gems.forEach(g=>g.draw()); powerups.forEach(p=>p.draw()); obstacles.forEach(o=>o.draw());
+    gems.forEach(g=>g&&g.draw&&g.draw()); powerups.forEach(p=>p&&p.draw&&p.draw()); obstacles.forEach(o=>o&&o.draw&&o.draw());
     drawPlayer(); drawParticles(); drawRings();
     ctx.restore();
     drawHUD(); drawNotifs(); drawFloats(); drawObjAnims(); drawScanlines(); drawPause();
@@ -2887,6 +2987,7 @@ function loop(ts) {
   // Magnet: very intense pull
   for (let i=gems.length-1;i>=0;i--) {
     const gem=gems[i];
+    if (!gem||!gem.update||!gem.checkHit){gems.splice(i,1);continue;}
     if (gem.collected||!gem.active){gems.splice(i,1);continue;}
     if (activePwr==='MAGNET') {
       const dx=player.x-gem.x,dy=player.y-gem.y,dist=Math.hypot(dx,dy);
@@ -2902,6 +3003,7 @@ function loop(ts) {
 
   for (let i=powerups.length-1;i>=0;i--) {
     const pwr=powerups[i];
+    if (!pwr||!pwr.update||!pwr.checkHit){powerups.splice(i,1);continue;}
     if (pwr.collected||!pwr.active){powerups.splice(i,1);continue;}
     if (activePwr==='MAGNET') {
       const dx=player.x-pwr.x,dy=player.y-pwr.y,dist=Math.hypot(dx,dy);
@@ -2918,6 +3020,7 @@ function loop(ts) {
   if (gs==='PLAY') {
     for (let i=obstacles.length-1;i>=0;i--) {
       const obs=obstacles[i];
+      if (!obs||!obs.update||!obs.checkHit){obstacles.splice(i,1);continue;}
       obs.update(dt,terrain.speed*worldSpeedMult,terrain);
       if (!obs.active){obstacles.splice(i,1);continue;}
       if (!immunityActive&&!player.inv&&!player.jetpackActive&&Math.abs(player.y-obs.y)<40) {
@@ -2945,9 +3048,9 @@ function loop(ts) {
   drawTerrain();
   drawExhaust();
   drawMagnetEffect(gems,powerups);
-  gems.forEach(g=>g.draw());
-  powerups.forEach(p=>p.draw());
-  obstacles.forEach(o=>o.draw());
+  gems.forEach(g=>g&&g.draw&&g.draw());
+  powerups.forEach(p=>p&&p.draw&&p.draw());
+  obstacles.forEach(o=>o&&o.draw&&o.draw());
   drawPlayer();
   drawParticles(); drawRings();
   ctx.restore();
