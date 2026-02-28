@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>SLOPE</title>
+<title>SLOPE — SEASON 1</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
   *, *::before, *::after {
@@ -147,7 +147,7 @@ function handleTap(e) {
     if (hitBtn(p, BTNS.settings)) { doTransition('SETTINGS');   return; }
     if (hitBtn(p, BTNS.about))    { doTransition('ABOUT');      return; }
     if (hitBtn(p, BTNS.quests))   { doTransition('QUESTS');     return; }
-    if (hitBtn(p, BTNS.leaderboard)) { leaderboardReturnState='MENU'; doTransition('LEADERBOARD'); triggerLeaderboardFetch(); return; }
+    if (hitBtn(p, BTNS.leaderboard)) { doTransition('LEADERBOARD'); triggerLeaderboardFetch(); return; }
     if (hitBtn(p, BTNS.charShop)) { doTransition('CHARSHOP'); charShopPage=0; return; }
     return;
   }
@@ -178,11 +178,7 @@ function handleTap(e) {
     return;
   }
   if (gs === 'LEADERBOARD') {
-    if (hitBtn(p, BTNS.leaderboardBack)) {
-      if (leaderboardReturnState==='PAUSE') doTransition('PAUSE');
-      else doTransition('MENU');
-      return;
-    }
+    if (hitBtn(p, BTNS.leaderboardBack)) { doTransition('MENU'); return; }
     return;
   }
   if (gs === 'ABOUT') {
@@ -197,7 +193,7 @@ function handleTap(e) {
   if (gs === 'PAUSE') {
     if (hitBtn(p, BTNS.resume))        { togglePause(); return; }
     if (hitBtn(p, BTNS.menuFromPause)) { goMenu();      return; }
-    if (hitBtn(p, BTNS.leaderboardPause)) { togglePause(); leaderboardReturnState='PAUSE'; doTransition('LEADERBOARD'); triggerLeaderboardFetch(); return; }
+    if (hitBtn(p, BTNS.leaderboardPause)) { togglePause(); doTransition('LEADERBOARD'); triggerLeaderboardFetch(); return; }
     togglePause(); return;
   }
 }
@@ -289,7 +285,7 @@ window.addEventListener('keydown', e => {
   if (e.key==='Escape' && gs==='MODESELECT'){ doTransition('MENU'); }
   if (e.key==='Escape' && gs==='QUESTS')    { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='ABOUT')     { doTransition('MENU'); }
-  if (e.key==='Escape' && gs==='LEADERBOARD'){ doTransition(leaderboardReturnState==='PAUSE'?'PAUSE':'MENU'); }
+  if (e.key==='Escape' && gs==='LEADERBOARD'){ doTransition('MENU'); }
   if (e.key==='Escape' && gs==='SETTINGS')  { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='PLAY')   togglePause();
   if (e.key==='Escape' && gs==='PAUSE')  togglePause();
@@ -836,8 +832,7 @@ const PWR_TYPES={
   JETPACK:      {col:CFG.OR, label:'JETPACK',        icon:'🚀', dur:5.0 },
   HEALTH_BOOST: {col:'#ff44aa',label:'HEALTH BOOST', icon:'❤', dur:30  },
   REGEN:        {col:'#ff6699',label:'REGENERATION', icon:'✚', dur:0   },
-  MINI_JETPACK:{col:'#88ffcc',label:'MINI JETPACK', icon:'🛸', dur:10.0},
-  NEW_STAGE:   {col:'#66bbff',label:'NEW STAGE',    icon:'🌀', dur:6.0},
+  STAGE_BOOST:  {col:'#88ffcc',label:'MINI JETPACK', icon:'🛸', dur:10.0},
 };
 const PWR_WEIGHTED=[
   ...Array(4).fill('SHIELD'),
@@ -1200,11 +1195,8 @@ function drawHUD() {
   if (player.jetpackActive) {
     activeTimers.push({icon:'🚀',label:'JETPACK',col:CFG.OR,time:player.jetpackT});
   }
-  if (miniJetpackActive) {
-    activeTimers.push({icon:'🛸',label:'MINI JETPACK',col:'#88ffcc',time:miniJetpackTimer});
-  }
-  if (newStageActive) {
-    activeTimers.push({icon:'🌀',label:'NEW STAGE',col:'#66bbff',time:newStageTimer});
+  if (stageBoostActive) {
+    activeTimers.push({icon:'🛸',label:'MINI JETPACK',col:'#88ffcc',time:stageBoostTimer});
   }
   if (immunityActive) {
     activeTimers.push({icon:'🟢',label:'IMMUNITY',col:CFG.GR,time:immunityTimer});
@@ -1374,19 +1366,21 @@ function drawStartScreen(t) {
   if (Math.sin(t*1.3)>0.85) {
     const ox=(Math.random()-.5)*10,oy2=(Math.random()-.5)*4;
     ctx.globalAlpha=0.7; setFont(60,'900');
-    ctx.fillStyle=CFG.PK; ctx.textAlign='center'; ctx.fillText('SLOPE',LW/2+ox,titleY+oy2);
-    ctx.fillStyle=CFG.CY; ctx.fillText('SLOPE',LW/2-ox,titleY-oy2);
+    ctx.fillStyle=CFG.PK; ctx.textAlign='center'; ctx.fillText('SLOPE SEASON 1',LW/2+ox,titleY+oy2);
+    ctx.fillStyle=CFG.CY; ctx.fillText('SLOPE SEASON 1',LW/2-ox,titleY-oy2);
     ctx.globalAlpha=1;
   }
   setFont(60,'900'); glow(CFG.CY,30);
-  ctx.fillStyle=CFG.CY; ctx.textAlign='center'; ctx.fillText('SLOPE',LW/2,titleY);
+  ctx.fillStyle=CFG.CY; ctx.textAlign='center'; ctx.fillText('SLOPE SEASON 1',LW/2,titleY);
+  setFont(13,'900'); glow(CFG.CY,10);
+  txt('SEASON 1',LW/2+seasonScrollX,titleY+34,'rgba(0,245,255,0.8)');
   setFont(11,'400',"'Share Tech Mono',monospace"); glow(CFG.CY,8);
-  txt('NEON RUSH',LW/2,titleY+34,'rgba(0,245,255,0.7)');
-  txt(`VERSION ${VERSION}`,LW/2,titleY+48,'rgba(0,245,255,0.35)');
+  txt('NEON RUSH',LW/2,titleY+50,'rgba(0,245,255,0.7)');
+  txt(`VERSION ${VERSION}`,LW/2,titleY+64,'rgba(0,245,255,0.35)');
 
   // Divider
   ctx.save();
-  const lw2=120,lx2=(LW-lw2)/2,ly=titleY+60;
+  const lw2=120,lx2=(LW-lw2)/2,ly=titleY+78;
   const dg=ctx.createLinearGradient(lx2,0,lx2+lw2,0);
   dg.addColorStop(0,'transparent'); dg.addColorStop(0.5,CFG.CY); dg.addColorStop(1,'transparent');
   ctx.strokeStyle=dg; ctx.lineWidth=1; glow(CFG.CY,8);
@@ -1709,7 +1703,7 @@ function drawLeaderboardScreen(t) {
   }
 
   BTNS.leaderboardBack={x:(LW-140)/2,y:LH-48,w:140,h:34};
-  drawNeonBtn((LW-140)/2,LH-48,140,34,CFG.PK,leaderboardReturnState==='PAUSE'?'← PAUSE':'← BACK',11,1,Math.sin(t*2.5));
+  drawNeonBtn((LW-140)/2,LH-48,140,34,CFG.PK,'← BACK',11,1,Math.sin(t*2.5));
   ctx.restore();
 }
 
@@ -2310,15 +2304,40 @@ let camZoom=1;
 let immunityActive=false, immunityTimer=0;
 let obstacleClearTimer=0;
 let pauseToggleLock=0;
+let seasonScrollX=0, seasonDir=1;
 
 let leaderboardState='idle';
 let leaderboardTimer=0;
 let leaderboardData=[];
 let leaderboardNextRefresh=0;
-let leaderboardReturnState='MENU';
 
-// Score multiplier (includes mini jetpack bonus).
-const scoreMultiplier = () => multi + (player.jetpackActive ? 10 : 0) + (miniJetpackActive ? 5 : 0);
+function triggerLeaderboardFetch(force=false) {
+  if (!force && leaderboardState==='loading') return;
+  if (!force && Date.now()<leaderboardNextRefresh && leaderboardState==='loaded') return;
+  leaderboardState='loading';
+  leaderboardTimer=0;
+  leaderboardData=[];
+  leaderboardNextRefresh=Date.now()+3600*1000;
+}
+
+function activateImmunity(sec=3) {
+  immunityActive=true;
+  immunityTimer=Math.max(immunityTimer,sec);
+  player.inv=true;
+  player.blink=true;
+  player.blinkT=0;
+  addNotif('IMMUNITY ONLINE!',CFG.GR);
+}
+
+function centerPlayerToTrack() {
+  const w=terrain.getWalls(player.y);
+  player.x=(w.left+w.right)/2;
+}
+
+function clearObstaclesTemporarily() {
+  obstacles.length=0;
+  obstacleClearTimer=1.0;
+}
 
 function triggerLeaderboardFetch(force=false) {
   if (!force && leaderboardState==='loading') return;
@@ -2457,7 +2476,7 @@ function togglePause() {
 }
 
 function loseLife() {
-  if (immunityActive||player.jetpackActive) return;
+  if (immunityActive||player.inv||player.jetpackActive) return;
   if (player.shield||activePwr==='SHIELD') {
     player.shield=false;
     if (activePwr==='SHIELD') { activePwr=null; pwrTimer=0; }
@@ -2550,7 +2569,6 @@ function activateMiniJetpack() {
   miniJetpackActive=true; miniJetpackTimer=10.0;
   newStageActive=false; newStageTimer=0;
   player.activateJetpack(10.0);
-  worldSpeedMult=1.12;
   addNotif('🛸 MINI JETPACK! +5 MULTI','#88ccff');
   addFloat(player.x,player.y-20,'🛸 MINI JETPACK!','#88ccff');
   burst(player.x,player.y,'#88ccff',30,240);
@@ -2650,6 +2668,8 @@ function loop(ts) {
   if (fpsTimer>=0.5) { fps=Math.round(fpsFrames/fpsTimer); fpsFrames=0; fpsTimer=0; }
 
   menuT+=dt;
+  seasonScrollX+=seasonDir*90*dt;
+  if (Math.abs(seasonScrollX)>90) seasonDir*=-1;
   if (leaderboardState==='loading') {
     leaderboardTimer+=dt;
     if (leaderboardTimer>1.2) { leaderboardState='loaded'; leaderboardData=[]; }
@@ -2820,20 +2840,11 @@ function loop(ts) {
 
   if (obstacleClearTimer>0) obstacleClearTimer=Math.max(0,obstacleClearTimer-dt);
 
-  if (miniJetpackActive) {
-    miniJetpackTimer-=dt;
-    if (miniJetpackTimer<=0) {
-      miniJetpackActive=false; miniJetpackTimer=0;
-      if (!newStageActive) worldSpeedMult=1;
-      addRing(player.x,player.y,'#88ccff',160,320,3);
-    }
-  }
-
-  if (newStageActive) {
-    newStageTimer-=dt;
-    if (newStageTimer<=0) {
-      newStageActive=false; newStageTimer=0;
-      worldSpeedMult=1;
+  // Stage boost countdown (adventure)
+  if (stageBoostActive) {
+    stageBoostTimer-=dt;
+    if (stageBoostTimer<=0) {
+      stageBoostActive=false;
       camZoom=1;
       addRing(player.x,player.y,'#66bbff',180,360,3.5);
       burst(player.x,player.y,'#66bbff',40,300);
@@ -2855,7 +2866,7 @@ function loop(ts) {
   const hitResult=player.update(dt,terrain);
   if (hitResult==='SIDE_TOUCH' || hitResult==='WALL') {
     centerPlayerToTrack();
-    if (!immunityActive && !player.jetpackActive) loseLife();
+    if (!immunityActive && !player.jetpackActive) activateImmunity(IMMUNITY_COLLISION_COOLDOWN);
   }
   updateParticles(dt); updateRings(dt);
   updateFloats(dt); updateNotifs(dt); updateObjAnims(dt);
@@ -2903,7 +2914,7 @@ function loop(ts) {
           obs.hit=true; obs.active=false; obstacles.splice(i,1);
           centerPlayerToTrack();
           clearObstaclesTemporarily();
-          if (!immunityActive && !player.jetpackActive) loseLife();
+          activateImmunity(IMMUNITY_COLLISION_COOLDOWN);
         }
       }
     }
