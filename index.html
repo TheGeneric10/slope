@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>SLOPE</title>
+<title>SLOPE — SEASON 1</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <link rel="icon" href="./favicon.ico">
 <style>
@@ -2209,6 +2209,24 @@ function drawGameOver(t) {
   ctx.globalAlpha=1;
   BTNS.continueBuy=null; BTNS.continueGiveUp=null;
   const bW=170,bH=44,bX=(LW-bW)/2,retryY=LH*0.61;
+  if (continueOfferTimer>0&&continueAttempts<3) {
+    const boxX=34, boxY=LH*0.57, boxW=LW-68, boxH=130;
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(boxX,boxY,boxW,boxH);
+    ctx.strokeStyle='rgba(0,245,255,0.35)'; ctx.lineWidth=1.5; ctx.strokeRect(boxX,boxY,boxW,boxH);
+    setFont(12,'900'); glow(CFG.CY,12); txt('CONTINUE PLAYING',LW/2,boxY+18,CFG.CY);
+    const pct=continueOfferTimer/10;
+    ctx.fillStyle='rgba(0,245,255,0.15)'; ctx.fillRect(boxX+16,boxY+28,boxW-32,4);
+    ctx.fillStyle=CFG.CY; glow(CFG.CY,8); ctx.fillRect(boxX+16,boxY+28,(boxW-32)*pct,4);
+    const cost=CONTINUE_COSTS[continueAttempts];
+    BTNS.continueBuy={x:boxX+20,y:boxY+46,w:boxW-40,h:32};
+    drawNeonBtn(boxX+20,boxY+46,boxW-40,32,CFG.CY,`PURCHASE (${cost}◆)`,11,1,Math.sin(t*5));
+    BTNS.continueGiveUp={x:boxX+20,y:boxY+86,w:boxW-40,h:28};
+    drawNeonBtn(boxX+20,boxY+86,boxW-40,28,CFG.PK,'GIVE UP',10,0.9,Math.sin(t*2));
+    ctx.restore();
+  } else {
+    BTNS.continueBuy=null; BTNS.continueGiveUp=null;
+  }
   BTNS.retry={x:bX,y:retryY,w:bW,h:bH};
   drawNeonBtn(bX,retryY,bW,bH,CFG.CY,'↺  PLAY AGAIN',14,1,Math.sin(t*3.2));
   const homeY=retryY+54;
@@ -3991,6 +4009,7 @@ function collectNearbyDrops(cx,cy,radius=120) {
     const dx=p.x-cx,dy=p.y-cy;
     if (dx*dx+dy*dy<=r2) collectPwr(p);
   }
+  addNotif('CONTINUE PURCHASED!',CFG.CY);
 }
 
 function collectGem(gem) {
@@ -4292,6 +4311,24 @@ function loop(ts) {
   if (gs==='MODESELECT') {
     terrain.update(dt*0.35);
     drawModeSelect(menuT);
+    drawConfirmDialog();
+    drawTransition();
+    requestAnimationFrame(loop); return;
+  }
+
+  if (gs==='IMPOSSIBLE_INTRO') {
+    impossibleIntroT+=dt;
+    drawImpossibleIntro(menuT);
+    if (impossibleIntroT>7.2 && !impossibleIntroDone) { impossibleIntroDone=true; startGame(null,true); }
+    drawTransition();
+    drawTopOverlays(menuT);
+    requestAnimationFrame(loop); return;
+  }
+
+  if (gs==='IMPOSSIBLE_INTRO') {
+    impossibleIntroT+=dt;
+    drawImpossibleIntro(menuT);
+    if (impossibleIntroT>7.2 && !impossibleIntroDone) { impossibleIntroDone=true; startGame(null,true); }
     drawTransition();
     drawTopOverlays(menuT);
     requestAnimationFrame(loop); return;
@@ -4326,6 +4363,7 @@ function loop(ts) {
   // ── SETTINGS ────────────────────────────────────────────────
   if (gs==='SETTINGS') {
     drawSettingsScreen(menuT);
+    drawConfirmDialog();
     drawTransition();
     drawTopOverlays(menuT);
     requestAnimationFrame(loop); return;
@@ -4411,6 +4449,7 @@ function loop(ts) {
     ctx.restore();
     drawFlash();
     drawGameOver(menuT);
+    drawConfirmDialog();
     drawTransition();
     drawTopOverlays(menuT);
     requestAnimationFrame(loop); return;
@@ -4428,6 +4467,7 @@ function loop(ts) {
   drawAuraVisual(); drawParticles(); drawRings();
     ctx.restore();
     drawHUD(); drawNotifs(); drawFloats(); drawObjAnims(); drawScanlines(); drawPause();
+    drawConfirmDialog();
     drawTransition();
     drawTopOverlays(menuT);
     requestAnimationFrame(loop); return;
@@ -4670,6 +4710,7 @@ function loop(ts) {
   drawNotifs();
   drawFloats();
   drawScanlines();
+  drawInputDialog(menuT);
   drawTransition();
     drawTopOverlays(menuT);
 
