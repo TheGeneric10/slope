@@ -3114,11 +3114,39 @@ const FIREBASE_CONFIG={
   measurementId:"G-N068FXTMC7"
 };
 const CLOUD_INFO_ROOT='SLOPE/user/encrypted/info';
+const CLOUD_INFO_ROOT_FALLBACKS=[
+  CLOUD_INFO_ROOT,
+  'SLOPE/userencrypted/info',
+  'SLOPE/userencrypted/etc',
+];
 
 let fbReady=false, fbAuth=null, fbDb=null, fbUser=null;
 let cloudSyncTimer=0;
 let profileBio='';
 let profileAvatar='';
+let cloudProfileRoot=CLOUD_INFO_ROOT;
+let cloudGemCount=loadBank();
+let cloudUpdatedAt=0;
+
+function fmtCloudTs(ts){
+  if (!Number.isFinite(ts) || ts<=0) return '—';
+  const d=new Date(ts);
+  if (Number.isNaN(d.getTime())) return '—';
+  return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+}
+
+async function resolveCloudRoot(uid, preferExisting=false){
+  if (!fbReady || !fbDb || !uid) return CLOUD_INFO_ROOT;
+  if (!preferExisting) return CLOUD_INFO_ROOT;
+  try {
+    for (const root of CLOUD_INFO_ROOT_FALLBACKS) {
+      const snap=await fbDb.ref(`${root}/${uid}`).get();
+      if (snap && snap.exists && snap.exists()) return root;
+      if (snap && snap.val && snap.val()) return root;
+    }
+  } catch (e) {}
+  return CLOUD_INFO_ROOT;
+}
 
 function loadAuth(){
   try { return JSON.parse(localStorage.getItem(AUTH_KEY)||JSON.stringify(AUTH_GUEST)); }
@@ -3203,6 +3231,9 @@ function initFirebase(){
         isSignedIn=false;
         auth={...AUTH_GUEST};
         profileBio=''; profileAvatar='';
+        cloudProfileRoot=CLOUD_INFO_ROOT;
+        cloudGemCount=loadBank();
+        cloudUpdatedAt=0;
         saveAuth(auth);
       }
     });
@@ -3314,6 +3345,7 @@ function drawSignUpScreen(t){
 
 async function writeCloudUserInfo(extra={}) {
   if (!fbReady || !fbDb || !fbUser) return;
+  cloudProfileRoot=await resolveCloudRoot(fbUser.uid,true);
   const payload={
     uid:fbUser.uid,
     email:fbUser.email||'',
@@ -3324,7 +3356,7 @@ async function writeCloudUserInfo(extra={}) {
     updatedAt:Date.now(),
     ...extra,
   };
-  await fbDb.ref(`${CLOUD_INFO_ROOT}/${fbUser.uid}`).update(payload);
+  await fbDb.ref(`${cloudProfileRoot}/${fbUser.uid}`).update(payload);
 }
 
 function buildLocalProgressPayload(){
@@ -3349,7 +3381,10 @@ function buildLocalProgressPayload(){
 async function syncProgressToCloud(reason='auto') {
   if (!isSignedIn || !fbReady || !fbDb || !fbUser) return;
   try {
-    await fbDb.ref(`${CLOUD_INFO_ROOT}/${fbUser.uid}/progress`).set(buildLocalProgressPayload());
+    cloudProfileRoot=await resolveCloudRoot(fbUser.uid,true);
+    await fbDb.ref(`${cloudProfileRoot}/${fbUser.uid}/progress`).set(buildLocalProgressPayload());
+    cloudGemCount=loadBank();
+    cloudUpdatedAt=Date.now();
   } catch (e) {}
 }
 function queueCloudSync(delay=700){
@@ -3361,11 +3396,14 @@ function queueCloudSync(delay=700){
 async function loadCloudProfileAndProgress() {
   if (!fbReady || !fbDb || !fbUser) return;
   try {
-    const snap=await fbDb.ref(`${CLOUD_INFO_ROOT}/${fbUser.uid}`).get();
+    cloudProfileRoot=await resolveCloudRoot(fbUser.uid,true);
+    const snap=await fbDb.ref(`${cloudProfileRoot}/${fbUser.uid}`).get();
     const val=snap&&snap.val?snap.val():null;
     if (!val) {
       await writeCloudUserInfo({createdAt:Date.now()});
       await syncProgressToCloud('init');
+      cloudGemCount=loadBank();
+      cloudUpdatedAt=Date.now();
       return;
     }
     profileBio=val.bio||'';
@@ -3384,6 +3422,9 @@ async function loadCloudProfileAndProgress() {
       if (typeof p.bestScore==='number') bestScore=Math.max(bestScore,p.bestScore);
       if (p.options && typeof p.options==='object') { OPTION_PREFS={...OPTION_PREFS,...p.options}; saveOptionPrefs(); }
     }
+    cloudGemCount=Number(val.progress&&val.progress.gems);
+    if (!Number.isFinite(cloudGemCount)) cloudGemCount=loadBank();
+    cloudUpdatedAt=Number((val.progress&&val.progress.updatedAt)||val.updatedAt||0)||0;
     auth={...auth,signedIn:true,name:val.name||auth.name,email:val.email||auth.email,uid:fbUser.uid,verified:!!fbUser.emailVerified,bio:profileBio,avatar:profileAvatar};
     saveAuth(auth);
   } catch (e) {}
@@ -3473,24 +3514,28 @@ function drawProfileScreen(t){
   ctx.restore();
   glow(CFG.CY,12); ctx.strokeStyle='rgba(0,245,255,0.55)'; ctx.lineWidth=2; circle(avatarX,avatarY,avatarR+3,CFG.CY,false);
 
-  const left=x+118, right=x+w-16;
+  const left=x+118;
   const lines=[
     ['Display Name',auth.name||'Player'],
     ['Email',auth.email||'guest@slope.local'],
     ['Verified',auth.verified?'YES':'NO'],
     ['Best Score',String(Math.floor(bestScore))],
+    ['Gems (Local)',`${Math.floor(loadBank())}`],
+    ['Gems (Cloud)',`${Math.floor(cloudGemCount||0)}`],
+    ['Cloud Path',cloudProfileRoot.replace('SLOPE/','')],
+    ['Last Cloud Sync',fmtCloudTs(cloudUpdatedAt)],
     ['Avg Run Time',`${runAvgTime().toFixed(1)}s`],
     ['Active Skin',String((CHAR_CATALOG.find(c=>c.id===selectedChar)||CHAR_CATALOG[0]).name)],
     ['Active Aura',String((AURA_CATALOG.find(a=>a.id===selectedAura)||AURA_CATALOG[0]).name)],
     ['Active Theme',String((THEME_CATALOG.find(t2=>t2.id===selectedTheme)||THEME_CATALOG[0]).name)],
   ];
   lines.forEach((entry,i)=>{
-    const yy=y+84+i*34;
+    const yy=y+84+i*28;
     setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt(entry[0],left,yy,'rgba(0,245,255,0.7)','left');
     setFont(10,'700'); glow('#d8f6ff',6); txt(entry[1],left,yy+14,'#d8f6ff','left');
   });
 
-  const bioY=y+376;
+  const bioY=y+410;
   ctx.fillStyle='rgba(0,245,255,0.06)'; ctx.fillRect(x+14,bioY,w-28,74);
   ctx.strokeStyle='rgba(0,245,255,0.25)'; ctx.lineWidth=1; ctx.strokeRect(x+14,bioY,w-28,74);
   setFont(9,'700',"'Share Tech Mono',monospace"); noGlow(); txt('BIO',x+24,bioY+14,CFG.CY,'left');
@@ -3522,11 +3567,6 @@ function handleProfileTap(p){
     SFX.click();
     if (!isSignedIn) { addNotif('Bio editing unlocks after sign in.',CFG.YL); return; }
     openInputDialog({title:'UPDATE BIO',label:'Bio (max 100 chars)',value:profileBio||'',maxLen:100,multiline:true,onSubmit:(val)=>{ profileBio=(val||'').slice(0,100); auth={...auth,bio:profileBio}; saveAuth(auth); writeCloudUserInfo({bio:profileBio}); addNotif('BIO UPDATED',CFG.GR);} });
-    if (v!==null) {
-      profileBio=(v||'').slice(0,140);
-      auth={...auth,bio:profileBio}; saveAuth(auth);
-      writeCloudUserInfo({bio:profileBio});
-    }
     return;
   }
   if (hitBtn(p,BTNS.profileSignOut)) {
@@ -3539,6 +3579,9 @@ function handleProfileTap(p){
 function doSignOut(){
   if (fbReady && fbAuth) fbAuth.signOut();
   isSignedIn=false; auth={...AUTH_GUEST}; saveAuth(auth);
+  cloudProfileRoot=CLOUD_INFO_ROOT;
+  cloudGemCount=loadBank();
+  cloudUpdatedAt=0;
   addNotif('Signed out. Guest local save active.',CFG.CY);
 }
 
@@ -3631,7 +3674,8 @@ async function triggerLeaderboardFetch(force=false) {
   leaderboardNextRefresh=Date.now()+3600*1000;
   try {
     if (!fbReady || !fbDb) throw new Error('Sign in required');
-    const snap=await fbDb.ref(CLOUD_INFO_ROOT).get();
+    const root=await resolveCloudRoot(fbUser&&fbUser.uid,true);
+    const snap=await fbDb.ref(root).get();
     const all=snap&&snap.val?snap.val():{};
     const rows=[];
     Object.keys(all||{}).forEach(uid=>{
@@ -3892,6 +3936,22 @@ function tryContinueRun() {
     player.activateJetpack(10.0); worldSpeedMult=1.3;
     activatePwr('SHIELD',shieldDuration(90)); player.shield=true;
     activateHealthBoost(healthBoostDuration(30));
+  }
+}
+
+function collectNearbyDrops(cx,cy,radius=120) {
+  const r2=radius*radius;
+  for (let i=gems.length-1;i>=0;i--) {
+    const g=gems[i];
+    if (!g||g.collected||!g.active) continue;
+    const dx=g.x-cx,dy=g.y-cy;
+    if (dx*dx+dy*dy<=r2) collectGem(g);
+  }
+  for (let i=powerups.length-1;i>=0;i--) {
+    const p=powerups[i];
+    if (!p||p.collected||!p.active) continue;
+    const dx=p.x-cx,dy=p.y-cy;
+    if (dx*dx+dy*dy<=r2) collectPwr(p);
   }
 }
 
@@ -4207,13 +4267,6 @@ function loop(ts) {
     requestAnimationFrame(loop); return;
   }
 
-  if (gs==='CONTROLS') {
-    terrain.update(dt*0.2);
-    drawControlsScreen(menuT);
-    drawTransition();
-    requestAnimationFrame(loop); return;
-  }
-
   // ── MODE SELECT ─────────────────────────────────────────────
   if (gs==='MODESELECT') {
     terrain.update(dt*0.35);
@@ -4333,61 +4386,6 @@ function loop(ts) {
     drawContinueOffer(menuT);
     drawTransition();
     drawTopOverlays(menuT);
-    requestAnimationFrame(loop); return;
-  }
-
-  if (gs==='UPGRADES') {
-    drawUpgradesScreen(menuT);
-    drawTransition();
-    requestAnimationFrame(loop); return;
-  }
-
-  if (gs==='SIGNIN') {
-    drawSignInScreen(menuT);
-    drawTransition();
-    requestAnimationFrame(loop); return;
-  }
-
-  if (gs==='SIGNUP') {
-    drawSignUpScreen(menuT);
-    drawTransition();
-    requestAnimationFrame(loop); return;
-  }
-
-  if (gs==='PROFILE') {
-    drawProfileScreen(menuT);
-    drawTransition();
-    requestAnimationFrame(loop); return;
-  }
-
-  if (gs==='OPTIONS') {
-    drawOptionsScreen(menuT);
-    drawTransition();
-    requestAnimationFrame(loop); return;
-  }
-
-  if (gs==='LEADERBOARD') {
-    drawLeaderboardScreen(menuT);
-    drawTransition();
-    requestAnimationFrame(loop); return;
-  }
-
-  // ── CONTINUE OFFER (frozen gameplay) ─────────────────────────
-  if (gs==='CONTINUE') {
-    ctx.save(); applyShake();
-    drawPerspGrid(terrain.scrollY,terrain.speedFrac());
-    drawTerrain();
-    gems.forEach(g=>g&&g.draw&&g.draw()); powerups.forEach(p=>p&&p.draw&&p.draw()); obstacles.forEach(o=>o&&o.draw&&o.draw());
-    const th=getSelectedThemeData();
-  if (th&&th.id!=='classic') { ctx.save(); ctx.globalAlpha=0.06+0.03*Math.sin(menuT*2); ctx.fillStyle=th.col; ctx.fillRect(0,0,LW,LH); ctx.restore(); }
-  drawPlayer();
-  drawAuraVisual(); drawParticles(); drawRings();
-    ctx.restore();
-    drawHUD(); drawScanlines();
-    ctx.save(); ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH); ctx.restore();
-    drawContinueOffer(menuT);
-    drawConfirmDialog();
-    drawTransition();
     requestAnimationFrame(loop); return;
   }
 
