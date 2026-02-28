@@ -69,7 +69,7 @@ function saveOptionPrefs(){ localStorage.setItem('slope_options',JSON.stringify(
 let OPTION_PREFS=loadOptionPrefs();
 
 // BUG FIX 1: Removed duplicate VERSION constant ('0.9.1' shadowed '0.9.2')
-const VERSION = '0.11.1';
+const VERSION = '0.12.0';
 
 // Adventure stage configs
 const ADV_STAGES = [
@@ -79,6 +79,13 @@ const ADV_STAGES = [
   {name:'STAGE 4', label:'HARD',      spd:300, spdMax:520, shrink:0.006, obsInt:[2.8,4.5]},
   {name:'STAGE 5', label:'VERY HARD', spd:380, spdMax:600, shrink:0.007, obsInt:[2.0,3.5]},
   {name:'STAGE 6', label:'INTENSE',   spd:460, spdMax:680, shrink:0.009, obsInt:[1.3,2.5]},
+];
+
+const IMP_STAGES=[
+  {name:'STAGE 1', label:'HARD', spd:340, spdMax:560, shrink:0.008, theme:'rgba(255,60,60,0.10)'},
+  {name:'STAGE 2', label:'VERY HARD', spd:420, spdMax:640, shrink:0.010, theme:'rgba(255,40,40,0.14)'},
+  {name:'STAGE 3', label:'INTENSE', spd:500, spdMax:700, shrink:0.012, theme:'rgba(255,30,30,0.18)'},
+  {name:'STAGE 4', label:'EXTREME', spd:580, spdMax:760, shrink:0.014, theme:'rgba(255,10,10,0.24)'},
 ];
 </script>
 
@@ -142,7 +149,7 @@ const BTNS = {
   pause:null, resume:null, menuFromPause:null,
   shopSkip:null, shopBack:null,
   charBack:null, charPrev:null, charNext:null, charShop:null,
-  modeEndless:null, modeAdventure:null,
+  modeEndless:null, modeAdventure:null, modeImpossible:null,
   about:null,
   quests:null, questsBack:null,
   leaderboard:null, leaderboardPause:null, leaderboardBack:null,
@@ -175,6 +182,7 @@ function runConfirmAction() {
   if (a==='PAUSE_MAINMENU') { goMenu(); return; }
   if (a==='PAUSE_GIVEUP') { finalizeGameOver(); return; }
   if (a==='CONTINUE_GIVEUP') { finalizeGameOver(); return; }
+  if (a==='IMPOSSIBLE_START') { startImpossibleIntro(); return; }
   if (a==='RESET_EVERYTHING') {
     localStorage.clear();
     location.reload();
@@ -228,7 +236,7 @@ function handleTap(e) {
   if (gs === 'MODESELECT') {
     if (hitBtn(p, BTNS.modeEndless))   { SFX.click(); gameMode='ENDLESS';   doTransition('SHOP'); return; }
     if (hitBtn(p, BTNS.modeAdventure)) { SFX.click(); gameMode='ADVENTURE'; doTransition('SHOP'); return; }
-    if (hitBtn(p, BTNS.modeSoon) || hitBtn(p, BTNS.modeWideSoon)) { SFX.hit(); addNotif('COMING SOON',CFG.CY); return; }
+    if (hitBtn(p, BTNS.modeImpossible)) { SFX.click(); openConfirm('IMPOSSIBLE_START','IMPOSSIBLE MODE WARNING','One life only. No starter powerups. Are you sure?'); return; }
     if (hitBtn(p, BTNS.back)) { SFX.click(); doTransition('MENU'); return; }
     return;
   }
@@ -416,6 +424,7 @@ window.addEventListener('keydown', e => {
   if (e.key==='Escape' && gs==='PROFILE')   { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='OPTIONS')   { doTransition(optionsReturnState); }
   if (e.key==='Escape' && gs==='SETTINGS')  { doTransition('MENU'); }
+  if (e.key==='Escape' && gs==='IMPOSSIBLE_INTRO') { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='PLAY')   togglePause();
   if (e.key==='Escape' && gs==='PAUSE')  togglePause();
   if (l||r||e.key===' '||e.key==='Enter') e.preventDefault();
@@ -822,9 +831,9 @@ class Terrain {
   update(dt) {
     this.t+=dt;
     // Adventure mode: speed capped by stage config
-    const stage=ADV_STAGES[adventureStage]||ADV_STAGES[0];
-    const maxSpd = gameMode==='ADVENTURE' ? stage.spdMax : CFG.SPD_MAX;
-    const shrink = gameMode==='ADVENTURE' ? stage.shrink : CFG.SHRINK;
+    const stage=(gameMode==='IMPOSSIBLE'?(IMP_STAGES[impossibleStage]||IMP_STAGES[0]):(ADV_STAGES[adventureStage]||ADV_STAGES[0]));
+    const maxSpd = (gameMode==='ADVENTURE'||gameMode==='IMPOSSIBLE') ? stage.spdMax : CFG.SPD_MAX;
+    const shrink = (gameMode==='ADVENTURE'||gameMode==='IMPOSSIBLE') ? stage.shrink : CFG.SHRINK;
     this.speed=Math.min(maxSpd, this.speed+CFG.SPD_ACC*dt);
     this.trackW=Math.max(CFG.TRACK_MIN, this.trackW-shrink*this.speed*dt);
     const dy=this.speed*dt;
@@ -991,6 +1000,7 @@ const PWR_TYPES={
   NEW_STAGE:   {col:'#66bbff',label:'NEW STAGE',    icon:'🌀', dur:6.0},
   X2_GEMS:     {col:'#ffd700',label:'X2 GEMS',      icon:'💎', dur:10.0},
   GEM_DROP:    {col:'#99ddff',label:'GEM DROP',     icon:'💠', dur:8.0},
+  BAD_LUCK:    {col:'#ff3333',label:'BAD LUCK',     icon:'☠', dur:5.0},
 };
 const PWR_WEIGHTED=[
   ...Array(4).fill('SHIELD'),
@@ -1002,6 +1012,7 @@ const PWR_WEIGHTED=[
   ...Array(3).fill('REGEN'),
   ...Array(3).fill('X2_GEMS'),
   ...Array(2).fill('GEM_DROP'),
+  ...Array(3).fill('BAD_LUCK'),
 ];
 function randPwrKey() {
   const allowRegen=lives<maxLives;
@@ -1009,6 +1020,13 @@ function randPwrKey() {
     let pool=[...PWR_WEIGHTED];
     if (!allowRegen) pool=pool.filter(k=>k!=='REGEN');
     if (adventureStage>=5 && Math.random()<0.28) return 'MINI_JETPACK';
+    return pool[rndI(0,pool.length-1)];
+  }
+  if (gameMode==='IMPOSSIBLE') {
+    let pool=PWR_WEIGHTED.filter(k=>!['REGEN','HEALTH_BOOST','NEW_STAGE'].includes(k));
+    if (impossibleStage>=2) pool=pool.filter(k=>k!=='X2_GEMS');
+    if (impossibleStage>=2) pool=pool.filter(k=>k!=='BAD_LUCK');
+    if (impossibleStage<=1 && Math.random()<0.22) return 'BAD_LUCK';
     return pool[rndI(0,pool.length-1)];
   }
   const pool=allowRegen?PWR_WEIGHTED:PWR_WEIGHTED.filter(k=>k!=='REGEN');
@@ -1298,10 +1316,11 @@ function drawHUD() {
   ctx.restore();
 
   // Adventure stage indicator
-  if (gameMode==='ADVENTURE') {
-    ctx.save(); setFont(9,'700'); glow(CFG.GR,12);
-    const st=ADV_STAGES[adventureStage];
-    txt(`${st.name} · ${st.label}`,LW/2,pdY+68,CFG.GR); ctx.restore();
+  if (gameMode==='ADVENTURE' || gameMode==='IMPOSSIBLE') {
+    ctx.save(); setFont(9,'700');
+    const st=gameMode==='IMPOSSIBLE'?(IMP_STAGES[impossibleStage]||IMP_STAGES[0]):(ADV_STAGES[adventureStage]);
+    glow(gameMode==='IMPOSSIBLE'?'#ff4455':CFG.GR,12);
+    txt(`${st.name} · ${st.label}`,LW/2,pdY+68,gameMode==='IMPOSSIBLE'?'#ff4455':CFG.GR); ctx.restore();
   }
 
   // Lives (right side)
@@ -1391,7 +1410,7 @@ function drawHUD() {
   if (miniJetpackActive) {
     activeTimers.push({icon:'🛸',label:'MINI JETPACK',col:'#88ffcc',time:miniJetpackTimer});
   }
-  if (gemDoubleActive) activeTimers.push({icon:'💎',label:'X2 GEMS',col:'#ffd700',time:gemDoubleTimer});
+  if (gemDoubleActive) activeTimers.push({icon:'💎',label:'X2 GEMS',col:'#ffd700',time:(gameMode==='IMPOSSIBLE'&&impossibleStage>=2)?999:gemDoubleTimer});
   if (gemDropActive) activeTimers.push({icon:'💠',label:'GEM DROP',col:'#99ddff',time:gemDropTimer});
   if (newStageActive) {
     activeTimers.push({icon:'🌀',label:'NEW STAGE',col:'#66bbff',time:newStageTimer});
@@ -1641,10 +1660,6 @@ function drawStartScreen(t) {
   setFont(13,'900'); glow(CFG.YL,12); txt('🛒 SHOP',LW/2,btnY+btnH/2+5,CFG.YL);
   ctx.restore();
   drawRainbowBorder(btnX,btnY,btnW,btnH,t,2.5);
-  ctx.save(); ctx.fillStyle='#ffe600'; ctx.fillRect(btnX+btnW-28,btnY-2,28,13);
-  setFont(7,'900',"'Share Tech Mono',monospace"); noGlow();
-  ctx.fillStyle='#000'; ctx.textAlign='center'; ctx.fillText('NEW!',btnX+btnW-14,btnY+9);
-  ctx.restore();
   btnY+=btnH+gap;
 
   const authW=188,authH=28,authX=(LW-authW)/2;
@@ -1693,18 +1708,16 @@ function drawAboutScreen(t) {
   ctx.restore();
 
   const lines=[
-    'v0.11.1 PATCH NOTES',
-    '• Fixed uncaught Gem type errors in hit checks/draw flow',
-    '• Immunity now triggers when jetpack effects end',
-    '• Removed old inline controls area from main menu',
-    '• Additional stability and UI polish updates',
+    'v0.12.0 MAJOR UPDATE',
+    '• Added IMPOSSIBLE mode with intro + warning flow',
+    '• Added BAD LUCK event and mode-specific stage tuning',
+    '• New Stage collect now bypasses while already active',
+    '• Added stability fixes for powerup and mode interactions',
     '',
     'v0.11.0 MAJOR UPDATE',
     '• Added touch joycons, controls page, and controller input',
     '• Added X2 GEMS + GEM DROP powerups',
-    '• Added global options (FPS/quests/tutorials/joycons)',
-    '• Restored SEASON 1 subtitle and expanded menu systems',
-    '• Added footer + gameplay and HUD refinements'
+    '• Added global options and HUD/menu refinements'
   ];
 
   let y=boxY+28;
@@ -1765,40 +1778,61 @@ function drawModeSelect(t) {
 
   const cards=[
     {key:'modeEndless',x:startX,col:CFG.CY,title:'ENDLESS',sub:'CLASSIC',icon:'∞',feats:['Classic run','No stage cap','Score chase'],btn:'PLAY'},
-    {key:'modeAdventure',x:startX+cardW+gap,col:CFG.GR,title:'ADVENTURE',sub:'STAGES [NEW!]',icon:'🌀',feats:['Stage flow','Difficulty ramp','Rewards'],btn:'PLAY'},
-    {key:'modeSoon',x:startX+(cardW+gap)*2,col:'#8a8a8a',title:'?',sub:'COMING SOON',icon:'?',feats:['Locked','Future mode','Stay tuned'],btn:'LOCKED'}
+    {key:'modeAdventure',x:startX+cardW+gap,col:CFG.GR,title:'ADVENTURE',sub:'STAGES',icon:'🌀',feats:['Stage flow','Difficulty ramp','Rewards'],btn:'PLAY'},
+    {key:'modeImpossible',x:startX+(cardW+gap)*2,col:'#ff4455',title:'IMPOSSIBLE',sub:'ONE LIFE',icon:'☠',feats:['4 brutal stages','No life regen','Red storm mode'],btn:'PLAY'}
   ];
 
   cards.forEach((c,i)=>{
     const x=c.x,y=cardY;
     BTNS[c.key]={x,y,w:cardW,h:cardH};
     ctx.save();
-    ctx.fillStyle=i===2?'rgba(120,120,120,0.15)':'rgba(0,245,255,0.08)';
-    if (i===1) ctx.fillStyle='rgba(57,255,20,0.08)';
+    ctx.fillStyle=i===2?'rgba(255,50,50,0.12)':(i===1?'rgba(57,255,20,0.08)':'rgba(0,245,255,0.08)');
     ctx.fillRect(x,y,cardW,cardH);
     glow(c.col,14); ctx.strokeStyle=c.col; ctx.lineWidth=2; ctx.strokeRect(x,y,cardW,cardH);
-    setFont(14,'900'); glow(c.col,10); txt(c.title,x+cardW/2,y+28,c.col);
+    setFont(i===2?12:14,'900'); glow(c.col,10); txt(c.title,x+cardW/2,y+28,c.col);
     setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt(c.sub,x+cardW/2,y+44,c.col);
+    if (i===2) {
+      ctx.save(); ctx.fillStyle='#ffe600'; ctx.fillRect(x+cardW-34,y+4,30,12);
+      setFont(7,'900',"'Share Tech Mono',monospace"); noGlow(); txt('NEW!',x+cardW-19,y+13,'#000'); ctx.restore();
+    }
     setFont(26,'900'); glow(c.col,14); txt(c.icon,x+cardW/2,y+100,c.col);
     setFont(8,'400',"'Share Tech Mono',monospace"); noGlow();
-    c.feats.forEach((f,j)=>txt(`• ${f}`,x+10,y+136+j*16,i===2?'rgba(180,180,180,0.8)':c.col,'left'));
-    drawNeonBtn(x+10,y+cardH-38,cardW-20,28,c.col,c.btn,10,1,i===2?0:Math.sin(t*3+i));
-    if (i===2) {
-      setFont(18,'900'); glow('#bcbcbc',10); txt('?',x+cardW/2,y+188,'#bcbcbc');
-      setFont(10,'900',"'Share Tech Mono',monospace"); noGlow();
-      txt('COMING',x+cardW/2,y+214,'#cfcfcf');
-      txt('SOON',x+cardW/2,y+230,'#cfcfcf');
-    }
+    c.feats.forEach((f,j)=>txt(`• ${f}`,x+10,y+136+j*16,c.col,'left'));
+    drawNeonBtn(x+10,y+cardH-38,cardW-20,28,c.col,c.btn,10,1,Math.sin(t*3+i));
     ctx.restore();
   });
-
-  BTNS.modeWideSoon={x:22,y:528,w:LW-44,h:46};
-  drawNeonBtn(22,528,LW-44,46,'#8a8a8a','?  COMING SOON',13,0.8,0);
 
   const bW=130,bH=34,bX=(LW-bW)/2,bY=LH-46;
   BTNS.back={x:bX,y:bY,w:bW,h:bH};
   drawNeonBtn(bX,bY,bW,bH,CFG.PK,'← BACK',11,0.85,Math.sin(t*2));
   ctx.restore();
+}
+
+
+function drawImpossibleIntro(t) {
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
+  const pix=16;
+  for (let y=0;y<LH;y+=pix) {
+    for (let x=0;x<LW;x+=pix) {
+      if (Math.random()<0.08) { ctx.fillStyle='rgba(180,20,20,0.22)'; ctx.fillRect(x,y,pix,pix); }
+    }
+  }
+  for (let i=0;i<26;i++) {
+    const cx=(i*37+t*22)%LW, cy=(i*53+t*10)%LH;
+    ctx.fillStyle='rgba(160,160,160,0.08)'; circle(cx,cy,18+rnd(0,22),'rgba(160,160,160,0.08)');
+  }
+  let title='WELCOME TO IMPOSSIBLE MODE';
+  let sub='One life only. Survive if you can.';
+  if (impossibleIntroT>2.8) {
+    const c=Math.max(0,3-Math.floor(impossibleIntroT-2.8));
+    title=c>0?String(c):'GO!';
+    sub='STAGE 1: Defeat the Evil!';
+  }
+  setFont(22,'900'); glow('#ff3344',22); txt(title,LW/2,LH*0.34,'#ff3344');
+  setFont(10,'700',"'Share Tech Mono',monospace"); noGlow(); txt(sub,LW/2,LH*0.34+24,'rgba(255,180,180,0.85)');
+  const py=impossibleIntroT>5.6?lerp(LH*0.58,PLAYER_BASE_Y,Math.min(1,(impossibleIntroT-5.6)/1.2)):LH*0.58;
+  glow('#ff7744',18); circle(LW/2,py,CFG.PR+2,'#ff7744');
+  setFont(9,'700',"'Share Tech Mono',monospace"); txt('IMPOSSIBLE STARTS IN',LW/2,LH*0.62,'rgba(255,120,120,0.85)');
 }
 
 // ── QUESTS SCREEN ─────────────────────────────────────────────────
@@ -1994,9 +2028,10 @@ function drawGameOver(t) {
     ctx.globalAlpha=0.7+0.3*Math.sin(t*4); setFont(11,'700'); glow(CFG.YL,14);
     txt('★ NEW BEST! ★',LW/2,LH*0.48+20,CFG.YL); ctx.globalAlpha=1;
   }
-  if (gameMode==='ADVENTURE') {
-    setFont(10,'700'); glow(CFG.GR,10);
-    txt(`Reached: ${ADV_STAGES[adventureStage].name} · ${ADV_STAGES[adventureStage].label}`,LW/2,LH*0.52,CFG.GR);
+  if (gameMode==='ADVENTURE' || gameMode==='IMPOSSIBLE') {
+    const st=gameMode==='IMPOSSIBLE'?(IMP_STAGES[impossibleStage]||IMP_STAGES[0]):(ADV_STAGES[adventureStage]);
+    setFont(10,'700'); glow(gameMode==='IMPOSSIBLE'?'#ff4455':CFG.GR,10);
+    txt(`Reached: ${st.name} · ${st.label}`,LW/2,LH*0.52,gameMode==='IMPOSSIBLE'?'#ff4455':CFG.GR);
   }
   noGlow(); setFont(9,'400',"'Share Tech Mono',monospace"); ctx.globalAlpha=0.55;
   txt(`◆ ${gemsCollected} GEMS   ×${maxCombo} MAX COMBO`,LW/2,LH*0.54,CFG.CY);
@@ -2354,7 +2389,7 @@ const QUEST_POOL_SIZE=428;
 const QUESTS_PER_HOUR=20;
 
 let jetpackCount=0, regenUsed=0;
-let pwrCounts={JETPACK:0,MAGNET:0,BOOST:0,SHIELD:0,SLOW:0,HEALTH_BOOST:0,MINI_JETPACK:0,NEW_STAGE:0,REGEN:0,X2_GEMS:0,GEM_DROP:0};
+let pwrCounts={JETPACK:0,MAGNET:0,BOOST:0,SHIELD:0,SLOW:0,HEALTH_BOOST:0,MINI_JETPACK:0,NEW_STAGE:0,REGEN:0,X2_GEMS:0,GEM_DROP:0,BAD_LUCK:0};
 
 function makeQuest(id,label,desc,reward,check){ return {id,label,desc,reward,check}; }
 
@@ -2874,6 +2909,7 @@ let doneObjs=loadDoneObjs();
 // State
 let gs='LOADING';
 let gameMode='ENDLESS';
+let impossibleStage=0, impossibleIntroT=0, impossibleIntroDone=false;
 let score=0, bestScore=0, lives=0, maxLives=CFG.LIVES, multi=1, gemStreak=0, maxCombo=1;
 let gemsCollected=0;
 let worldSpeedMult=1;
@@ -2891,6 +2927,7 @@ let miniJetpackActive=false, miniJetpackTimer=0;
 let stageBoostActive=false; // compatibility alias to avoid stale references
 let newStageActive=false, newStageTimer=0;
 let stagePowerupNext=rnd(20,30), stagePowerupElapsed=0;
+let badLuckActive=false,badLuckTimer=0,badLuckSpawnT=0;
 
 let gemTimer=0, gemNext=0, pwrTimer2=0, pwrNext=0, obsTimer=0, obsNext=0;
 let fps=0, fpsFrames=0, fpsTimer=0;
@@ -2925,6 +2962,7 @@ function triggerLeaderboardFetch(force=false) {
 }
 
 function activateImmunity(sec=immunityDuration()) {
+  if (gameMode==='IMPOSSIBLE') sec=Math.min(sec,1.5);
   immunityActive=true;
   immunityTimer=Math.max(immunityTimer,sec);
   player.inv=true;
@@ -2943,20 +2981,31 @@ function clearObstaclesTemporarily() {
   obstacleClearTimer=1.0;
 }
 
+
+function startImpossibleIntro() {
+  gameMode='IMPOSSIBLE';
+  gs='IMPOSSIBLE_INTRO';
+  impossibleIntroT=0; impossibleIntroDone=false;
+  clearAllFX();
+  terrain.reset(); player.reset();
+  gems.length=0; powerups.length=0; obstacles.length=0;
+  transDir=1; transAlpha=1;
+}
+
 function goMenu() {
   gs='MENU'; menuSlideY=0;
   clearAllFX(); terrain.reset(); player.reset();
   gems.length=0; powerups.length=0; obstacles.length=0;
   transDir=1; transAlpha=1;
   activePwr=null; pwrTimer=0; worldSpeedMult=1;
-  immunityActive=false; immunityTimer=0; obstacleClearTimer=0;
+  immunityActive=false; immunityTimer=0; obstacleClearTimer=0; badLuckActive=false; badLuckTimer=0; badLuckSpawnT=0; gemDoubleActive=false; gemDoubleTimer=0; gemDropActive=false; gemDropTimer=0; gemDropSpawnTimer=0;
   pauseToggleLock=0;
   continueOfferTimer=0;
   shuffleShop();
 }
 
-function startGame(starterPwr=null) {
-  score=0; maxLives=CFG.LIVES; lives=maxLives;
+function startGame(starterPwr=null, forceNoStarter=false) {
+  score=0; maxLives=(gameMode==='IMPOSSIBLE'?1:CFG.LIVES); lives=maxLives;
   continueAttempts=0; continueOfferTimer=0;
   multi=1; gemStreak=0; maxCombo=1; gemsCollected=0;
   worldSpeedMult=1; activePwr=null; pwrTimer=0;
@@ -2969,23 +3018,27 @@ function startGame(starterPwr=null) {
   obsTimer=0; obsNext=rnd(...CFG.OBS_INT);
   lastMilestone=0; clusterTimer=0; clusterNext=8;
   jetpackCount=0; regenUsed=0;
-  pwrCounts={JETPACK:0,MAGNET:0,BOOST:0,SHIELD:0,SLOW:0,HEALTH_BOOST:0,MINI_JETPACK:0,NEW_STAGE:0,REGEN:0,X2_GEMS:0,GEM_DROP:0};
+  pwrCounts={JETPACK:0,MAGNET:0,BOOST:0,SHIELD:0,SLOW:0,HEALTH_BOOST:0,MINI_JETPACK:0,NEW_STAGE:0,REGEN:0,X2_GEMS:0,GEM_DROP:0,BAD_LUCK:0};
   // Adventure setup
-  adventureStage=0; adventureStageTimer=0;
+  adventureStage=0; adventureStageTimer=0; impossibleStage=0;
   miniJetpackActive=false; miniJetpackTimer=0;
   newStageActive=false; newStageTimer=0;
   stagePowerupNext=rnd(20,30); stagePowerupElapsed=0;
   stageTransT=0;
-  immunityActive=false; immunityTimer=0; obstacleClearTimer=0;
+  immunityActive=false; immunityTimer=0; obstacleClearTimer=0; badLuckActive=false; badLuckTimer=0; badLuckSpawnT=0; gemDoubleActive=false; gemDoubleTimer=0; gemDropActive=false; gemDropTimer=0; gemDropSpawnTimer=0;
   terrain.reset(); player.reset();
   // Set adventure starting speed
   if (gameMode==='ADVENTURE') {
     const st=ADV_STAGES[0];
     terrain.speed=st.spd;
   }
+  if (gameMode==='IMPOSSIBLE') {
+    const st=IMP_STAGES[0];
+    terrain.speed=st.spd;
+  }
   transDir=1; transAlpha=1;
 
-  if (starterPwr) {
+  if (starterPwr && !forceNoStarter && gameMode!=='IMPOSSIBLE') {
     if (starterPwr==='SHIELD') {
       activatePwr('SHIELD',shieldDuration(150)); player.shield=true;
     } else if (starterPwr==='JETPACK') {
@@ -3002,6 +3055,7 @@ function startGame(starterPwr=null) {
 }
 
 function activateHealthBoost(dur=healthBoostDuration(30)) {
+  if (gameMode==='IMPOSSIBLE') return;
   healthBoostActive=true; healthBoostTimer=dur; healthBoostMax=dur;
   const prevMax=maxLives; maxLives=CFG.MAX_LIVES;
   // Top up to new max if possible
@@ -3046,6 +3100,23 @@ function advanceAdventureStage() {
   addRing(LW/2,LH/2,'#88ffcc',200,300,3);
   SFX.stage();
   flashAlpha=0.5; flashCol='#88ffcc';
+}
+
+
+function advanceImpossibleStage() {
+  if (impossibleStage>=IMP_STAGES.length-1) {
+    stageTransLabel='STAGE 4 · THE IMPOSSIBLE CHALLENGE!';
+    stageTransT=3.2;
+    addNotif('MAX IMPOSSIBLE STAGE!', '#ff3333');
+    return;
+  }
+  impossibleStage++;
+  const st=IMP_STAGES[impossibleStage];
+  terrain.speed=Math.max(terrain.speed,st.spd);
+  const names=['STAGE 1: Defeat the Evil!','STAGE 2: Avoid the Demons!','STAGE 3: Thin Storm!','STAGE 4: The Impossible Challenge!'];
+  stageTransLabel=names[impossibleStage]||`${st.name} · ${st.label}`;
+  stageTransT=3.2;
+  addNotif(`⬆ ${st.name} — ${st.label}!`,'#ff4455');
 }
 
 function togglePause() {
@@ -3148,22 +3219,6 @@ function collectNearbyDrops(cx,cy,radius=120) {
     const dx=p.x-cx,dy=p.y-cy;
     if (dx*dx+dy*dy<=r2) collectPwr(p);
   }
-}
-
-function collectNearbyDrops(cx,cy,radius=120) {
-  const r2=radius*radius;
-  for (let i=gems.length-1;i>=0;i--) {
-    const g=gems[i];
-    if (!g||g.collected||!g.active) continue;
-    const dx=g.x-cx,dy=g.y-cy;
-    if (dx*dx+dy*dy<=r2) collectGem(g);
-  }
-  for (let i=powerups.length-1;i>=0;i--) {
-    const p=powerups[i];
-    if (!p||p.collected||!p.active) continue;
-    const dx=p.x-cx,dy=p.y-cy;
-    if (dx*dx+dy*dy<=r2) collectPwr(p);
-  }
   for (let i=powerups.length-1;i>=0;i--) {
     const p=powerups[i];
     if (!p||p.collected||!p.active) continue;
@@ -3245,13 +3300,14 @@ function collectPwr(pwr) {
   else if (pwr.key==='HEALTH_BOOST') { SFX.regen(); activateHealthBoost(healthBoostDuration(30)); pwrCounts.HEALTH_BOOST++; }
   else if (pwr.key==='REGEN')        { SFX.regen(); collectRegen(pwr.x,pwr.y); pwrCounts.REGEN++; }
   else if (pwr.key==='MINI_JETPACK') { SFX.jetpack(); activateMiniJetpack(); pwrCounts.MINI_JETPACK++; }
-  else if (pwr.key==='NEW_STAGE')    { SFX.stage(); activateNewStagePowerup(); pwrCounts.NEW_STAGE++; }
+  else if (pwr.key==='NEW_STAGE')    { if (newStageActive) return; SFX.stage(); activateNewStagePowerup(); pwrCounts.NEW_STAGE++; }
   else if (pwr.key==='X2_GEMS')      { SFX.pwr(); activateGemDouble(); pwrCounts.X2_GEMS++; }
   else if (pwr.key==='GEM_DROP')     { SFX.stage(); activateGemDrop(); pwrCounts.GEM_DROP++; }
+  else if (pwr.key==='BAD_LUCK')     { SFX.hit(); activateBadLuck(); pwrCounts.BAD_LUCK++; }
   else SFX.pwr();
   burst(pwr.x,pwr.y,col,24,220); ringBurst(pwr.x,pwr.y,col);
   addShake(6,0.2); flashAlpha=0.35; flashCol=col;
-  if (pwr.key!=='HEALTH_BOOST'&&pwr.key!=='REGEN'&&pwr.key!=='MINI_JETPACK'&&pwr.key!=='NEW_STAGE'&&pwr.key!=='X2_GEMS'&&pwr.key!=='GEM_DROP') {
+  if (pwr.key!=='HEALTH_BOOST'&&pwr.key!=='REGEN'&&pwr.key!=='MINI_JETPACK'&&pwr.key!=='NEW_STAGE'&&pwr.key!=='X2_GEMS'&&pwr.key!=='GEM_DROP'&&pwr.key!=='BAD_LUCK') {
     addNotif(`${pwr.info.label} ACTIVATED!`,col);
     addFloat(pwr.x,pwr.y-16,pwr.info.icon+' '+pwr.info.label,col);
   }
@@ -3265,6 +3321,7 @@ function activatePwr(key,dur) {
 }
 
 function collectRegen(x,y) {
+  if (gameMode==='IMPOSSIBLE') { addNotif('REGEN BLOCKED IN IMPOSSIBLE','#ff4455'); return; }
   if (lives>=maxLives) { addNotif('LIVES FULL!','#ff6699'); return; }
   lives=Math.min(maxLives,lives+1); regenUsed++;
   addNotif(`✚ REGEN! LIFE RESTORED (${lives}/${maxLives})`,'#ff6699');
@@ -3312,6 +3369,12 @@ function activateGemDrop() {
   addFloat(player.x,player.y-24,'💠 GEM RAIN','#99ddff');
 }
 
+function activateBadLuck() {
+  badLuckActive=true; badLuckTimer=5.0; badLuckSpawnT=0;
+  addNotif('☠ BAD LUCK! FALLING OBSTACLES','#ff3333');
+  addFloat(player.x,player.y-24,'☠ BAD LUCK','#ff3333');
+}
+
 function spawnNewStageLine(count=8) {
   const w=terrain.getWalls(CFG.SEG_H*2);
   const pad=24;
@@ -3346,12 +3409,15 @@ function spawnObjects(dt) {
   pwrTimer2+=dt;
   if (pwrTimer2>=pwrNext) { pwrTimer2=0; pwrNext=rnd(...CFG.PWR_INT); powerups.push(new PowerUp(terrain)); }
 
-  // Adventure stage powerup timing
-  if (gameMode==='ADVENTURE'&&!newStageActive) {
+  // Adventure / Impossible stage powerup timing
+  if ((gameMode==='ADVENTURE' || gameMode==='IMPOSSIBLE') && !newStageActive) {
     stagePowerupElapsed+=dt;
     if (stagePowerupElapsed>=stagePowerupNext) {
       stagePowerupElapsed=0; stagePowerupNext=rnd(18,26);
-      if (adventureStage>=5) {
+      if (gameMode==='ADVENTURE' && adventureStage>=5) {
+        const p=new PowerUp(terrain); p.key='MINI_JETPACK'; p.info=PWR_TYPES.MINI_JETPACK;
+        powerups.push(p);
+      } else if (gameMode==='IMPOSSIBLE' && impossibleStage>=3) {
         const p=new PowerUp(terrain); p.key='MINI_JETPACK'; p.info=PWR_TYPES.MINI_JETPACK;
         powerups.push(p);
       } else {
@@ -3360,8 +3426,8 @@ function spawnObjects(dt) {
     }
   }
 
-  // Obstacles (skipped in adventure stage 1, or if turned off)
-  const stage=ADV_STAGES[adventureStage];
+  // Obstacles (mode-aware)
+  const stage=(gameMode==='IMPOSSIBLE'?(IMP_STAGES[impossibleStage]||IMP_STAGES[0]):(ADV_STAGES[adventureStage]||ADV_STAGES[0]));
   const obsOff=(gameMode==='ADVENTURE'&&stage.obsOff);
   if (!obsOff&&obstacleClearTimer<=0) {
     const obsThresh=Math.max(60,CFG.OBS_THRESH-gameTime*8);
@@ -3517,6 +3583,14 @@ function loop(ts) {
     requestAnimationFrame(loop); return;
   }
 
+  if (gs==='IMPOSSIBLE_INTRO') {
+    impossibleIntroT+=dt;
+    drawImpossibleIntro(menuT);
+    if (impossibleIntroT>7.2 && !impossibleIntroDone) { impossibleIntroDone=true; startGame(null,true); }
+    drawTransition();
+    requestAnimationFrame(loop); return;
+  }
+
   // ── CHARSHOP ────────────────────────────────────────────────
   if (gs==='CHARSHOP') {
     drawCharShop(menuT);
@@ -3633,6 +3707,8 @@ function loop(ts) {
   const wdt=dt*worldSpeedMult;
   gameTime+=dt;
 
+  if (gameMode==='IMPOSSIBLE' && impossibleStage>=2) { gemDoubleActive=true; gemDoubleTimer=999; }
+
   // Active powerup countdown
   if (activePwr&&PWR_TYPES[activePwr]?.dur>0) {
     pwrTimer-=dt;
@@ -3650,7 +3726,7 @@ function loop(ts) {
     if (healthBoostTimer<=0) deactivateHealthBoost();
   }
 
-  if (gemDoubleActive) {
+  if (gemDoubleActive && !(gameMode==='IMPOSSIBLE' && impossibleStage>=2)) {
     gemDoubleTimer-=dt;
     if (gemDoubleTimer<=0) { gemDoubleActive=false; gemDoubleTimer=0; addNotif('X2 GEMS ENDED',CFG.YL); }
   }
@@ -3683,6 +3759,17 @@ function loop(ts) {
 
   if (obstacleClearTimer>0) obstacleClearTimer=Math.max(0,obstacleClearTimer-dt);
 
+  if (badLuckActive) {
+    badLuckTimer-=dt; badLuckSpawnT-=dt;
+    if (badLuckSpawnT<=0) {
+      badLuckSpawnT=0.18;
+      const o=new Obstacle(terrain);
+      o.y=-30; o.x=rnd(24,LW-24);
+      obstacles.push(o);
+    }
+    if (badLuckTimer<=0) { badLuckActive=false; badLuckTimer=0; addNotif('BAD LUCK ENDED','#ff3333'); }
+  }
+
   if (miniJetpackActive) {
     miniJetpackTimer-=dt;
     if (miniJetpackTimer<=0) {
@@ -3707,7 +3794,8 @@ function loop(ts) {
       addShake(14,0.5);
       collectNearbyDrops(player.x,player.y,150);
       activateImmunity(3.0);
-      advanceAdventureStage();
+      if (gameMode==='IMPOSSIBLE') advanceImpossibleStage();
+      else advanceAdventureStage();
     }
   }
 
@@ -3720,6 +3808,7 @@ function loop(ts) {
   if (flashAlpha>0) flashAlpha=Math.max(0,flashAlpha-dt*3.5);
 
   updateShake(dt);
+  if (gameMode==='IMPOSSIBLE' && impossibleStage>=2) addShake(impossibleStage>=3?1.2:0.6,0.05);
   terrain.update(wdt);
   const hitResult=player.update(dt,terrain);
   if (hitResult==='SIDE_TOUCH' || hitResult==='WALL') {
@@ -3802,6 +3891,14 @@ function loop(ts) {
   drawParticles(); drawRings();
   ctx.restore();
 
+  if (gameMode==='IMPOSSIBLE') {
+    const tint=IMP_STAGES[impossibleStage]?.theme||'rgba(255,20,20,0.1)';
+    ctx.save(); ctx.fillStyle=tint; ctx.fillRect(0,0,LW,LH); ctx.restore();
+    if (impossibleStage>=2 && Math.random()<0.06) {
+      ctx.save(); ctx.globalAlpha=0.2+Math.random()*0.3; ctx.fillStyle='#fff'; ctx.fillRect(0,rnd(0,LH*0.5),LW,2+rnd(0,2)); ctx.restore();
+    }
+  }
+
   // Stage boost visual
   if (miniJetpackActive||newStageActive) {
     const a=0.08+0.05*Math.sin(menuT*9);
@@ -3819,6 +3916,14 @@ function loop(ts) {
     ctx.restore();
   }
 
+  if (gameMode==='IMPOSSIBLE') {
+    ctx.save();
+    const fogA=impossibleStage>=3?0.22:(impossibleStage>=2?0.16:0.1);
+    const g=ctx.createLinearGradient(0,LH,0,LH*0.35);
+    g.addColorStop(0,`rgba(120,0,0,${fogA})`); g.addColorStop(1,'transparent');
+    ctx.fillStyle=g; ctx.fillRect(0,LH*0.35,LW,LH*0.65);
+    ctx.restore();
+  }
   drawJetpackFog();
   drawFlash();
   drawHUD();
