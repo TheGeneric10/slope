@@ -19,6 +19,10 @@
 </head>
 <body>
 <canvas id="c"></canvas>
+<input id="profileUploadInput" type="file" accept="image/*" style="display:none">
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
 
 <!-- ============================================================ -->
 <!--  SCRIPT 1 · CONFIG & CONSTANTS                              -->
@@ -69,7 +73,7 @@ function saveOptionPrefs(){ localStorage.setItem('slope_options',JSON.stringify(
 let OPTION_PREFS=loadOptionPrefs();
 
 // BUG FIX 1: Removed duplicate VERSION constant ('0.9.1' shadowed '0.9.2')
-const VERSION = '0.12.4';
+const VERSION = 'pre-1.0.0';
 
 // Adventure stage configs
 const ADV_STAGES = [
@@ -2725,7 +2729,7 @@ function drawCharShop(t) {
 <!-- ============================================================ -->
 <script id="s-logic">
 function loadBank()  { return parseInt(localStorage.getItem('slope_gems')||'0',10); }
-function saveBank(v) { localStorage.setItem('slope_gems',String(v)); }
+function saveBank(v) { localStorage.setItem('slope_gems',String(v)); if (typeof queueCloudSync==='function') queueCloudSync(); }
 function addToBank(n){ const v=loadBank()+n; saveBank(v); return v; }
 let totalGems=loadBank();
 
@@ -2748,7 +2752,7 @@ function loadUpgrades() {
     };
   } catch { return {immunity:1,score:1,shield:1,health:1}; }
 }
-function saveUpgrades(v){ localStorage.setItem('slope_upgrades',JSON.stringify(v)); }
+function saveUpgrades(v){ localStorage.setItem('slope_upgrades',JSON.stringify(v)); if (typeof queueCloudSync==='function') queueCloudSync(); }
 let upgrades=loadUpgrades();
 const UPGRADE_ROWS=[];
 function upgradeCost(level){ return UPGRADE_COSTS[Math.max(0,Math.min(3,level-1))]; }
@@ -2824,9 +2828,27 @@ function drawUpgradesScreen(t){
 
 
 const AUTH_KEY='slope_auth';
+const AUTH_GUEST={signedIn:false,name:'Guest Runner',email:'guest@slope.local',uid:'',verified:false,bio:'',avatar:''};
+const FIREBASE_CONFIG={
+  apiKey:"AIzaSyA375t6p_Zc9Ztfi-RUniqAmjttsjPyy1k",
+  authDomain:"thegeneric-685b0.firebaseapp.com",
+  databaseURL:"https://thegeneric-685b0-default-rtdb.firebaseio.com",
+  projectId:"thegeneric-685b0",
+  storageBucket:"thegeneric-685b0.firebasestorage.app",
+  messagingSenderId:"272113167212",
+  appId:"1:272113167212:web:ce1eaa647222c15a292149",
+  measurementId:"G-N068FXTMC7"
+};
+const CLOUD_INFO_ROOT='SLOPE/user/encrypted/info';
+
+let fbReady=false, fbAuth=null, fbDb=null, fbUser=null;
+let cloudSyncTimer=0;
+let profileBio='';
+let profileAvatar='';
+
 function loadAuth(){
-  try { return JSON.parse(localStorage.getItem(AUTH_KEY)||'{"signedIn":false,"name":"Guest Runner","email":"guest@slope.local"}'); }
-  catch { return {signedIn:false,name:'Guest Runner',email:'guest@slope.local'}; }
+  try { return JSON.parse(localStorage.getItem(AUTH_KEY)||JSON.stringify(AUTH_GUEST)); }
+  catch { return {...AUTH_GUEST}; }
 }
 function saveAuth(v){ localStorage.setItem(AUTH_KEY,JSON.stringify(v)); }
 let auth=loadAuth();
@@ -2834,8 +2856,35 @@ let isSignedIn=!!auth.signedIn;
 let authFlowState='idle'; // idle/loading/success/error
 let authFlowTimer=0;
 let authFlowError='';
-let signinForm={email:'runner@slope.dev',password:'••••••••'};
-let signupForm={username:'Neon Runner',email:'runner@slope.dev',password:'••••••••',confirm:'••••••••'};
+let authFlowMsg='';
+let signinForm={email:'runner@slope.dev',password:''};
+let signupForm={username:'Neon Runner',email:'runner@slope.dev',password:'',confirm:''};
+
+function initFirebase(){
+  try {
+    if (!window.firebase || !firebase.apps) throw new Error('SDK_MISSING');
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    fbAuth=firebase.auth();
+    fbDb=firebase.database();
+    fbReady=true;
+    fbAuth.onAuthStateChanged(async u=>{
+      fbUser=u||null;
+      if (u) {
+        isSignedIn=true;
+        auth={signedIn:true,name:u.displayName||auth.name||'Runner',email:u.email||'',uid:u.uid||'',verified:!!u.emailVerified,bio:profileBio||'',avatar:profileAvatar||''};
+        saveAuth(auth);
+        await loadCloudProfileAndProgress();
+      } else {
+        isSignedIn=false;
+        auth={...AUTH_GUEST};
+        profileBio=''; profileAvatar='';
+        saveAuth(auth);
+      }
+    });
+  } catch (e) {
+    fbReady=false;
+  }
+}
 
 function drawLoadingDots(x,y,t,col='#888') {
   for (let i=0;i<3;i++) {
@@ -2848,23 +2897,23 @@ function drawLoadingDots(x,y,t,col='#888') {
 function drawAuthField(x,y,w,label,val) {
   setFont(8,'700','Arial'); noGlow(); txt(label,x,y-4,'#7a7a7a','left');
   ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=1; ctx.strokeRect(x,y,w,24);
-  setFont(10,'700','Arial'); txt(val,x+8,y+16,'#222','left');
+  setFont(10,'700','Arial'); txt(val||'Tap to enter',x+8,y+16,'#222','left');
 }
 
 function drawAuthOverlay(t) {
   if (authFlowState==='idle') return;
   ctx.fillStyle='rgba(0,0,0,0.52)'; ctx.fillRect(0,0,LW,LH);
   if (authFlowState==='loading') {
-    setFont(14,'900','Arial'); txt('Loading...',LW/2,LH*0.48,'#fff');
+    setFont(14,'900','Arial'); txt('Working...',LW/2,LH*0.48,'#fff');
     drawLoadingDots(LW/2-14,LH*0.48+18,t,'#fff');
   } else if (authFlowState==='error') {
-    setFont(16,'900','Arial'); txt(`ERROR ${authFlowError}`,LW/2,LH*0.48,'#ff4466');
-    setFont(10,'700','Arial'); txt('Could not reach auth service.',LW/2,LH*0.48+20,'#fff');
+    setFont(16,'900','Arial'); txt('AUTH ERROR',LW/2,LH*0.48,'#ff4466');
+    setFont(10,'700','Arial'); txt(authFlowError||'Unknown error',LW/2,LH*0.48+20,'#fff');
   } else if (authFlowState==='success') {
     setFont(16,'900','Arial'); txt('SUCCESS',LW/2,LH*0.48,'#80ff80');
-    setFont(10,'700','Arial'); txt('Progress sync simulated.',LW/2,LH*0.48+20,'#fff');
+    setFont(10,'700','Arial'); txt(authFlowMsg||'Done.',LW/2,LH*0.48+20,'#fff');
     BTNS.authRestart={x:(LW-180)/2,y:LH*0.48+34,w:180,h:32};
-    drawNeonBtn(BTNS.authRestart.x,BTNS.authRestart.y,180,32,CFG.GR,'RESTART GAME',11,1,Math.sin(t*2));
+    drawNeonBtn(BTNS.authRestart.x,BTNS.authRestart.y,180,32,CFG.GR,'REFRESH GAME',11,1,Math.sin(t*2));
   }
 }
 
@@ -2880,11 +2929,11 @@ function drawSignInScreen(t){
   BTNS.signinEmail={x:x+24,y:y+54,w:w-48,h:24};
   BTNS.signinPass={x:x+24,y:y+100,w:w-48,h:24};
   drawAuthField(BTNS.signinEmail.x,BTNS.signinEmail.y,BTNS.signinEmail.w,'Email',signinForm.email);
-  drawAuthField(BTNS.signinPass.x,BTNS.signinPass.y,BTNS.signinPass.w,'Password',signinForm.password);
+  drawAuthField(BTNS.signinPass.x,BTNS.signinPass.y,BTNS.signinPass.w,'Password',signinForm.password?'•'.repeat(Math.max(6,Math.min(12,signinForm.password.length))):'');
 
   BTNS.authSubmit={x:x+24,y:y+148,w:w-48,h:34};
   drawNeonBtn(BTNS.authSubmit.x,BTNS.authSubmit.y,BTNS.authSubmit.w,BTNS.authSubmit.h,CFG.CY,'LOGIN',12,1,Math.sin(t*2));
-  setFont(9,'700','Arial'); noGlow(); txt('Forgot password?',LW/2,y+206,'#8a8a8a');
+  setFont(9,'700','Arial'); noGlow(); txt('Tap fields to type',LW/2,y+206,'#8a8a8a');
 
   BTNS.signinSwitch={x:x+24,y:y+236,w:w-48,h:30};
   drawNeonBtn(BTNS.signinSwitch.x,BTNS.signinSwitch.y,BTNS.signinSwitch.w,BTNS.signinSwitch.h,'#444','GO TO SIGN UP',10,1,0);
@@ -2899,7 +2948,7 @@ function drawSignInScreen(t){
 function drawSignUpScreen(t){
   ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
   setFont(20,'900','Arial'); noGlow(); txt('Sign Up',LW/2,86,'#202226');
-  setFont(9,'400','Arial'); txt('Create your account',LW/2,106,'#7b7b7b');
+  setFont(9,'400','Arial'); txt('Create your account (password 6-20)',LW/2,106,'#7b7b7b');
   const x=40,y=124,w=LW-80;
   ctx.fillStyle='#f8f8f8'; ctx.fillRect(x,y,w,408);
   ctx.strokeStyle='rgba(0,0,0,0.15)'; ctx.strokeRect(x,y,w,408);
@@ -2910,8 +2959,8 @@ function drawSignUpScreen(t){
   BTNS.signupConfirm={x:x+24,y:y+172,w:w-48,h:24};
   drawAuthField(BTNS.signupName.x,BTNS.signupName.y,BTNS.signupName.w,'Username',signupForm.username);
   drawAuthField(BTNS.signupEmail.x,BTNS.signupEmail.y,BTNS.signupEmail.w,'Email',signupForm.email);
-  drawAuthField(BTNS.signupPass.x,BTNS.signupPass.y,BTNS.signupPass.w,'Password',signupForm.password);
-  drawAuthField(BTNS.signupConfirm.x,BTNS.signupConfirm.y,BTNS.signupConfirm.w,'Confirm Password',signupForm.confirm);
+  drawAuthField(BTNS.signupPass.x,BTNS.signupPass.y,BTNS.signupPass.w,'Password',signupForm.password?'•'.repeat(Math.max(6,Math.min(12,signupForm.password.length))):'');
+  drawAuthField(BTNS.signupConfirm.x,BTNS.signupConfirm.y,BTNS.signupConfirm.w,'Confirm Password',signupForm.confirm?'•'.repeat(Math.max(6,Math.min(12,signupForm.confirm.length))):'');
 
   BTNS.authSubmit={x:x+24,y:y+224,w:w-48,h:34};
   drawNeonBtn(BTNS.authSubmit.x,BTNS.authSubmit.y,BTNS.authSubmit.w,BTNS.authSubmit.h,CFG.GR,'SIGN UP',12,1,Math.sin(t*2.2));
@@ -2926,33 +2975,130 @@ function drawSignUpScreen(t){
   drawAuthOverlay(t);
 }
 
-function startAuthFlow(){
-  authFlowState='loading'; authFlowTimer=1.0;
-  authFlowError=Math.random()<0.35?'E401':'';
+async function writeCloudUserInfo(extra={}) {
+  if (!fbReady || !fbDb || !fbUser) return;
+  const payload={
+    uid:fbUser.uid,
+    email:fbUser.email||'',
+    name:fbUser.displayName||auth.name||'Runner',
+    verified:!!fbUser.emailVerified,
+    bio:profileBio||'',
+    avatar:profileAvatar||'',
+    updatedAt:Date.now(),
+    ...extra,
+  };
+  await fbDb.ref(`${CLOUD_INFO_ROOT}/${fbUser.uid}`).update(payload);
+}
+
+function buildLocalProgressPayload(){
+  return {
+    gems:loadBank(),
+    upgrades:loadUpgrades(),
+    unlocked:loadUnlocked(),
+    selectedChar:selectedChar||'default',
+    doneObjs:loadDoneObjs(),
+    options:OPTION_PREFS,
+    bestScore:bestScore||0,
+    runs:parseInt(localStorage.getItem('slope_runs')||'0',10),
+    totalTime:parseFloat(localStorage.getItem('slope_totalTime')||'0'),
+    updatedAt:Date.now(),
+  };
+}
+
+async function syncProgressToCloud(reason='auto') {
+  if (!isSignedIn || !fbReady || !fbDb || !fbUser) return;
+  try {
+    await fbDb.ref(`${CLOUD_INFO_ROOT}/${fbUser.uid}/progress`).set(buildLocalProgressPayload());
+  } catch (e) {}
+}
+function queueCloudSync(delay=700){
+  if (!isSignedIn) return;
+  if (cloudSyncTimer) clearTimeout(cloudSyncTimer);
+  cloudSyncTimer=setTimeout(()=>{ cloudSyncTimer=0; syncProgressToCloud('queued'); },delay);
+}
+
+async function loadCloudProfileAndProgress() {
+  if (!fbReady || !fbDb || !fbUser) return;
+  try {
+    const snap=await fbDb.ref(`${CLOUD_INFO_ROOT}/${fbUser.uid}`).get();
+    const val=snap&&snap.val?snap.val():null;
+    if (!val) {
+      await writeCloudUserInfo({createdAt:Date.now()});
+      await syncProgressToCloud('init');
+      return;
+    }
+    profileBio=val.bio||'';
+    profileAvatar=val.avatar||'';
+    if (val.progress) {
+      const p=val.progress;
+      if (typeof p.gems==='number') saveBank(p.gems);
+      if (p.upgrades) { upgrades={...upgrades,...p.upgrades}; saveUpgrades(upgrades); }
+      if (Array.isArray(p.unlocked)) { unlockedChars=p.unlocked.slice(); saveUnlocked(unlockedChars); }
+      if (Array.isArray(p.doneObjs)) { doneObjs=p.doneObjs.slice(); saveDoneObjs(doneObjs); }
+      if (p.selectedChar) { setSelectedChar(p.selectedChar); }
+      if (typeof p.bestScore==='number') bestScore=Math.max(bestScore,p.bestScore);
+      if (p.options && typeof p.options==='object') { OPTION_PREFS={...OPTION_PREFS,...p.options}; saveOptionPrefs(); }
+    }
+    auth={...auth,signedIn:true,name:val.name||auth.name,email:val.email||auth.email,uid:fbUser.uid,verified:!!fbUser.emailVerified,bio:profileBio,avatar:profileAvatar};
+    saveAuth(auth);
+  } catch (e) {}
+}
+
+async function handleAuthSignIn(){
+  if (!fbReady || !fbAuth) { authFlowState='error'; authFlowError='Firebase unavailable'; return; }
+  try {
+    authFlowState='loading'; authFlowError='';
+    const cred=await fbAuth.signInWithEmailAndPassword((signinForm.email||'').trim(),signinForm.password||'');
+    fbUser=cred.user;
+    await loadCloudProfileAndProgress();
+    authFlowState='success';
+    authFlowMsg='Signed in and cloud sync ready. Tap REFRESH GAME.';
+  } catch (e) {
+    authFlowState='error'; authFlowError=(e&&e.message)||'Sign in failed';
+  }
+}
+
+async function handleAuthSignUp(){
+  const pwd=signupForm.password||'';
+  if (pwd.length<6 || pwd.length>20) { authFlowState='error'; authFlowError='Password must be 6 to 20 chars.'; return; }
+  if (signupForm.password!==signupForm.confirm) { authFlowState='error'; authFlowError='Password mismatch.'; return; }
+  if (!fbReady || !fbAuth) { authFlowState='error'; authFlowError='Firebase unavailable'; return; }
+  try {
+    authFlowState='loading'; authFlowError='';
+    const cred=await fbAuth.createUserWithEmailAndPassword((signupForm.email||'').trim(),pwd);
+    if (cred.user) {
+      await cred.user.updateProfile({displayName:(signupForm.username||'Runner').trim()||'Runner'});
+      await cred.user.sendEmailVerification();
+      fbUser=cred.user;
+      auth={signedIn:true,name:cred.user.displayName||signupForm.username,email:cred.user.email||signupForm.email,uid:cred.user.uid,verified:false,bio:'',avatar:''};
+      isSignedIn=true; saveAuth(auth);
+      await writeCloudUserInfo({name:auth.name,email:auth.email,verified:false,createdAt:Date.now()});
+      await syncProgressToCloud('signup');
+      authFlowState='success';
+      authFlowMsg='Verification email sent. Verify, then tap REFRESH GAME.';
+    }
+  } catch (e) {
+    authFlowState='error'; authFlowError=(e&&e.message)||'Sign up failed';
+  }
 }
 
 function handleSignInTap(p){
   if (hitBtn(p,BTNS.authBack) || hitBtn(p,BTNS.authReturn)) { SFX.click(); doTransition('MENU'); return; }
   if (hitBtn(p,BTNS.signinSwitch)) { SFX.click(); doTransition('SIGNUP'); return; }
-  if (hitBtn(p,BTNS.signinEmail)) { SFX.click(); signinForm.email='player@slope.dev'; return; }
-  if (hitBtn(p,BTNS.signinPass)) { SFX.click(); signinForm.password='••••••••'; return; }
-  if (hitBtn(p,BTNS.authSubmit)) { SFX.click(); startAuthFlow(); return; }
+  if (hitBtn(p,BTNS.signinEmail)) { SFX.click(); const v=prompt('Enter email',signinForm.email||''); if (v!==null) signinForm.email=v.trim(); return; }
+  if (hitBtn(p,BTNS.signinPass)) { SFX.click(); const v=prompt('Enter password',''); if (v!==null) signinForm.password=v; return; }
+  if (hitBtn(p,BTNS.authSubmit)) { SFX.click(); handleAuthSignIn(); return; }
   if (hitBtn(p,BTNS.authRestart)) { SFX.click(); location.reload(); }
 }
 
 function handleSignUpTap(p){
   if (hitBtn(p,BTNS.authBack) || hitBtn(p,BTNS.authReturn)) { SFX.click(); doTransition('MENU'); return; }
   if (hitBtn(p,BTNS.signupSwitch)) { SFX.click(); doTransition('SIGNIN'); return; }
-  if (hitBtn(p,BTNS.signupName)) { SFX.click(); signupForm.username='Neon Runner'; return; }
-  if (hitBtn(p,BTNS.signupEmail)) { SFX.click(); signupForm.email='new@slope.dev'; return; }
-  if (hitBtn(p,BTNS.signupPass)) { SFX.click(); signupForm.password='••••••••'; return; }
-  if (hitBtn(p,BTNS.signupConfirm)) { SFX.click(); signupForm.confirm='••••••••'; return; }
-  if (hitBtn(p,BTNS.authSubmit)) {
-    SFX.click();
-    if (signupForm.password!==signupForm.confirm) { authFlowState='error'; authFlowError='E422'; return; }
-    startAuthFlow();
-    return;
-  }
+  if (hitBtn(p,BTNS.signupName)) { SFX.click(); const v=prompt('Enter display name',signupForm.username||''); if (v!==null) signupForm.username=v.trim(); return; }
+  if (hitBtn(p,BTNS.signupEmail)) { SFX.click(); const v=prompt('Enter email',signupForm.email||''); if (v!==null) signupForm.email=v.trim(); return; }
+  if (hitBtn(p,BTNS.signupPass)) { SFX.click(); const v=prompt('Create password (6-20 chars)',''); if (v!==null) signupForm.password=v; return; }
+  if (hitBtn(p,BTNS.signupConfirm)) { SFX.click(); const v=prompt('Confirm password',''); if (v!==null) signupForm.confirm=v; return; }
+  if (hitBtn(p,BTNS.authSubmit)) { SFX.click(); handleAuthSignUp(); return; }
   if (hitBtn(p,BTNS.authRestart)) { SFX.click(); location.reload(); }
 }
 
@@ -2961,36 +3107,98 @@ function drawProfileScreen(t){
   const x=26,y=86,w=LW-52,h=560;
   ctx.fillStyle='#ffffff'; ctx.fillRect(x,y,w,h); ctx.strokeStyle='rgba(0,0,0,0.12)'; ctx.strokeRect(x,y,w,h);
   setFont(24,'900','Arial'); txt('My Profile',x+20,y+44,'#1c1c1c','left');
-  setFont(10,'700','Arial'); txt('Status: synced',x+20,y+64,'#777','left');
+  setFont(10,'700','Arial'); txt(isSignedIn?'Status: cloud synced':'Status: guest local save',x+20,y+64,'#777','left');
+
+  const avatarX=x+w-84, avatarY=y+22, avatarR=24;
+  if (profileAvatar) {
+    const img=new Image(); img.src=profileAvatar;
+    ctx.save(); ctx.beginPath(); ctx.arc(avatarX,avatarY,avatarR,0,Math.PI*2); ctx.clip();
+    ctx.drawImage(img,avatarX-avatarR,avatarY-avatarR,avatarR*2,avatarR*2); ctx.restore();
+  } else {
+    circle(avatarX,avatarY,avatarR,'#cfd7df');
+    setFont(16,'900','Arial'); noGlow(); txt('⬆',avatarX,avatarY+6,'#4a5865');
+  }
+
   const rows=[
     `Display Name: ${auth.name||'Player'}`,
-    `Email: ${auth.email||'unknown@slope.local'}`,
+    `Email: ${auth.email||'guest@slope.local'}`,
+    `Verified: ${auth.verified?'YES':'NO'}`,
     `Best Score: ${Math.floor(bestScore)}`,
-    `Run Highscore: ${Math.floor(bestScore)}`,
-    `Avg Run Time: ${runAvgTime().toFixed(1)}s`
+    `Avg Run Time: ${runAvgTime().toFixed(1)}s`,
+    `Bio: ${profileBio||'Tap UPDATE BIO to set one.'}`
   ];
-  rows.forEach((r,i)=>{ setFont(11,'700','Arial'); txt(r,x+20,y+108+i*34,'#2a2a2a','left'); });
-  drawNeonBtn(x+20,y+h-100,w-40,32,CFG.CY,'EDIT PROFILE (COMING SOON)',10,1,0);
+  rows.forEach((r,i)=>{ setFont(10,'700','Arial'); txt(r,x+20,y+108+i*30,'#2a2a2a','left'); });
+
+  BTNS.profileUpload={x:x+20,y:y+h-170,w:w-40,h:30};
+  drawNeonBtn(BTNS.profileUpload.x,BTNS.profileUpload.y,BTNS.profileUpload.w,BTNS.profileUpload.h,CFG.CY,'UPLOAD ICON (<256KB)',10,1,0);
+  BTNS.profileBio={x:x+20,y:y+h-132,w:w-40,h:30};
+  drawNeonBtn(BTNS.profileBio.x,BTNS.profileBio.y,BTNS.profileBio.w,BTNS.profileBio.h,CFG.GR,'UPDATE BIO',10,1,0);
+  BTNS.profileSignOut={x:x+20,y:y+h-94,w:w-40,h:30};
+  drawNeonBtn(BTNS.profileSignOut.x,BTNS.profileSignOut.y,BTNS.profileSignOut.w,BTNS.profileSignOut.h,CFG.PK,'SIGN OUT',10,1,0);
+
   BTNS.authBack={x:(LW-140)/2,y:LH-44,w:140,h:30};
   drawNeonBtn(BTNS.authBack.x,BTNS.authBack.y,140,30,CFG.PK,'← BACK',11,1,Math.sin(t*2));
 }
 
 function handleProfileTap(p){
-  if (hitBtn(p,BTNS.authBack)) { SFX.click(); doTransition('MENU'); }
+  if (hitBtn(p,BTNS.authBack)) { SFX.click(); doTransition('MENU'); return; }
+  if (hitBtn(p,BTNS.profileUpload)) {
+    SFX.click();
+    if (!isSignedIn) { addNotif('Sign in to use cloud profile features.',CFG.YL); return; }
+    const inp=document.getElementById('profileUploadInput');
+    if (inp) inp.click();
+    return;
+  }
+  if (hitBtn(p,BTNS.profileBio)) {
+    SFX.click();
+    if (!isSignedIn) { addNotif('Bio editing unlocks after sign in.',CFG.YL); return; }
+    const v=prompt('Update bio (max 140 chars)',profileBio||'');
+    if (v!==null) {
+      profileBio=(v||'').slice(0,140);
+      auth={...auth,bio:profileBio}; saveAuth(auth);
+      writeCloudUserInfo({bio:profileBio});
+    }
+    return;
+  }
+  if (hitBtn(p,BTNS.profileSignOut)) {
+    SFX.click();
+    if (fbReady && fbAuth) fbAuth.signOut();
+    isSignedIn=false; auth={...AUTH_GUEST}; saveAuth(auth);
+    addNotif('Signed out. Guest local save active.',CFG.CY);
+    return;
+  }
 }
 
+initFirebase();
+const _profileUploadInput=document.getElementById('profileUploadInput');
+if (_profileUploadInput) {
+  _profileUploadInput.addEventListener('change',async e=>{
+    const f=e.target&&e.target.files&&e.target.files[0]?e.target.files[0]:null;
+    if (!f) return;
+    if (f.size>256*1024) { addNotif('Image must be under 256KB.',CFG.PK); e.target.value=''; return; }
+    const r=new FileReader();
+    r.onload=async()=>{
+      profileAvatar=String(r.result||'');
+      auth={...auth,avatar:profileAvatar}; saveAuth(auth);
+      await writeCloudUserInfo({avatar:profileAvatar});
+      addNotif('Profile icon updated.',CFG.GR);
+      e.target.value='';
+    };
+    r.readAsDataURL(f);
+  });
+}
 function loadUnlocked() {
   try { return JSON.parse(localStorage.getItem('slope_chars')||'["default"]'); }
   catch(e) { return ['default']; }
 }
-function saveUnlocked(arr) { localStorage.setItem('slope_chars',JSON.stringify(arr)); }
+function saveUnlocked(arr) { localStorage.setItem('slope_chars',JSON.stringify(arr)); if (typeof queueCloudSync==='function') queueCloudSync(); }
 function unlockChar(id) { const arr=loadUnlocked(); if (!arr.includes(id)){arr.push(id);saveUnlocked(arr);} }
 let unlockedChars=loadUnlocked();
 let selectedChar=localStorage.getItem('slope_selectedChar')||'default';
-function setSelectedChar(id) { selectedChar=id; localStorage.setItem('slope_selectedChar',id); }
+function setSelectedChar(id) { selectedChar=id; localStorage.setItem('slope_selectedChar',id); if (typeof queueCloudSync==='function') queueCloudSync(); }
 
 function loadDoneObjs() { try { return JSON.parse(localStorage.getItem('slope_objs')||'[]'); } catch(e){return[];} }
-function saveDoneObjs(arr) { localStorage.setItem('slope_objs',JSON.stringify(arr)); }
+function saveDoneObjs(arr) { localStorage.setItem('slope_objs',JSON.stringify(arr)); if (typeof queueCloudSync==='function') queueCloudSync(); }
 let doneObjs=loadDoneObjs();
 
 // State
@@ -3559,18 +3767,6 @@ function loop(ts) {
   // Background squares always update
   updateBgSquares(dt);
 
-  if (authFlowState==='loading') {
-    authFlowTimer-=dt;
-    if (authFlowTimer<=0) {
-      if (authFlowError) authFlowState='error';
-      else {
-        authFlowState='success';
-        auth={signedIn:true,name:signupForm.username||'Neon Runner',email:signinForm.email||signupForm.email||'runner@slope.dev'};
-        isSignedIn=true;
-        saveAuth(auth);
-      }
-    }
-  }
 
   // ── LOADING ──────────────────────────────────────────────────
   if (gs==='LOADING') {
