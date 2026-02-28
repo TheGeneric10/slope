@@ -54,7 +54,7 @@ const FPS_LABELS = ['30','60','∞'];
 const FPS_VALUES = [30,60,0]; // 0=unlimited
 
 // BUG FIX 1: Removed duplicate VERSION constant ('0.9.1' shadowed '0.9.2')
-const VERSION = '0.9.8';
+const VERSION = '0.9.9';
 
 // Adventure stage configs
 const ADV_STAGES = [
@@ -869,7 +869,7 @@ const PWR_WEIGHTED=[
 function randPwrKey() {
   if (gameMode==='ADVENTURE') {
     const pool=PWR_WEIGHTED.map(k=>k==='JETPACK'?'NEW_STAGE':k);
-    if (Math.random()<0.28) return 'MINI_JETPACK';
+    if (adventureStage>=5 && Math.random()<0.28) return 'MINI_JETPACK';
     return pool[rndI(0,pool.length-1)];
   }
   return PWR_WEIGHTED[rndI(0,PWR_WEIGHTED.length-1)];
@@ -1615,9 +1615,9 @@ let questFilter=0, questFilterOpen=false;
 const QUEST_FILTERS=['DEFAULT','SCORE','SURVIVE','COLLECT'];
 function getFilteredObjectives() {
   const all=(ACTIVE_OBJECTIVES||[]);
-  if (questFilter===1) return all.filter(o=>o.id.startsWith('score_'));
-  if (questFilter===2) return all.filter(o=>o.id.startsWith('time_'));
-  if (questFilter===3) return all.filter(o=>o.id.startsWith('gems_')||o.id.startsWith('collect_'));
+  if (questFilter===1) return all.filter(o=>/score|points|combo|stage/i.test(`${o.label} ${o.desc}`));
+  if (questFilter===2) return all.filter(o=>/survive|stay alive|seconds|\bs\b|time/i.test(`${o.label} ${o.desc}`));
+  if (questFilter===3) return all.filter(o=>/collect|gems|powerups|use /i.test(`${o.label} ${o.desc}`));
   return all;
 }
 
@@ -1965,9 +1965,9 @@ function drawShopScreen(t) {
   const canAffordSel=selOffer&&totalGems>=selOffer.cost;
   const btnY=LH*0.66,btnW=180,btnH=46,btnX=(LW-btnW)/2;
   BTNS.start={x:btnX,y:btnY,w:btnW,h:btnH};
-  const lockMode=!hasAffordable&&!hasSelection;
+  const lockMode=!hasSelection||!hasAffordable;
   const btnCol=lockMode?'#3a88ff':hasSelection?(canAffordSel?CFG.CY:CFG.PK):'rgba(0,245,255,0.4)';
-  const btnLabel=lockMode?'🔒  LOCKED - NO POWERUP':!hasSelection?'▶  SELECT ABOVE':canAffordSel?`▶  START -${selOffer.cost}◆`:`✗  NEED ${selOffer.cost}◆`;
+  const btnLabel=lockMode?'🔒  LOCKED - SELECT ABOVE':canAffordSel?`▶  START -${selOffer.cost}◆`:`✗  NEED ${selOffer.cost}◆`;
   const pulse=lockMode?0.65+0.35*Math.sin(t*2.2):hasSelection?Math.sin(t*6):0.4;
   drawNeonBtn(btnX,btnY,btnW,btnH,btnCol,btnLabel,11,1,pulse);
   if (!lockMode&&hasSelection&&canAffordSel) {
@@ -2520,6 +2520,12 @@ function advanceAdventureStage() {
   adventureStage++;
   const st=ADV_STAGES[adventureStage];
   terrain.speed=Math.max(terrain.speed,st.spd);
+  const prevLives=lives;
+  lives=Math.min(maxLives,lives+1);
+  if (lives>prevLives) {
+    addNotif(`+1 LIFE ON ${st.name}!`,CFG.GR);
+    addRing(player.x,player.y,CFG.GR,90,220,2.5);
+  }
   stageTransLabel=`${st.name}  ·  ${st.label}`;
   stageTransT=3.0;
   centerPlayerToTrack();
@@ -2592,44 +2598,6 @@ function tryContinueRun() {
   if (continueOfferTimer<=0||continueAttempts>=3) return;
   const cost=CONTINUE_COSTS[continueAttempts];
   if (totalGems<cost) { SFX.hit(); return; }
-  totalGems-=cost; saveBank(totalGems);
-  continueAttempts++;
-  continueOfferTimer=0;
-  gs='PLAY';
-  activePwr=null; pwrTimer=0;
-  lives=Math.max(1,lives);
-  player.startInv();
-  centerPlayerToTrack();
-  obstacles.length=0;
-  if (continueAttempts===1) {
-    player.activateJetpack(15.0); worldSpeedMult=1.3;
-  } else if (continueAttempts===2) {
-    player.activateJetpack(10.0); worldSpeedMult=1.3;
-    activatePwr('SHIELD',120); player.shield=true;
-  } else {
-    player.activateJetpack(10.0); worldSpeedMult=1.3;
-    activatePwr('SHIELD',90); player.shield=true;
-    activateHealthBoost(30);
-  }
-  addNotif('CONTINUE PURCHASED!',CFG.CY);
-}
-
-
-function finalizeGameOver() {
-  continueOfferTimer=0;
-  gs='OVER';
-  SFX.gameOver();
-  if (score>bestScore) bestScore=score;
-  burst(player.x,player.y,CFG.PK,60,420);
-  addShake(20,0.8); overShakePow=12;
-  triggerGameOverFlash();
-  transDir=1; transAlpha=1;
-}
-
-function tryContinueRun() {
-  if (continueOfferTimer<=0||continueAttempts>=3) return;
-  const cost=CONTINUE_COSTS[continueAttempts];
-  if (totalGems<cost) { addNotif(`Need ${cost}◆`,CFG.PK); SFX.hit(); return; }
   totalGems-=cost; saveBank(totalGems);
   continueAttempts++;
   continueOfferTimer=0;
@@ -2771,7 +2739,7 @@ function spawnObjects(dt) {
     stagePowerupElapsed+=dt;
     if (stagePowerupElapsed>=stagePowerupNext) {
       stagePowerupElapsed=0; stagePowerupNext=rnd(18,26);
-      if (adventureStage>=ADV_STAGES.length-1) {
+      if (adventureStage>=5) {
         const p=new PowerUp(terrain); p.key='MINI_JETPACK'; p.info=PWR_TYPES.MINI_JETPACK;
         powerups.push(p);
       } else {

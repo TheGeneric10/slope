@@ -1,4 +1,4 @@
-# SLOPE (v0.9.7)
+## SLOPE
 
 SLOPE is a fast-paced neon arcade runner built with a single-page HTML5 Canvas stack. You steer through a narrowing futuristic track, collect gems, chain combos, and survive escalating hazards while dynamic effects, powerups, and responsive controls keep each run intense.
 
