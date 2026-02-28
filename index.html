@@ -54,7 +54,7 @@ const FPS_LABELS = ['30','60','∞'];
 const FPS_VALUES = [30,60,0]; // 0=unlimited
 
 // BUG FIX 1: Removed duplicate VERSION constant ('0.9.1' shadowed '0.9.2')
-const VERSION = '0.9.6';
+const VERSION = '0.9.7';
 
 // Adventure stage configs
 const ADV_STAGES = [
@@ -193,16 +193,13 @@ function handleTap(e) {
     }
     return;
   }
-  if (gs === 'LEADERBOARD') {
-    if (hitBtn(p, BTNS.leaderboardBack)) {
-      if (leaderboardReturnState==='PAUSE') doTransition('PAUSE');
-      else doTransition('MENU');
-      return;
-    }
-    return;
-  }
   if (gs === 'ABOUT') {
     if (hitBtn(p, BTNS.back)) { doTransition('MENU'); return; }
+    return;
+  }
+  if (gs === 'CONTINUE') {
+    if (hitBtn(p, BTNS.continueBuy)) { tryContinueRun(); return; }
+    if (hitBtn(p, BTNS.continueGiveUp)) { finalizeGameOver(); return; }
     return;
   }
   if (gs === 'OVER') {
@@ -310,6 +307,7 @@ window.addEventListener('keydown', e => {
   if (e.key==='Escape' && gs==='QUESTS')    { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='ABOUT')     { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='LEADERBOARD'){ doTransition(leaderboardReturnState==='PAUSE'?'PAUSE':'MENU'); }
+  if (e.key==='Escape' && gs==='CONTINUE')  { finalizeGameOver(); }
   if (e.key==='Escape' && gs==='SETTINGS')  { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='PLAY')   togglePause();
   if (e.key==='Escape' && gs==='PAUSE')  togglePause();
@@ -1757,6 +1755,24 @@ function drawLeaderboardScreen(t) {
   ctx.restore();
 }
 
+
+function drawContinueOffer(t) {
+  const boxX=34, boxY=LH*0.55, boxW=LW-68, boxH=150;
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(boxX,boxY,boxW,boxH);
+  ctx.strokeStyle='rgba(0,245,255,0.35)'; ctx.lineWidth=1.5; ctx.strokeRect(boxX,boxY,boxW,boxH);
+  setFont(13,'900'); glow(CFG.CY,12); txt('CONTINUE PLAYING',LW/2,boxY+20,CFG.CY);
+  const pct=continueOfferTimer/10;
+  ctx.fillStyle='rgba(0,245,255,0.15)'; ctx.fillRect(boxX+16,boxY+32,boxW-32,5);
+  ctx.fillStyle=CFG.CY; glow(CFG.CY,8); ctx.fillRect(boxX+16,boxY+32,(boxW-32)*pct,5);
+  const cost=CONTINUE_COSTS[continueAttempts]||CONTINUE_COSTS[CONTINUE_COSTS.length-1];
+  BTNS.continueBuy={x:boxX+20,y:boxY+52,w:boxW-40,h:36};
+  drawNeonBtn(boxX+20,boxY+52,boxW-40,36,CFG.CY,`PURCHASE (${cost}◆)`,11,1,Math.sin(t*5));
+  BTNS.continueGiveUp={x:boxX+20,y:boxY+96,w:boxW-40,h:30};
+  drawNeonBtn(boxX+20,boxY+96,boxW-40,30,CFG.PK,'GIVE UP',11,0.9,Math.sin(t*2));
+  ctx.restore();
+}
+
 // ── GAME OVER SCREEN ──────────────────────────────────────────────
 let overShakePow=0;
 let continueAttempts=0;
@@ -1791,6 +1807,7 @@ function drawGameOver(t) {
   txt(`◆ ${gemsCollected} GEMS   ×${maxCombo} MAX COMBO`,LW/2,LH*0.54,CFG.CY);
   txt(`⏱ ${Math.floor(gameTime)}s SURVIVED   BANK: ${totalGems}◆`,LW/2,LH*0.54+17,CFG.CY);
   ctx.globalAlpha=1;
+  BTNS.continueBuy=null; BTNS.continueGiveUp=null;
   const bW=170,bH=44,bX=(LW-bW)/2,retryY=LH*0.61;
   if (continueOfferTimer>0&&continueAttempts<3) {
     const boxX=34, boxY=LH*0.57, boxW=LW-68, boxH=130;
@@ -2085,7 +2102,7 @@ function drawSettingsScreen(t) {
 <!--  SCRIPT 10b · OBJECTIVES & CHARACTER DATA                   -->
 <!-- ============================================================ -->
 <script id="s-objectives">
-const QUEST_POOL_SIZE=400;
+const QUEST_POOL_SIZE=428;
 const QUESTS_PER_HOUR=20;
 
 let jetpackCount=0, regenUsed=0;
@@ -2118,7 +2135,7 @@ function buildObjectivePool() {
 
   for (let t=2;t<=80;t+=2) add(`Collect ${t} Powerups`,`Any powerup type`,100+t*18,()=>Object.values(pwrCounts).reduce((a,b)=>a+b,0)>=t);
 
-  // trim/fill to exactly 400
+  // trim/fill to exactly quest pool size
   while (q.length<QUEST_POOL_SIZE) {
     const t=q.length+1;
     add(`Precision Run ${t}`,`Score ${t*120} with no wall hit`,200+Math.floor(t*3.5),()=>score>=t*120&&lives===maxLives);
@@ -2542,13 +2559,13 @@ function loseLife() {
   burst(player.x,player.y,CFG.PK,28);
   flashAlpha=0.45; flashCol=CFG.PK;
   if (lives<=0) {
-    gs='OVER'; SFX.gameOver();
-    continueOfferTimer=10;
-    if (score>bestScore) bestScore=score;
-    burst(player.x,player.y,CFG.PK,60,420);
-    addShake(20,0.8); overShakePow=12;
-    triggerGameOverFlash();
-    transDir=1; transAlpha=1;
+    if (continueAttempts<3) {
+      gs='CONTINUE';
+      continueOfferTimer=10;
+      BTNS.continueBuy=null; BTNS.continueGiveUp=null;
+    } else {
+      finalizeGameOver();
+    }
   } else {
     SFX.loseLife();
     const w=terrain.getWalls(player.y);
@@ -2556,8 +2573,20 @@ function loseLife() {
     addNotif(`-1 LIFE! (${lives}/${maxLives})`,CFG.PK);
     activateImmunity(IMMUNITY_COLLISION_COOLDOWN);
   }
+  addNotif('CONTINUE PURCHASED!',CFG.CY);
 }
 
+
+function finalizeGameOver() {
+  continueOfferTimer=0;
+  gs='OVER';
+  SFX.gameOver();
+  if (score>bestScore) bestScore=score;
+  burst(player.x,player.y,CFG.PK,60,420);
+  addShake(20,0.8); overShakePow=12;
+  triggerGameOverFlash();
+  transDir=1; transAlpha=1;
+}
 
 function tryContinueRun() {
   if (continueOfferTimer<=0||continueAttempts>=3) return;
@@ -2567,6 +2596,7 @@ function tryContinueRun() {
   continueAttempts++;
   continueOfferTimer=0;
   gs='PLAY';
+  activePwr=null; pwrTimer=0;
   lives=Math.max(1,lives);
   player.startInv();
   centerPlayerToTrack();
@@ -2793,7 +2823,10 @@ function loop(ts) {
 
   // Wipeout shake
   if (overShakePow>0) overShakePow=Math.max(0,overShakePow-dt*18);
-  if (gs==='OVER'&&continueOfferTimer>0) continueOfferTimer=Math.max(0,continueOfferTimer-dt);
+  if (gs==='CONTINUE'&&continueOfferTimer>0) {
+    continueOfferTimer=Math.max(0,continueOfferTimer-dt);
+    if (continueOfferTimer<=0) finalizeGameOver();
+  }
 
   // Clear
   ctx.fillStyle=CFG.BG; ctx.fillRect(0,0,LW,LH);
@@ -2877,6 +2910,21 @@ function loop(ts) {
 
   if (gs==='LEADERBOARD') {
     drawLeaderboardScreen(menuT);
+    drawTransition();
+    requestAnimationFrame(loop); return;
+  }
+
+  // ── CONTINUE OFFER (frozen gameplay) ─────────────────────────
+  if (gs==='CONTINUE') {
+    ctx.save(); applyShake();
+    drawPerspGrid(terrain.scrollY,terrain.speedFrac());
+    drawTerrain();
+    gems.forEach(g=>g&&g.draw&&g.draw()); powerups.forEach(p=>p&&p.draw&&p.draw()); obstacles.forEach(o=>o&&o.draw&&o.draw());
+    drawPlayer(); drawParticles(); drawRings();
+    ctx.restore();
+    drawHUD(); drawScanlines();
+    ctx.save(); ctx.fillStyle='rgba(2,5,8,0.62)'; ctx.fillRect(0,0,LW,LH); ctx.restore();
+    drawContinueOffer(menuT);
     drawTransition();
     requestAnimationFrame(loop); return;
   }
