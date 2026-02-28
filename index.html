@@ -69,7 +69,7 @@ function saveOptionPrefs(){ localStorage.setItem('slope_options',JSON.stringify(
 let OPTION_PREFS=loadOptionPrefs();
 
 // BUG FIX 1: Removed duplicate VERSION constant ('0.9.1' shadowed '0.9.2')
-const VERSION = '0.11.0';
+const VERSION = '0.11.1';
 
 // Adventure stage configs
 const ADV_STAGES = [
@@ -884,6 +884,7 @@ class Player {
         this.inv=false; this.invT=0;
         addNotif('JETPACK ENDED','#ff7700');
         collectNearbyDrops(this.x,this.y,120);
+        activateImmunity(3.0);
         worldSpeedMult=1;
       } else {
         const progress=(this.jetpackMax-this.jetpackT)/this.jetpackMax;
@@ -958,10 +959,12 @@ class Gem {
   }
   draw() {
     if (!this.active) return;
-    const {x,y,rot,type}=this;
+    const {x,y,rot}=this;
+    const type=this.type||GEM_TYPES[0];
+    if (!type) return;
     ctx.save(); ctx.translate(x,y); ctx.rotate(rot);
     glow(type.col,18); ctx.fillStyle=type.col;
-    const r=type.r;
+    const r=type.r||5;
     ctx.beginPath(); ctx.moveTo(0,-r*1.4); ctx.lineTo(r,0); ctx.lineTo(0,r*1.4); ctx.lineTo(-r,0);
     ctx.closePath(); ctx.fill();
     ctx.globalAlpha=0.6; ctx.fillStyle='#fff';
@@ -970,7 +973,9 @@ class Gem {
   }
   checkHit(px,py) {
     if (this.collected) return false;
-    return Math.hypot(px-this.x,py-this.y)<this.type.r+CFG.PR+4;
+    const type=this.type||GEM_TYPES[0];
+    if (!type) return false;
+    return Math.hypot(px-this.x,py-this.y)<(type.r||5)+CFG.PR+4;
   }
 }
 
@@ -1652,25 +1657,6 @@ function drawStartScreen(t) {
   }
   btnY+=authH+gap;
 
-  // Controls cards (modern layout)
-  const cbY=btnY+6, pad=16, gap2=10;
-  const cardW=(LW-pad*2-gap2)/2, cardH=60;
-  ctx.save();
-  setFont(9,'900'); glow(CFG.CY,7); txt('CONTROLS',LW/2,cbY+10,'rgba(0,245,255,0.65)');
-  const cards=[
-    {x:pad,y:cbY+16,w:cardW,h:cardH,title:'KEYBOARD',line1:'A / D or ← / →',line2:'Move  •  ESC/P Pause',col:CFG.CY},
-    {x:pad+cardW+gap2,y:cbY+16,w:cardW,h:cardH,title:'TOUCH',line1:'Hold + Swipe',line2:'Left / Right to move',col:CFG.PU}
-  ];
-  cards.forEach(c=>{
-    ctx.fillStyle='rgba(0,0,0,0.56)'; ctx.fillRect(c.x,c.y,c.w,c.h);
-    ctx.strokeStyle='rgba(0,245,255,0.25)'; if (c.col===CFG.PU) ctx.strokeStyle='rgba(204,0,255,0.35)';
-    ctx.lineWidth=1.2; ctx.strokeRect(c.x,c.y,c.w,c.h);
-    setFont(8,'900',"'Share Tech Mono',monospace"); glow(c.col,6); txt(c.title,c.x+c.w/2,c.y+14,c.col);
-    setFont(8,'400',"'Share Tech Mono',monospace"); noGlow();
-    txt(c.line1,c.x+c.w/2,c.y+33,'rgba(210,255,255,0.85)');
-    txt(c.line2,c.x+c.w/2,c.y+48,'rgba(170,230,255,0.7)');
-  });
-  ctx.restore();
 
   if (SETTINGS.showFPS && OPTION_PREFS.showFPS) {
     ctx.save(); noGlow(); ctx.globalAlpha=0.3; setFont(9,'400',"'Share Tech Mono',monospace");
@@ -1707,28 +1693,18 @@ function drawAboutScreen(t) {
   ctx.restore();
 
   const lines=[
-    'v0.10.2 PATCH NOTES',
-    '• Jetpack/Mini/New Stage radius now vacuums nearby drops',
-    '• Sign In and Sign Up split into dedicated screens',
-    '• Added Pause/Play OPTIONS menu + new in-game toggles',
-    '• SAVE PROGRESS banner moved to mini corner badge',
-    '• WIPEOUT and highscore readouts reformatted',
-    '• Added wider button SFX coverage across menu flows',
+    'v0.11.1 PATCH NOTES',
+    '• Fixed uncaught Gem type errors in hit checks/draw flow',
+    '• Immunity now triggers when jetpack effects end',
+    '• Removed old inline controls area from main menu',
+    '• Additional stability and UI polish updates',
     '',
-    'v0.10.1 PATCH NOTES',
-    '• Regen pickups only spawn when lives are not full',
-    '• Pause now uses GIVE UP flow into WIPEOUT screen',
-    '• New mode-select layout with COMING SOON placeholders',
-    '• Added sign-in/profile mock pages with loading states',
-    '',
-    'v0.10.0 MAJOR UPDATE',
-    '• Added Upgrades + Leaderboard + Continue flow',
-    '• Added Mini Jetpack + New Stage powerups',
-    '• Added confirmation dialogs for risky actions',
-    '• Improved collisions, immunity, and HUD readability',
-    '• Adventure stage progression and pacing polish',
-    '• New menus: quests filters, pause links, reset options',
-    '• Many gameplay fixes and optimization improvements'
+    'v0.11.0 MAJOR UPDATE',
+    '• Added touch joycons, controls page, and controller input',
+    '• Added X2 GEMS + GEM DROP powerups',
+    '• Added global options (FPS/quests/tutorials/joycons)',
+    '• Restored SEASON 1 subtitle and expanded menu systems',
+    '• Added footer + gameplay and HUD refinements'
   ];
 
   let y=boxY+28;
@@ -3172,6 +3148,22 @@ function collectNearbyDrops(cx,cy,radius=120) {
     const dx=p.x-cx,dy=p.y-cy;
     if (dx*dx+dy*dy<=r2) collectPwr(p);
   }
+}
+
+function collectNearbyDrops(cx,cy,radius=120) {
+  const r2=radius*radius;
+  for (let i=gems.length-1;i>=0;i--) {
+    const g=gems[i];
+    if (!g||g.collected||!g.active) continue;
+    const dx=g.x-cx,dy=g.y-cy;
+    if (dx*dx+dy*dy<=r2) collectGem(g);
+  }
+  for (let i=powerups.length-1;i>=0;i--) {
+    const p=powerups[i];
+    if (!p||p.collected||!p.active) continue;
+    const dx=p.x-cx,dy=p.y-cy;
+    if (dx*dx+dy*dy<=r2) collectPwr(p);
+  }
   for (let i=powerups.length-1;i>=0;i--) {
     const p=powerups[i];
     if (!p||p.collected||!p.active) continue;
@@ -3245,7 +3237,7 @@ function collectGem(gem) {
 function collectPwr(pwr) {
   pwr.collected=true; pwr.active=false;
   const col=pwr.info.col;
-  if      (pwr.key==='JETPACK')      { SFX.jetpack(); player.activateJetpack(10.0); activateImmunity(3.0); worldSpeedMult=1.3; jetpackCount++; pwrCounts.JETPACK++; }
+  if      (pwr.key==='JETPACK')      { SFX.jetpack(); player.activateJetpack(10.0); worldSpeedMult=1.3; jetpackCount++; pwrCounts.JETPACK++; }
   else if (pwr.key==='SHIELD')       { SFX.pwr(); activatePwr('SHIELD',shieldDuration(150)); pwrCounts.SHIELD++; addRing(pwr.x,pwr.y,CFG.BL,70,240,2.5); }
   else if (pwr.key==='SLOW')         { SFX.slow(); activatePwr('SLOW',4.5); worldSpeedMult=0.42; pwrCounts.SLOW++; }
   else if (pwr.key==='BOOST')        { SFX.boost(); activatePwr('BOOST',10.0); pwrCounts.BOOST++; }
@@ -3285,7 +3277,6 @@ function activateMiniJetpack() {
   miniJetpackActive=true; miniJetpackTimer=10.0;
   newStageActive=false; newStageTimer=0;
   worldSpeedMult=Math.max(worldSpeedMult,1.08);
-  activateImmunity(3.0);
   addNotif('🛸 MINI JETPACK! +5 MULTI','#88ccff');
   addFloat(player.x,player.y-20,'🛸 MINI JETPACK!','#88ccff');
   burst(player.x,player.y,'#88ccff',30,240);
@@ -3297,7 +3288,6 @@ function activateNewStagePowerup() {
   newStageActive=true; newStageTimer=6.0;
   miniJetpackActive=false; miniJetpackTimer=0;
   player.activateJetpack(6.0);
-  activateImmunity(3.0);
   worldSpeedMult=1.18;
   addNotif('🌀 NEW STAGE POWERUP!','#66bbff');
   addFloat(player.x,player.y-20,'🌀 NEW STAGE','#66bbff');
@@ -3672,8 +3662,12 @@ function loop(ts) {
       gemDropSpawnTimer=0.12;
       const count=rndI(3,7);
       for (let i=0;i<count;i++) {
-        const type=Math.random()<0.01?GEM_TYPES[3]:Math.random()<0.04?GEM_TYPES[2]:Math.random()<0.18?GEM_TYPES[1]:GEM_TYPES[0];
-        const g=new Gem(terrain); g.type=type; g.x=rnd(26,LW-26); g.y=-rnd(10,120); gems.push(g);
+        const r=Math.random();
+        const base=r<0.01?GEM_TYPES[2]:r<0.05?GEM_TYPES[2]:r<0.2?GEM_TYPES[1]:GEM_TYPES[0];
+        const mult=r<0.01?5:r<0.05?3:r<0.2?2:1;
+        const g=new Gem(terrain);
+        g.type={...base, gemVal:Math.max(1,base.gemVal*mult), pts:Math.max(1,base.pts*mult)};
+        g.x=rnd(26,LW-26); g.y=-rnd(10,120); gems.push(g);
       }
     }
     if (gemDropTimer<=0) { gemDropActive=false; gemDropTimer=0; addNotif('GEM DROP ENDED',CFG.CY); }
@@ -3696,6 +3690,7 @@ function loop(ts) {
       if (!newStageActive) worldSpeedMult=1;
       addRing(player.x,player.y,'#88ccff',160,320,3);
       collectNearbyDrops(player.x,player.y,130);
+      activateImmunity(3.0);
     }
   }
 
@@ -3711,6 +3706,7 @@ function loop(ts) {
       burst(player.x,player.y,'#66bbff',40,300);
       addShake(14,0.5);
       collectNearbyDrops(player.x,player.y,150);
+      activateImmunity(3.0);
       advanceAdventureStage();
     }
   }
