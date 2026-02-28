@@ -629,6 +629,12 @@ function drawTransition() {
   ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
   ctx.restore();
 }
+
+function drawTopOverlays(t){
+  drawAuthOverlay(t);
+  drawConfirmDialog();
+  drawInputDialog(t);
+}
 </script>
 
 <!-- ============================================================ -->
@@ -3221,19 +3227,33 @@ function drawAuthField(x,y,w,label,val) {
 
 function drawAuthOverlay(t) {
   if (authFlowState==='idle') return;
-  ctx.fillStyle='rgba(0,0,0,0.52)'; ctx.fillRect(0,0,LW,LH);
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.68)'; ctx.fillRect(0,0,LW,LH);
+  const w=310,h=180,x=(LW-w)/2,y=(LH-h)/2;
+  const stateCol=authFlowState==='success'?CFG.GR:authFlowState==='error'?CFG.PK:CFG.CY;
+  ctx.fillStyle='#000'; ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle=stateCol; ctx.lineWidth=2; glow(stateCol,14); ctx.strokeRect(x,y,w,h);
+
+  const title=authFlowState==='loading'?'AUTH IN PROGRESS':(authFlowState==='error'?'SIGN-IN FAILED':'AUTH SUCCESS');
+  setFont(14,'900'); glow(stateCol,10); txt(title,LW/2,y+28,stateCol);
+
   if (authFlowState==='loading') {
-    setFont(14,'900','Arial'); txt('Working...',LW/2,LH*0.48,'#fff');
-    drawLoadingDots(LW/2-14,LH*0.48+18,t,'#fff');
+    setFont(10,'700',"'Share Tech Mono',monospace"); noGlow();
+    txt('Please wait while we contact cloud auth...',LW/2,y+54,'rgba(220,245,255,0.85)');
+    drawLoadingDots(LW/2-14,y+88,t,'#fff');
   } else if (authFlowState==='error') {
-    setFont(16,'900','Arial'); txt('AUTH ERROR',LW/2,LH*0.48,'#ff4466');
-    setFont(10,'700','Arial'); txt(authFlowError||'Unknown error',LW/2,LH*0.48+20,'#fff');
-  } else if (authFlowState==='success') {
-    setFont(16,'900','Arial'); txt('SUCCESS',LW/2,LH*0.48,'#80ff80');
-    setFont(10,'700','Arial'); txt(authFlowMsg||'Done.',LW/2,LH*0.48+20,'#fff');
-    BTNS.authRestart={x:(LW-180)/2,y:LH*0.48+34,w:180,h:32};
-    drawNeonBtn(BTNS.authRestart.x,BTNS.authRestart.y,180,32,CFG.GR,'REFRESH GAME',11,1,Math.sin(t*2));
+    setFont(9,'700',"'Share Tech Mono',monospace"); noGlow();
+    const msg=(authFlowError||'Unknown error').slice(0,72);
+    txt(msg,LW/2,y+62,'#ffb5c6');
+    txt('Check credentials and try again.',LW/2,y+82,'rgba(220,245,255,0.75)');
+  } else {
+    setFont(9,'700',"'Share Tech Mono',monospace"); noGlow();
+    txt((authFlowMsg||'Done.').slice(0,72),LW/2,y+62,'rgba(190,255,190,0.95)');
+    txt('Tap REFRESH GAME to reinitialize UI/session.',LW/2,y+82,'rgba(220,245,255,0.75)');
+    BTNS.authRestart={x:(LW-180)/2,y:y+h-46,w:180,h:30};
+    drawNeonBtn(BTNS.authRestart.x,BTNS.authRestart.y,180,30,CFG.GR,'REFRESH GAME',11,1,Math.sin(t*2));
   }
+  ctx.restore();
 }
 
 function drawSignInScreen(t){
@@ -3261,7 +3281,6 @@ function drawSignInScreen(t){
   drawNeonBtn(BTNS.authReturn.x,BTNS.authReturn.y,220,30,CFG.PU,'RETURN BACK TO GAME',10,1,Math.sin(t*2.4));
   BTNS.authBack={x:(LW-130)/2,y:LH-44,w:130,h:30};
   drawNeonBtn(BTNS.authBack.x,BTNS.authBack.y,130,30,CFG.PK,'← BACK',11,0.9,Math.sin(t*2));
-  drawAuthOverlay(t);
 }
 
 function drawSignUpScreen(t){
@@ -3291,7 +3310,6 @@ function drawSignUpScreen(t){
   drawNeonBtn(BTNS.authReturn.x,BTNS.authReturn.y,220,30,CFG.PU,'RETURN BACK TO GAME',10,1,Math.sin(t*2.4));
   BTNS.authBack={x:(LW-130)/2,y:LH-44,w:130,h:30};
   drawNeonBtn(BTNS.authBack.x,BTNS.authBack.y,130,30,CFG.PK,'← BACK',11,0.9,Math.sin(t*2));
-  drawAuthOverlay(t);
 }
 
 async function writeCloudUserInfo(extra={}) {
@@ -3891,12 +3909,6 @@ function collectNearbyDrops(cx,cy,radius=120) {
     const dx=p.x-cx,dy=p.y-cy;
     if (dx*dx+dy*dy<=r2) collectPwr(p);
   }
-  for (let i=powerups.length-1;i>=0;i--) {
-    const p=powerups[i];
-    if (!p||p.collected||!p.active) continue;
-    const dx=p.x-cx,dy=p.y-cy;
-    if (dx*dx+dy*dy<=r2) collectPwr(p);
-  }
   addNotif('CONTINUE PURCHASED!',CFG.CY);
 }
 
@@ -4163,6 +4175,7 @@ function loop(ts) {
     }
     drawLoadingScreen(menuT);
     drawTransition();
+    drawTopOverlays(menuT);
     requestAnimationFrame(loop); return;
   }
 
@@ -4173,6 +4186,7 @@ function loop(ts) {
     if (menuSlideY<0) menuSlideY=Math.min(0,menuSlideY+800*dt);
     drawStartScreen(menuT);
     drawTransition();
+    drawTopOverlays(menuT);
     requestAnimationFrame(loop); return;
   }
 
@@ -4181,6 +4195,15 @@ function loop(ts) {
     terrain.update(dt*0.28);
     drawAboutScreen(menuT);
     drawTransition();
+    drawTopOverlays(menuT);
+    requestAnimationFrame(loop); return;
+  }
+
+  if (gs==='CONTROLS') {
+    terrain.update(dt*0.2);
+    drawControlsScreen(menuT);
+    drawTransition();
+    drawTopOverlays(menuT);
     requestAnimationFrame(loop); return;
   }
 
@@ -4205,6 +4228,16 @@ function loop(ts) {
     drawImpossibleIntro(menuT);
     if (impossibleIntroT>7.2 && !impossibleIntroDone) { impossibleIntroDone=true; startGame(null,true); }
     drawTransition();
+    drawTopOverlays(menuT);
+    requestAnimationFrame(loop); return;
+  }
+
+  if (gs==='IMPOSSIBLE_INTRO') {
+    impossibleIntroT+=dt;
+    drawImpossibleIntro(menuT);
+    if (impossibleIntroT>7.2 && !impossibleIntroDone) { impossibleIntroDone=true; startGame(null,true); }
+    drawTransition();
+    drawTopOverlays(menuT);
     requestAnimationFrame(loop); return;
   }
 
@@ -4212,6 +4245,7 @@ function loop(ts) {
   if (gs==='CHARSHOP') {
     drawCharShop(menuT);
     drawTransition();
+    drawTopOverlays(menuT);
     requestAnimationFrame(loop); return;
   }
 
@@ -4220,6 +4254,7 @@ function loop(ts) {
     terrain.update(dt*0.25);
     drawShopScreen(menuT);
     drawTransition();
+    drawTopOverlays(menuT);
     requestAnimationFrame(loop); return;
   }
 
@@ -4228,6 +4263,7 @@ function loop(ts) {
     drawSettingsScreen(menuT);
     drawConfirmDialog();
     drawTransition();
+    drawTopOverlays(menuT);
     requestAnimationFrame(loop); return;
   }
 
@@ -4235,6 +4271,68 @@ function loop(ts) {
   if (gs==='QUESTS') {
     drawQuestsScreen(menuT);
     drawTransition();
+    drawTopOverlays(menuT);
+    requestAnimationFrame(loop); return;
+  }
+
+  if (gs==='UPGRADES') {
+    drawUpgradesScreen(menuT);
+    drawTransition();
+    drawTopOverlays(menuT);
+    requestAnimationFrame(loop); return;
+  }
+
+  if (gs==='SIGNIN') {
+    drawSignInScreen(menuT);
+    drawTransition();
+    drawTopOverlays(menuT);
+    requestAnimationFrame(loop); return;
+  }
+
+  if (gs==='SIGNUP') {
+    drawSignUpScreen(menuT);
+    drawTransition();
+    drawTopOverlays(menuT);
+    requestAnimationFrame(loop); return;
+  }
+
+  if (gs==='PROFILE') {
+    drawProfileScreen(menuT);
+    drawTransition();
+    drawTopOverlays(menuT);
+    requestAnimationFrame(loop); return;
+  }
+
+  if (gs==='OPTIONS') {
+    drawOptionsScreen(menuT);
+    drawTransition();
+    drawTopOverlays(menuT);
+    requestAnimationFrame(loop); return;
+  }
+
+  if (gs==='LEADERBOARD') {
+    drawLeaderboardScreen(menuT);
+    drawTransition();
+    drawTopOverlays(menuT);
+    requestAnimationFrame(loop); return;
+  }
+
+  // ── CONTINUE OFFER (frozen gameplay) ─────────────────────────
+  if (gs==='CONTINUE') {
+    ctx.save(); applyShake();
+    drawPerspGrid(terrain.scrollY,terrain.speedFrac());
+    drawTerrain();
+    gems.forEach(g=>g&&g.draw&&g.draw()); powerups.forEach(p=>p&&p.draw&&p.draw()); obstacles.forEach(o=>o&&o.draw&&o.draw());
+    const th=getSelectedThemeData();
+  if (th&&th.id!=='classic') { ctx.save(); ctx.globalAlpha=0.06+0.03*Math.sin(menuT*2); ctx.fillStyle=th.col; ctx.fillRect(0,0,LW,LH); ctx.restore(); }
+  drawPlayer();
+  drawAuraVisual(); drawParticles(); drawRings();
+    ctx.restore();
+    drawHUD(); drawScanlines();
+    ctx.save(); ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH); ctx.restore();
+    drawContinueOffer(menuT);
+    drawTransition();
+    drawTopOverlays(menuT);
     requestAnimationFrame(loop); return;
   }
 
@@ -4306,6 +4404,7 @@ function loop(ts) {
     drawGameOver(menuT);
     drawConfirmDialog();
     drawTransition();
+    drawTopOverlays(menuT);
     requestAnimationFrame(loop); return;
   }
 
@@ -4323,6 +4422,7 @@ function loop(ts) {
     drawHUD(); drawNotifs(); drawFloats(); drawObjAnims(); drawScanlines(); drawPause();
     drawConfirmDialog();
     drawTransition();
+    drawTopOverlays(menuT);
     requestAnimationFrame(loop); return;
   }
 
@@ -4565,6 +4665,7 @@ function loop(ts) {
   drawScanlines();
   drawInputDialog(menuT);
   drawTransition();
+    drawTopOverlays(menuT);
 
   requestAnimationFrame(loop);
 }
