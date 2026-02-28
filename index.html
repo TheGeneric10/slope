@@ -214,6 +214,7 @@ function runConfirmAction() {
   if (a==='CONTINUE_GIVEUP') { finalizeGameOver(); return; }
   if (a==='IMPOSSIBLE_START') { startImpossibleIntro(); return; }
   if (a==='IMPOSSIBLE_RETRY') { startImpossibleIntro(); return; }
+  if (a==='SIGNOUT') { if (typeof doSignOut==='function') doSignOut(); return; }
   if (a==='RESET_EVERYTHING') {
     localStorage.clear();
     location.reload();
@@ -243,6 +244,11 @@ function handleTap(e) {
   if (confirmDialog.active) {
     if (hitBtn(p,BTNS.dialogYes)) { SFX.click(); runConfirmAction(); return; }
     if (hitBtn(p,BTNS.dialogNo))  { SFX.click(); confirmDialog.active=false; return; }
+    return;
+  }
+  if (inputDialog.active) {
+    if (hitBtn(p,BTNS.inputSave)) { SFX.click(); closeInputDialog(true); return; }
+    if (hitBtn(p,BTNS.inputCancel)) { SFX.click(); closeInputDialog(false); return; }
     return;
   }
 
@@ -402,11 +408,11 @@ canvas.addEventListener('touchend', e => {
   if (!touchMoved) {
     handleTap(e);
   }
-  touchActive = false; touchSwipe = 0; touchMoved = false; questTouchY = null; joyL=false; joyR=false; usingTouchJoy=false;
+  touchActive = false; touchSwipe = 0; touchMoved = false; questTouchY = null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false;
 }, { passive:false });
 
 canvas.addEventListener('touchcancel', () => {
-  touchActive = false; touchSwipe = 0; touchMoved = false; questTouchY = null; joyL=false; joyR=false; usingTouchJoy=false;
+  touchActive = false; touchSwipe = 0; touchMoved = false; questTouchY = null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false;
 });
 
 // Mouse (desktop)
@@ -433,13 +439,33 @@ document.addEventListener('click', e => {
 
 
 document.addEventListener('wheel', e => {
-  if (gs!=='QUESTS') return;
-  e.preventDefault();
-  questScroll=clamp(questScroll - e.deltaY*0.6, minQuestScroll(), 0);
+  if (gs==='QUESTS') {
+    e.preventDefault();
+    questScroll=clamp(questScroll - e.deltaY*0.6, minQuestScroll(), 0);
+    return;
+  }
+  if (gs==='SETTINGS') {
+    e.preventDefault();
+    settingsScroll=clamp(settingsScroll - e.deltaY*0.8, minSettingsScroll(), 0);
+    return;
+  }
+  if (gs==='OPTIONS') {
+    e.preventDefault();
+    optionsScroll=clamp(optionsScroll - e.deltaY*0.8, minOptionsScroll(), 0);
+    return;
+  }
 }, { passive:false });
 
 // Keyboard
 window.addEventListener('keydown', e => {
+  if (inputDialog.active) {
+    if (e.key==='Escape') { closeInputDialog(false); e.preventDefault(); return; }
+    if (e.key==='Enter' && !inputDialog.multiline) { closeInputDialog(true); e.preventDefault(); return; }
+    if (e.key==='Enter' && inputDialog.multiline) { if (inputDialog.value.length<inputDialog.maxLen) inputDialog.value+='\n'; e.preventDefault(); return; }
+    if (e.key==='Backspace') { inputDialog.value=inputDialog.value.slice(0,-1); e.preventDefault(); return; }
+    if (e.key.length===1 && inputDialog.value.length<inputDialog.maxLen) { inputDialog.value+=e.key; e.preventDefault(); return; }
+    return;
+  }
   const l = e.key==='ArrowLeft'  || e.key.toLowerCase()==='a';
   const r = e.key==='ArrowRight' || e.key.toLowerCase()==='d';
   if (l) K.left  = true;
@@ -709,7 +735,8 @@ function initBgSquares() {
 }
 function updateBgSquares(dt) {
   bgSquares.forEach(s=>{
-    s.x+=s.vx*dt; s.y+=s.vy*dt; s.rot+=s.vrot*dt;
+    const menuBoost=(gs==='MENU')?1.8:1;
+    s.x+=s.vx*dt*menuBoost; s.y+=s.vy*dt; s.rot+=s.vrot*dt;
     if (s.y<-100) { s.y=LH+50; s.x=rnd(0,LW); }
     if (s.x<-100) s.x=LW+50;
     if (s.x>LW+100) s.x=-50;
@@ -726,6 +753,22 @@ function drawBgSquares() {
   });
 }
 
+
+function getSelectedThemeData(){
+  const t=(typeof selectedTheme!=='undefined'?selectedTheme:'classic');
+  const theme=(typeof THEME_CATALOG!=='undefined'?THEME_CATALOG.find(x=>x.id===t):null);
+  return theme||{id:'classic',col:CFG.CY};
+}
+function drawAuraVisual(){
+  if (typeof selectedAura==='undefined' || selectedAura==='none') return;
+  const aura=(typeof AURA_CATALOG!=='undefined'?AURA_CATALOG.find(a=>a.id===selectedAura):null);
+  const col=(aura&&aura.col)||CFG.CY;
+  ctx.save();
+  const r=CFG.PR+16+3*Math.sin(menuT*6);
+  glow(col,16); ctx.strokeStyle=col; ctx.lineWidth=2; circle(player.x,player.y,r,col,false);
+  ctx.globalAlpha=0.25; ctx.fillStyle=hexToRgba(col,0.18); circle(player.x,player.y,r-3,col);
+  ctx.restore();
+}
 const rings=[];
 function addRing(x,y,col,maxR=80,speed=220,thickness=3) {
   rings.push({x,y,col,r:0,maxR,speed,alpha:1,thickness});
@@ -2060,33 +2103,48 @@ function drawLeaderboardScreen(t) {
   ctx.save(); ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
   setFont(32,'900'); glow(CFG.GR,20); txt('LEADERBOARD',LW/2,54,CFG.GR);
   setFont(8,'400',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.6;
-  txt('Refreshes hourly',LW/2,72,CFG.CY); ctx.globalAlpha=1;
+  txt('Top 100 · refreshes every hour',LW/2,72,CFG.CY); ctx.globalAlpha=1;
 
-  const bx=24,by=98,bw=LW-48,bh=460;
+  const bx=24,by=98,bw=LW-48,bh=520;
   ctx.fillStyle='rgba(0,0,0,0.58)'; ctx.fillRect(bx,by,bw,bh);
   ctx.strokeStyle='rgba(57,255,20,0.35)'; ctx.lineWidth=1.5; ctx.strokeRect(bx,by,bw,bh);
 
-  if (leaderboardState==='loading') {
+  if (!isSignedIn) {
+    setFont(14,'900'); glow(CFG.PK,12); txt('SIGN IN REQUIRED',LW/2,LH/2-8,CFG.PK);
+    setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); txt('Please sign in to view leaderboard.',LW/2,LH/2+16,CFG.CY);
+  } else if (leaderboardState==='loading') {
     const sq=18, gap=10, total=3*sq+2*gap, sx=LW/2-total/2;
     for (let i=0;i<3;i++) {
       const a=0.25+0.75*Math.max(0,Math.sin(t*8+i*0.8));
-      ctx.globalAlpha=a;
-      ctx.fillStyle=CFG.CY;
-      ctx.fillRect(sx+i*(sq+gap),LH/2-20,sq,sq);
+      ctx.globalAlpha=a; ctx.fillStyle=CFG.CY; ctx.fillRect(sx+i*(sq+gap),LH/2-20,sq,sq);
     }
-    ctx.globalAlpha=0.9;
-    setFont(11,'700'); glow(CFG.CY,10); txt('FETCHING...',LW/2,LH/2+20,CFG.CY);
+    ctx.globalAlpha=0.9; setFont(11,'700'); glow(CFG.CY,10); txt('FETCHING...',LW/2,LH/2+20,CFG.CY);
+  } else if (leaderboardState==='error') {
+    setFont(14,'900'); glow(CFG.PK,12); txt('UNAVAILABLE',LW/2,LH/2-8,CFG.PK);
+    setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); txt('Could not fetch leaderboard.',LW/2,LH/2+16,CFG.CY);
   } else {
-    setFont(16,'900'); glow(CFG.PK,12); txt('NOT AVAILABLE.',LW/2,LH/2,CFG.PK);
-    setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.55;
-    txt('Leaderboard service is offline for now.',LW/2,LH/2+24,CFG.CY);
+    const rowH=4.8;
+    for (let i=0;i<100;i++) {
+      const r=leaderboardData[i]||{name:'—',score:0,empty:true};
+      const y=by+14+i*rowH;
+      if (y>by+bh-8) break;
+      let col='rgba(150,150,150,0.9)';
+      if (i===0) col='#ffd700';
+      else if (i===1) col='#cfd5df';
+      else if (i===2) col='#cd7f32';
+      else if (i<=4) col='#ffffff';
+      else if (i<=9) col='#d6d6d6';
+      setFont(7,'700',"'Share Tech Mono',monospace"); noGlow();
+      txt(`#${i+1}`,bx+10,y,col,'left');
+      txt(r.name||'—',bx+48,y,col,'left');
+      txt(`${Math.floor(r.score||0)}`,bx+bw-12,y,col,'right');
+    }
   }
 
   BTNS.leaderboardBack={x:(LW-140)/2,y:LH-48,w:140,h:34};
   drawNeonBtn((LW-140)/2,LH-48,140,34,CFG.PK,leaderboardReturnState==='PAUSE'?'← PAUSE':'← BACK',11,1,Math.sin(t*2.5));
   ctx.restore();
 }
-
 
 function drawContinueOffer(t) {
   const boxX=34, boxY=LH*0.55, boxW=LW-68, boxH=150;
@@ -2224,12 +2282,21 @@ function drawPause() {
 
 
 let optionsReturnState='PAUSE';
+let optionsScroll=0, optionsTouchY=null;
+let settingsScroll=0, settingsTouchY=null;
+function minOptionsScroll(){ const viewH=LH-200, contentH=7*76; return Math.min(0, viewH-contentH); }
+function minSettingsScroll(){ const viewH=LH-210, contentH=860; return Math.min(0, viewH-contentH); }
 function handleOptionsTap(p){
   if (hitBtn(p,BTNS.optionsBack)) { SFX.click(); doTransition(optionsReturnState); return; }
-  if (hitBtn(p,BTNS.optionsToggleQuests)) { SFX.click(); OPTION_PREFS.showQuestsInGame=!OPTION_PREFS.showQuestsInGame; saveOptionPrefs(); return; }
-  if (hitBtn(p,BTNS.optionsToggleTutorials)) { SFX.click(); OPTION_PREFS.showTutorials=!OPTION_PREFS.showTutorials; saveOptionPrefs(); return; }
-  if (hitBtn(p,BTNS._optFps)) { SFX.click(); OPTION_PREFS.showFPS=!OPTION_PREFS.showFPS; saveOptionPrefs(); return; }
-  if (hitBtn(p,BTNS._optJoy)) { SFX.click(); OPTION_PREFS.showTouchJoycons=!OPTION_PREFS.showTouchJoycons; saveOptionPrefs(); return; }
+  const p2={x:p.x,y:p.y-optionsScroll};
+  const rows=[['showQuestsInGame','optionsToggleQuests'],['showTutorials','optionsToggleTutorials'],['showFPS','_optFps'],['showTouchJoycons','_optJoy']];
+  for (const [k,b] of rows) { if (hitBtn(p2,BTNS[b])) { SFX.click(); OPTION_PREFS[k]=!OPTION_PREFS[k]; saveOptionPrefs(); return; } }
+  if (BTNS._optTouchL&&hitBtn(p2,BTNS._optTouchL)) { SETTINGS.touchSensitivity=clamp(SETTINGS.touchSensitivity-SENS_STEP,SENS_MIN,SENS_MAX); saveSettingsPrefs(); return; }
+  if (BTNS._optTouchR&&hitBtn(p2,BTNS._optTouchR)) { SETTINGS.touchSensitivity=clamp(SETTINGS.touchSensitivity+SENS_STEP,SENS_MIN,SENS_MAX); saveSettingsPrefs(); return; }
+  if (BTNS._optKbL&&hitBtn(p2,BTNS._optKbL)) { SETTINGS.keyboardSensitivity=clamp(SETTINGS.keyboardSensitivity-SENS_STEP,SENS_MIN,SENS_MAX); saveSettingsPrefs(); return; }
+  if (BTNS._optKbR&&hitBtn(p2,BTNS._optKbR)) { SETTINGS.keyboardSensitivity=clamp(SETTINGS.keyboardSensitivity+SENS_STEP,SENS_MIN,SENS_MAX); saveSettingsPrefs(); return; }
+  if (BTNS._optPadL&&hitBtn(p2,BTNS._optPadL)) { SETTINGS.controllerSensitivity=clamp(SETTINGS.controllerSensitivity-SENS_STEP,SENS_MIN,SENS_MAX); saveSettingsPrefs(); return; }
+  if (BTNS._optPadR&&hitBtn(p2,BTNS._optPadR)) { SETTINGS.controllerSensitivity=clamp(SETTINGS.controllerSensitivity+SENS_STEP,SENS_MIN,SENS_MAX); saveSettingsPrefs(); return; }
 }
 
 function drawOptionsScreen(t){
@@ -2239,6 +2306,11 @@ function drawOptionsScreen(t){
   setFont(9,'400',"'Share Tech Mono',monospace"); noGlow();
   txt('In-game preferences',LW/2,84,'rgba(0,245,255,0.5)');
 
+  const viewY=126, viewH=LH-200;
+  optionsScroll=clamp(optionsScroll,minOptionsScroll(),0);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0,viewY,LW,viewH); ctx.clip();
+  ctx.translate(0,optionsScroll);
   const rows=[
     {k:'showQuestsInGame',label:'SHOW QUESTS IN-GAME',desc:'Quest panel on left side while playing',y:136,col:CFG.YL,id:'q'},
     {k:'showTutorials',label:'SHOW TUTORIALS',desc:'Early-run hint prompts and tips',y:212,col:CFG.PU,id:'t'},
@@ -2259,6 +2331,33 @@ function drawOptionsScreen(t){
     if (r.id==='f') BTNS._optFps={x:tx,y:ty,w:tw,h:th};
     if (r.id==='j') BTNS._optJoy={x:tx,y:ty,w:tw,h:th};
   });
+
+  const sens=[
+    {lbl:'TOUCH SENS',v:SETTINGS.touchSensitivity,col:CFG.PU,l:'_optTouchL',r:'_optTouchR',y:440},
+    {lbl:'KEYBOARD SENS',v:SETTINGS.keyboardSensitivity,col:CFG.GR,l:'_optKbL',r:'_optKbR',y:516},
+    {lbl:'CONTROLLER SENS',v:SETTINGS.controllerSensitivity,col:CFG.CY,l:'_optPadL',r:'_optPadR',y:592},
+  ];
+  sens.forEach(o=>{
+    const x=26,w=LW-52,h=64;
+    ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(x,o.y,w,h);
+    ctx.strokeStyle=o.col; ctx.lineWidth=1.3; ctx.strokeRect(x,o.y,w,h);
+    setFont(10,'900'); glow(o.col,8); txt(o.lbl,x+14,o.y+22,o.col,'left');
+    BTNS[o.l]={x:LW-156,y:o.y+18,w:34,h:28};
+    BTNS[o.r]={x:LW-56,y:o.y+18,w:34,h:28};
+    drawNeonBtn(BTNS[o.l].x,BTNS[o.l].y,34,28,o.col,'◀',10,1,0);
+    drawNeonBtn(BTNS[o.r].x,BTNS[o.r].y,34,28,o.col,'▶',10,1,0);
+    setFont(10,'900'); glow(o.col,8); txt(`${o.v.toFixed(1)}x`,LW-96,o.y+38,o.col);
+  });
+
+  ctx.restore();
+
+  const minO=minOptionsScroll();
+  if (minO<0) {
+    const thumbH=Math.max(30,viewH*viewH/(viewH+Math.abs(minO)));
+    const thumbY=viewY + ((-optionsScroll)/Math.abs(minO))*(viewH-thumbH);
+    ctx.fillStyle='rgba(0,245,255,0.15)'; ctx.fillRect(LW-10,viewY,4,viewH);
+    ctx.fillStyle='rgba(0,245,255,0.55)'; ctx.fillRect(LW-10,thumbY,4,thumbH);
+  }
 
   BTNS.optionsBack={x:(LW-140)/2,y:LH-52,w:140,h:34};
   drawNeonBtn(BTNS.optionsBack.x,BTNS.optionsBack.y,140,34,CFG.PK,'← BACK',12,1,Math.sin(t*2.2));
@@ -2389,19 +2488,20 @@ const SETTING_RECTS=[];
 const SENS_MIN=0.5, SENS_MAX=2.0, SENS_STEP=0.1;
 
 function handleSettingsTap(p) {
-  SETTING_RECTS.forEach(({key,rect})=>{ if(!hitBtn(p,rect)) return; if (key==='showFPS') OPTION_PREFS.showFPS=!OPTION_PREFS.showFPS; else SETTINGS[key]=!SETTINGS[key]; saveOptionPrefs(); });
+  const p2={x:p.x,y:p.y-settingsScroll};
+  SETTING_RECTS.forEach(({key,rect})=>{ if(!hitBtn(p2,rect)) return; if (key==='showFPS') OPTION_PREFS.showFPS=!OPTION_PREFS.showFPS; else SETTINGS[key]=!SETTINGS[key]; saveOptionPrefs(); });
   // GFX slider
-  if (BTNS._gfxLeft&&hitBtn(p,BTNS._gfxLeft))  SETTINGS.gfxQuality=Math.max(0,SETTINGS.gfxQuality-1);
-  if (BTNS._gfxRight&&hitBtn(p,BTNS._gfxRight)) SETTINGS.gfxQuality=Math.min(2,SETTINGS.gfxQuality+1);
+  if (BTNS._gfxLeft&&hitBtn(p2,BTNS._gfxLeft))  SETTINGS.gfxQuality=Math.max(0,SETTINGS.gfxQuality-1);
+  if (BTNS._gfxRight&&hitBtn(p2,BTNS._gfxRight)) SETTINGS.gfxQuality=Math.min(2,SETTINGS.gfxQuality+1);
   // FPS slider
-  if (BTNS._fpsLeft&&hitBtn(p,BTNS._fpsLeft))   SETTINGS.fpsLimit=Math.max(0,SETTINGS.fpsLimit-1);
-  if (BTNS._fpsRight&&hitBtn(p,BTNS._fpsRight))  SETTINGS.fpsLimit=Math.min(2,SETTINGS.fpsLimit+1);
-  if (BTNS._touchSensLeft&&hitBtn(p,BTNS._touchSensLeft)) SETTINGS.touchSensitivity=clamp(SETTINGS.touchSensitivity-SENS_STEP,SENS_MIN,SENS_MAX);
-  if (BTNS._touchSensRight&&hitBtn(p,BTNS._touchSensRight)) SETTINGS.touchSensitivity=clamp(SETTINGS.touchSensitivity+SENS_STEP,SENS_MIN,SENS_MAX);
-  if (BTNS._kbSensLeft&&hitBtn(p,BTNS._kbSensLeft)) SETTINGS.keyboardSensitivity=clamp(SETTINGS.keyboardSensitivity-SENS_STEP,SENS_MIN,SENS_MAX);
-  if (BTNS._kbSensRight&&hitBtn(p,BTNS._kbSensRight)) SETTINGS.keyboardSensitivity=clamp(SETTINGS.keyboardSensitivity+SENS_STEP,SENS_MIN,SENS_MAX);
-  if (BTNS._padSensLeft&&hitBtn(p,BTNS._padSensLeft)) SETTINGS.controllerSensitivity=clamp(SETTINGS.controllerSensitivity-SENS_STEP,SENS_MIN,SENS_MAX);
-  if (BTNS._padSensRight&&hitBtn(p,BTNS._padSensRight)) SETTINGS.controllerSensitivity=clamp(SETTINGS.controllerSensitivity+SENS_STEP,SENS_MIN,SENS_MAX);
+  if (BTNS._fpsLeft&&hitBtn(p2,BTNS._fpsLeft))   SETTINGS.fpsLimit=Math.max(0,SETTINGS.fpsLimit-1);
+  if (BTNS._fpsRight&&hitBtn(p2,BTNS._fpsRight))  SETTINGS.fpsLimit=Math.min(2,SETTINGS.fpsLimit+1);
+  if (BTNS._touchSensLeft&&hitBtn(p2,BTNS._touchSensLeft)) SETTINGS.touchSensitivity=clamp(SETTINGS.touchSensitivity-SENS_STEP,SENS_MIN,SENS_MAX);
+  if (BTNS._touchSensRight&&hitBtn(p2,BTNS._touchSensRight)) SETTINGS.touchSensitivity=clamp(SETTINGS.touchSensitivity+SENS_STEP,SENS_MIN,SENS_MAX);
+  if (BTNS._kbSensLeft&&hitBtn(p2,BTNS._kbSensLeft)) SETTINGS.keyboardSensitivity=clamp(SETTINGS.keyboardSensitivity-SENS_STEP,SENS_MIN,SENS_MAX);
+  if (BTNS._kbSensRight&&hitBtn(p2,BTNS._kbSensRight)) SETTINGS.keyboardSensitivity=clamp(SETTINGS.keyboardSensitivity+SENS_STEP,SENS_MIN,SENS_MAX);
+  if (BTNS._padSensLeft&&hitBtn(p2,BTNS._padSensLeft)) SETTINGS.controllerSensitivity=clamp(SETTINGS.controllerSensitivity-SENS_STEP,SENS_MIN,SENS_MAX);
+  if (BTNS._padSensRight&&hitBtn(p2,BTNS._padSensRight)) SETTINGS.controllerSensitivity=clamp(SETTINGS.controllerSensitivity+SENS_STEP,SENS_MIN,SENS_MAX);
   saveSettingsPrefs();
 }
 
@@ -2415,6 +2515,12 @@ function drawSettingsScreen(t) {
   dg.addColorStop(0,'transparent'); dg.addColorStop(0.5,CFG.CY); dg.addColorStop(1,'transparent');
   ctx.strokeStyle=dg; ctx.lineWidth=1; glow(CFG.CY,6);
   ctx.beginPath(); ctx.moveTo((LW-120)/2,ly); ctx.lineTo((LW+120)/2,ly); ctx.stroke(); ctx.restore();
+
+  const sViewY=84, sViewH=LH-220;
+  settingsScroll=clamp(settingsScroll,minSettingsScroll(),0);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0,sViewY,LW,sViewH); ctx.clip();
+  ctx.translate(0,settingsScroll);
 
   SETTING_RECTS.length=0;
   SETTING_DEFS.forEach((def,i)=>{
@@ -2489,6 +2595,16 @@ function drawSettingsScreen(t) {
   const optY=sensY3+58, optW=180, optH=36, optX=(LW-optW)/2;
   BTNS.optimizeBtn={x:optX,y:optY,w:optW,h:optH};
   drawNeonBtn(optX,optY,optW,optH,CFG.GR,'⚡ OPTIMIZE GAME',12,1,Math.sin(t*2.5));
+
+  ctx.restore();
+
+  const minS=minSettingsScroll();
+  if (minS<0) {
+    const thumbH=Math.max(34,sViewH*sViewH/(sViewH+Math.abs(minS)));
+    const thumbY=sViewY + ((-settingsScroll)/Math.abs(minS))*(sViewH-thumbH);
+    ctx.fillStyle='rgba(0,245,255,0.15)'; ctx.fillRect(LW-10,sViewY,4,sViewH);
+    ctx.fillStyle='rgba(0,245,255,0.55)'; ctx.fillRect(LW-10,thumbY,4,thumbH);
+  }
 
   // Reset everything
   const rW=220,rH=34,rX=(LW-rW)/2,rY=LH-118;
@@ -2699,6 +2815,8 @@ const CHAR_CATALOG=[
   {id:'veteran', name:'VETERAN', col:'#39ff14',    trailCol:'#22cc00', unlock:'obj', objId:'survive60',objLabel:'Survive 60s', icon:'●'},
   {id:'hoarder', name:'HOARDER', col:CFG.PK,       trailCol:CFG.PK,   unlock:'obj', objId:'gems200', objLabel:'200 Gems Run', icon:'●'},
   {id:'legend',  name:'LEGEND',  col:'#ffe600',    trailCol:'#ff7700', unlock:'obj', objId:'score5000',objLabel:'Score 5000', icon:'●'},
+  {id:'cyber',   name:'CYBER',   col:'#3cf1ff', trailCol:'#1ac8df', unlock:'buy', cost:3600, icon:'●'},
+  {id:'mint',    name:'MINT',    col:'#53ffcf', trailCol:'#2acea3', unlock:'buy', cost:3700, icon:'●'},
 ];
 
 const AURA_CATALOG=[
@@ -2708,6 +2826,8 @@ const AURA_CATALOG=[
   {id:'toxic',name:'TOXIC',col:'#55ff55',unlock:'buy',cost:2400,icon:'☢'},
   {id:'ember',name:'EMBER',col:'#ff8844',unlock:'buy',cost:2600,icon:'✦'},
   {id:'mythic',name:'MYTHIC',col:'#cc88ff',unlock:'obj',objId:'survive60',objLabel:'Survive 60s',icon:'✶'},
+  {id:'glacier',name:'GLACIER',col:'#9fe7ff',unlock:'buy',cost:2800,icon:'❄'},
+  {id:'storm',name:'STORM',col:'#9dbeff',unlock:'buy',cost:3000,icon:'✷'},
 ];
 const THEME_CATALOG=[
   {id:'classic',name:'CLASSIC',col:'#00f5ff',unlock:'free',icon:'▦'},
@@ -2716,6 +2836,23 @@ const THEME_CATALOG=[
   {id:'forest',name:'FOREST',col:'#66dd66',unlock:'buy',cost:2400,icon:'♣'},
   {id:'void',name:'VOID',col:'#bb66ff',unlock:'buy',cost:2600,icon:'◈'},
   {id:'obsidian',name:'OBSIDIAN',col:'#999999',unlock:'obj',objId:'score5000',objLabel:'Score 5000',icon:'⬢'},
+  {id:'neonpink',name:'NEON PINK',col:'#ff4db8',unlock:'buy',cost:2800,icon:'✦'},
+  {id:'sunset',name:'SUNSET',col:'#ff8844',unlock:'buy',cost:2900,icon:'⬒'},
+  {id:'ocean',name:'OCEAN',col:'#4dcfff',unlock:'buy',cost:3000,icon:'≈'},
+  {id:'lava',name:'LAVA',col:'#ff5522',unlock:'buy',cost:3000,icon:'☄'},
+  {id:'mint',name:'MINT',col:'#6dffc9',unlock:'buy',cost:3100,icon:'✿'},
+  {id:'rose',name:'ROSE',col:'#ff7da6',unlock:'buy',cost:3100,icon:'❀'},
+  {id:'amber',name:'AMBER',col:'#ffc247',unlock:'buy',cost:3200,icon:'✶'},
+  {id:'steel',name:'STEEL',col:'#b8c4d0',unlock:'buy',cost:3200,icon:'⬡'},
+  {id:'plasma',name:'PLASMA',col:'#9f7bff',unlock:'buy',cost:3300,icon:'✹'},
+  {id:'prism',name:'PRISM',col:'#7ef7ff',unlock:'buy',cost:3300,icon:'◬'},
+  {id:'honey',name:'HONEY',col:'#ffd65b',unlock:'buy',cost:3400,icon:'⬣'},
+  {id:'candy',name:'CANDY',col:'#ff87e5',unlock:'buy',cost:3400,icon:'✧'},
+  {id:'sprout',name:'SPROUT',col:'#8cff7d',unlock:'buy',cost:3500,icon:'❋'},
+  {id:'deep',name:'DEEP',col:'#4d66ff',unlock:'buy',cost:3500,icon:'⬟'},
+  {id:'frost',name:'FROST',col:'#ccf5ff',unlock:'buy',cost:3600,icon:'❄'},
+  {id:'aurora',name:'AURORA',col:'#66ffd5',unlock:'buy',cost:3700,icon:'✺'},
+  {id:'emberglow',name:'EMBERGLOW',col:'#ff9955',unlock:'buy',cost:3700,icon:'✷'},
 ];
 
 const SHOP_PAGES=[
@@ -2991,6 +3128,57 @@ let authFlowMsg='';
 let signinForm={email:'runner@slope.dev',password:''};
 let signupForm={username:'Neon Runner',email:'runner@slope.dev',password:'',confirm:''};
 
+let inputDialog={active:false,title:'',label:'',value:'',maxLen:64,secret:false,multiline:false,onSubmit:null};
+function openInputDialog(cfg={}){
+  inputDialog={
+    active:true,
+    title:cfg.title||'INPUT',
+    label:cfg.label||'Value',
+    value:String(cfg.value||''),
+    maxLen:cfg.maxLen||64,
+    secret:!!cfg.secret,
+    multiline:!!cfg.multiline,
+    onSubmit:typeof cfg.onSubmit==='function'?cfg.onSubmit:null,
+  };
+}
+function closeInputDialog(save=false){
+  if (save && inputDialog.onSubmit) inputDialog.onSubmit(inputDialog.value);
+  inputDialog.active=false;
+}
+function drawInputDialog(t){
+  if (!inputDialog.active) return;
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.72)'; ctx.fillRect(0,0,LW,LH);
+  const w=320,h=210,x=(LW-w)/2,y=(LH-h)/2;
+  ctx.fillStyle='#000'; ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle=CFG.CY; ctx.lineWidth=2; glow(CFG.CY,12); ctx.strokeRect(x,y,w,h);
+  setFont(14,'900'); glow(CFG.CY,10); txt(inputDialog.title,LW/2,y+28,CFG.CY);
+  setFont(9,'700',"'Share Tech Mono',monospace"); noGlow(); txt(inputDialog.label,x+16,y+52,'rgba(0,245,255,0.85)','left');
+  const ibx=x+16, iby=y+62, ibw=w-32, ibh=84;
+  ctx.strokeStyle='rgba(0,245,255,0.55)'; ctx.lineWidth=1.5; ctx.strokeRect(ibx,iby,ibw,ibh);
+  ctx.fillStyle='rgba(0,245,255,0.08)'; ctx.fillRect(ibx,iby,ibw,ibh);
+  const shown=inputDialog.secret?'•'.repeat(inputDialog.value.length):inputDialog.value;
+  const cursor=((Math.floor(t*2)%2)===0)?'|':'';
+  setFont(10,'700',"'Share Tech Mono',monospace"); noGlow();
+  const text=(shown+cursor).slice(-(inputDialog.multiline?140:48));
+  if (inputDialog.multiline) {
+    const lines=[]; let r=text;
+    while (r.length>34) { lines.push(r.slice(0,34)); r=r.slice(34); }
+    lines.push(r);
+    lines.slice(0,4).forEach((ln,i)=>txt(ln,ibx+8,iby+20+i*16,'#d8f6ff','left'));
+  } else {
+    txt(text,ibx+8,iby+48,'#d8f6ff','left');
+  }
+  setFont(8,'400',"'Share Tech Mono',monospace"); noGlow();
+  txt(`${inputDialog.value.length}/${inputDialog.maxLen}`,ibx+ibw-8,iby+ibh-8,'rgba(0,245,255,0.55)','right');
+
+  BTNS.inputSave={x:x+22,y:y+h-44,w:120,h:28};
+  BTNS.inputCancel={x:x+w-142,y:y+h-44,w:120,h:28};
+  drawNeonBtn(BTNS.inputSave.x,BTNS.inputSave.y,120,28,CFG.GR,'SAVE',10,1,Math.sin(t*2));
+  drawNeonBtn(BTNS.inputCancel.x,BTNS.inputCancel.y,120,28,CFG.PK,'CANCEL',10,1,Math.sin(t*2.2));
+  ctx.restore();
+}
+
 function initFirebase(){
   try {
     if (!window.firebase || !firebase.apps) throw new Error('SDK_MISSING');
@@ -3224,8 +3412,8 @@ async function handleAuthSignUp(){
 function handleSignInTap(p){
   if (hitBtn(p,BTNS.authBack) || hitBtn(p,BTNS.authReturn)) { SFX.click(); doTransition('MENU'); return; }
   if (hitBtn(p,BTNS.signinSwitch)) { SFX.click(); doTransition('SIGNUP'); return; }
-  if (hitBtn(p,BTNS.signinEmail)) { SFX.click(); const v=prompt('Enter email',signinForm.email||''); if (v!==null) signinForm.email=v.trim(); return; }
-  if (hitBtn(p,BTNS.signinPass)) { SFX.click(); const v=prompt('Enter password',''); if (v!==null) signinForm.password=v; return; }
+  if (hitBtn(p,BTNS.signinEmail)) { SFX.click(); openInputDialog({title:'SIGN IN',label:'Email',value:signinForm.email||'',maxLen:64,onSubmit:v=>{signinForm.email=(v||'').trim();}}); return; }
+  if (hitBtn(p,BTNS.signinPass)) { SFX.click(); openInputDialog({title:'SIGN IN',label:'Password',value:'',maxLen:20,secret:true,onSubmit:v=>{signinForm.password=v||'';}}); return; }
   if (hitBtn(p,BTNS.authSubmit)) { SFX.click(); handleAuthSignIn(); return; }
   if (hitBtn(p,BTNS.authRestart)) { SFX.click(); location.reload(); }
 }
@@ -3233,10 +3421,10 @@ function handleSignInTap(p){
 function handleSignUpTap(p){
   if (hitBtn(p,BTNS.authBack) || hitBtn(p,BTNS.authReturn)) { SFX.click(); doTransition('MENU'); return; }
   if (hitBtn(p,BTNS.signupSwitch)) { SFX.click(); doTransition('SIGNIN'); return; }
-  if (hitBtn(p,BTNS.signupName)) { SFX.click(); const v=prompt('Enter display name',signupForm.username||''); if (v!==null) signupForm.username=v.trim(); return; }
-  if (hitBtn(p,BTNS.signupEmail)) { SFX.click(); const v=prompt('Enter email',signupForm.email||''); if (v!==null) signupForm.email=v.trim(); return; }
-  if (hitBtn(p,BTNS.signupPass)) { SFX.click(); const v=prompt('Create password (6-20 chars)',''); if (v!==null) signupForm.password=v; return; }
-  if (hitBtn(p,BTNS.signupConfirm)) { SFX.click(); const v=prompt('Confirm password',''); if (v!==null) signupForm.confirm=v; return; }
+  if (hitBtn(p,BTNS.signupName)) { SFX.click(); openInputDialog({title:'SIGN UP',label:'Username',value:signupForm.username||'',maxLen:24,onSubmit:v=>{signupForm.username=(v||'').trim();}}); return; }
+  if (hitBtn(p,BTNS.signupEmail)) { SFX.click(); openInputDialog({title:'SIGN UP',label:'Email',value:signupForm.email||'',maxLen:64,onSubmit:v=>{signupForm.email=(v||'').trim();}}); return; }
+  if (hitBtn(p,BTNS.signupPass)) { SFX.click(); openInputDialog({title:'SIGN UP',label:'Password (6-20)',value:'',maxLen:20,secret:true,onSubmit:v=>{signupForm.password=v||'';}}); return; }
+  if (hitBtn(p,BTNS.signupConfirm)) { SFX.click(); openInputDialog({title:'SIGN UP',label:'Confirm Password',value:'',maxLen:20,secret:true,onSubmit:v=>{signupForm.confirm=v||'';}}); return; }
   if (hitBtn(p,BTNS.authSubmit)) { SFX.click(); handleAuthSignUp(); return; }
   if (hitBtn(p,BTNS.authRestart)) { SFX.click(); location.reload(); }
 }
@@ -3288,7 +3476,7 @@ function drawProfileScreen(t){
   ctx.fillStyle='rgba(0,245,255,0.06)'; ctx.fillRect(x+14,bioY,w-28,74);
   ctx.strokeStyle='rgba(0,245,255,0.25)'; ctx.lineWidth=1; ctx.strokeRect(x+14,bioY,w-28,74);
   setFont(9,'700',"'Share Tech Mono',monospace"); noGlow(); txt('BIO',x+24,bioY+14,CFG.CY,'left');
-  const bioTxt=(profileBio||'Tap UPDATE BIO to set one.').slice(0,140);
+  const bioTxt=(profileBio||'Tap UPDATE BIO to set one.').slice(0,100);
   setFont(9,'400',"'Share Tech Mono',monospace"); txt(bioTxt,x+24,bioY+32,'rgba(220,245,255,0.9)','left');
 
   BTNS.profileUpload={x:x+14,y:y+h-164,w:w-28,h:34};
@@ -3315,7 +3503,7 @@ function handleProfileTap(p){
   if (hitBtn(p,BTNS.profileBio)) {
     SFX.click();
     if (!isSignedIn) { addNotif('Bio editing unlocks after sign in.',CFG.YL); return; }
-    const v=prompt('Update bio (max 140 chars)',profileBio||'');
+    openInputDialog({title:'UPDATE BIO',label:'Bio (max 100 chars)',value:profileBio||'',maxLen:100,multiline:true,onSubmit:(val)=>{ profileBio=(val||'').slice(0,100); auth={...auth,bio:profileBio}; saveAuth(auth); writeCloudUserInfo({bio:profileBio}); addNotif('BIO UPDATED',CFG.GR);} });
     if (v!==null) {
       profileBio=(v||'').slice(0,140);
       auth={...auth,bio:profileBio}; saveAuth(auth);
@@ -3325,11 +3513,15 @@ function handleProfileTap(p){
   }
   if (hitBtn(p,BTNS.profileSignOut)) {
     SFX.click();
-    if (fbReady && fbAuth) fbAuth.signOut();
-    isSignedIn=false; auth={...AUTH_GUEST}; saveAuth(auth);
-    addNotif('Signed out. Guest local save active.',CFG.CY);
+    openConfirm('SIGNOUT','SIGN OUT?','Cloud session will end and guest local save will be used.');
     return;
   }
+}
+
+function doSignOut(){
+  if (fbReady && fbAuth) fbAuth.signOut();
+  isSignedIn=false; auth={...AUTH_GUEST}; saveAuth(auth);
+  addNotif('Signed out. Guest local save active.',CFG.CY);
 }
 
 initFirebase();
@@ -3340,6 +3532,7 @@ if (_profileUploadInput) {
     if (!f) return;
     if (f.size>256*1024) { addNotif('Image must be under 256KB.',CFG.PK); e.target.value=''; return; }
     const r=new FileReader();
+    r.onerror=()=>{ addNotif('Profile icon upload failed.',CFG.PK); e.target.value=''; };
     r.onload=async()=>{
       profileAvatar=String(r.result||'');
       auth={...auth,avatar:profileAvatar}; saveAuth(auth);
@@ -3410,13 +3603,33 @@ let leaderboardReturnState='MENU';
 // Score multiplier (includes mini jetpack bonus).
 const scoreMultiplier = () => (multi*(gemDoubleActive?2:1)) + (player.jetpackActive ? 10 : 0) + (miniJetpackActive ? 5 : 0);
 
-function triggerLeaderboardFetch(force=false) {
+async function triggerLeaderboardFetch(force=false) {
   if (!force && leaderboardState==='loading') return;
-  if (!force && Date.now()<leaderboardNextRefresh && leaderboardState==='loaded') return;
+  if (!force && Date.now()<leaderboardNextRefresh && leaderboardState==='loaded' && leaderboardData.length) return;
+  if (!isSignedIn) { leaderboardState='error'; leaderboardData=[]; return; }
   leaderboardState='loading';
   leaderboardTimer=0;
   leaderboardData=[];
   leaderboardNextRefresh=Date.now()+3600*1000;
+  try {
+    if (!fbReady || !fbDb) throw new Error('Sign in required');
+    const snap=await fbDb.ref(CLOUD_INFO_ROOT).get();
+    const all=snap&&snap.val?snap.val():{};
+    const rows=[];
+    Object.keys(all||{}).forEach(uid=>{
+      const u=all[uid]||{};
+      const score=Number(u.progress&&u.progress.bestScore||0);
+      rows.push({uid,name:(u.name||u.email||'Runner').toString().slice(0,20),score:Number.isFinite(score)?score:0});
+    });
+    rows.sort((a,b)=>b.score-a.score);
+    const top=rows.slice(0,100);
+    while (top.length<100) top.push({uid:`empty-${top.length}`,name:'—',score:0,empty:true});
+    leaderboardData=top;
+    leaderboardState='loaded';
+  } catch (e) {
+    leaderboardState='error';
+    leaderboardData=[];
+  }
 }
 
 function activateImmunity(sec=immunityDuration()) {
@@ -3678,6 +3891,12 @@ function collectNearbyDrops(cx,cy,radius=120) {
     const dx=p.x-cx,dy=p.y-cy;
     if (dx*dx+dy*dy<=r2) collectPwr(p);
   }
+  for (let i=powerups.length-1;i>=0;i--) {
+    const p=powerups[i];
+    if (!p||p.collected||!p.active) continue;
+    const dx=p.x-cx,dy=p.y-cy;
+    if (dx*dx+dy*dy<=r2) collectPwr(p);
+  }
   addNotif('CONTINUE PURCHASED!',CFG.CY);
 }
 
@@ -3895,10 +4114,7 @@ function loop(ts) {
   menuT+=dt;
   seasonScrollX+=seasonDir*130*dt;
   if (Math.abs(seasonScrollX)>130) seasonDir*=-1;
-  if (leaderboardState==='loading') {
-    leaderboardTimer+=dt;
-    if (leaderboardTimer>1.2) { leaderboardState='loaded'; leaderboardData=[]; }
-  }
+  if (leaderboardState==='loading') leaderboardTimer+=dt;
   if (charShopMsgT>0) charShopMsgT=Math.max(0,charShopMsgT-dt);
   if (stageTransT>0) stageTransT=Math.max(0,stageTransT-dt);
   if (gameOverFlash>0) gameOverFlash=Math.max(0,gameOverFlash-dt);
@@ -4064,7 +4280,10 @@ function loop(ts) {
     drawPerspGrid(terrain.scrollY,terrain.speedFrac());
     drawTerrain();
     gems.forEach(g=>g&&g.draw&&g.draw()); powerups.forEach(p=>p&&p.draw&&p.draw()); obstacles.forEach(o=>o&&o.draw&&o.draw());
-    drawPlayer(); drawParticles(); drawRings();
+    const th=getSelectedThemeData();
+  if (th&&th.id!=='classic') { ctx.save(); ctx.globalAlpha=0.06+0.03*Math.sin(menuT*2); ctx.fillStyle=th.col; ctx.fillRect(0,0,LW,LH); ctx.restore(); }
+  drawPlayer();
+  drawAuraVisual(); drawParticles(); drawRings();
     ctx.restore();
     drawHUD(); drawScanlines();
     ctx.save(); ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH); ctx.restore();
@@ -4096,7 +4315,10 @@ function loop(ts) {
     drawPerspGrid(terrain.scrollY,terrain.speedFrac());
     drawTerrain();
     gems.forEach(g=>g&&g.draw&&g.draw()); powerups.forEach(p=>p&&p.draw&&p.draw()); obstacles.forEach(o=>o&&o.draw&&o.draw());
-    drawPlayer(); drawParticles(); drawRings();
+    const th=getSelectedThemeData();
+  if (th&&th.id!=='classic') { ctx.save(); ctx.globalAlpha=0.06+0.03*Math.sin(menuT*2); ctx.fillStyle=th.col; ctx.fillRect(0,0,LW,LH); ctx.restore(); }
+  drawPlayer();
+  drawAuraVisual(); drawParticles(); drawRings();
     ctx.restore();
     drawHUD(); drawNotifs(); drawFloats(); drawObjAnims(); drawScanlines(); drawPause();
     drawConfirmDialog();
@@ -4291,7 +4513,10 @@ function loop(ts) {
   gems.forEach(g=>g&&g.draw&&g.draw());
   powerups.forEach(p=>p&&p.draw&&p.draw());
   obstacles.forEach(o=>o&&o.draw&&o.draw());
+  const th=getSelectedThemeData();
+  if (th&&th.id!=='classic') { ctx.save(); ctx.globalAlpha=0.06+0.03*Math.sin(menuT*2); ctx.fillStyle=th.col; ctx.fillRect(0,0,LW,LH); ctx.restore(); }
   drawPlayer();
+  drawAuraVisual();
   drawParticles(); drawRings();
   ctx.restore();
 
@@ -4338,6 +4563,7 @@ function loop(ts) {
   drawNotifs();
   drawFloats();
   drawScanlines();
+  drawInputDialog(menuT);
   drawTransition();
 
   requestAnimationFrame(loop);
