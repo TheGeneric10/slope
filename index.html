@@ -196,6 +196,7 @@ let joyL=false, joyR=false;
 let usingTouchJoy=false;
 const isTouchDevice=('ontouchstart' in window)||(navigator.maxTouchPoints>0);
 const GP={left:false,right:false,pauseEdge:false,lastPause:false};
+let mouseCanvasPos={x:-9999,y:-9999};
 
 function getCanvasXY(e) {
   const rect = canvas.getBoundingClientRect();
@@ -308,6 +309,16 @@ function fmtOfflineAgo(ts){
   const w=Math.floor(d/7); if (w<52) return `${w}w`;
   const y=Math.floor(d/365); return `${Math.max(1,y)}y`;
 }
+function offlineMeta(ts){
+  const sec=Math.max(0,Math.floor((Date.now()-Number(ts||0))/1000));
+  const weekSec=7*24*60*60;
+  const weeks=Math.floor(sec/weekSec);
+  return {
+    short:fmtOfflineAgo(ts),
+    compact:weeks>12?'12w+':fmtOfflineAgo(ts),
+    isLong:weeks>12,
+  };
+}
 async function setPlayerStatus(next){
   if (!isSignedIn) { addNotif('Guest status is locked to OFFLINE.',CFG.PK); return; }
   if (!navigator.onLine) { await applyConnectivityStatus(true); addNotif('STATUS LOCKED WHILE OFFLINE',CFG.PK); return; }
@@ -354,7 +365,7 @@ function drawPlayerCardPopup(t){
   const cardUser=playerCardPopup.viewed||{};
   const name=String((playerCardPopup.isSelf?(auth&&auth.name):cardUser.name)||'Player');
   const pfpX=x+w-48, pfpY=y+58, r=22;
-  const cardAvatar=playerCardPopup.isSelf?profileAvatar:String(cardUser.avatar||'');
+  const cardAvatar=String(profileAvatar||'');
   if (cardAvatar) {
     const img=new Image(); img.src=cardAvatar;
     ctx.save(); ctx.beginPath(); ctx.arc(pfpX,pfpY,r,0,Math.PI*2); ctx.clip(); ctx.drawImage(img,pfpX-r,pfpY-r,r*2,r*2); ctx.restore();
@@ -378,7 +389,30 @@ function drawPlayerCardPopup(t){
   const cardStatus=playerCardPopup.isSelf?status:String(cardUser.status||'offline');
   const cardSeen=playerCardPopup.isSelf?(auth&&auth.lastSeen):Number(cardUser.lastSeen||0);
   drawStatusDot(x+18,y+58,cardStatus);
-  setFont(10,'900'); noGlow(); txt(`${STATUS_LABELS[cardStatus]||'Offline'}${cardStatus==='offline'?` (${fmtOfflineAgo(cardSeen)} ago)`:''}`,x+30,y+62,'#d8f6ff','left');
+  if (cardStatus==='offline') {
+    const meta=offlineMeta(cardSeen);
+    setFont(10,'900'); noGlow(); txt('Offline',x+30,y+58,'#d8f6ff','left');
+    if (!meta.isLong) {
+      setFont(7,'700',"'Share Tech Mono',monospace"); noGlow(); txt(`was seen ${meta.short} ago`,x+30,y+70,'rgba(185,220,245,0.85)','left');
+    } else {
+      const label='Offline';
+      setFont(10,'900');
+      const tw=ctx.measureText(label).width;
+      const hx=mouseCanvasPos.x, hy=mouseCanvasPos.y;
+      if (hx>=x+30 && hx<=x+30+tw && hy>=y+46 && hy<=y+62) {
+        const tip='was seen 12w+ ago';
+        const tipW=Math.max(96,ctx.measureText(tip).width+14);
+        const tipX=clamp(hx-tipW/2,10,LW-tipW-10), tipY=y+74;
+        ctx.save();
+        ctx.fillStyle='rgba(0,0,0,0.92)'; ctx.fillRect(tipX,tipY,tipW,20);
+        ctx.strokeStyle='rgba(0,245,255,0.35)'; ctx.lineWidth=1; ctx.strokeRect(tipX,tipY,tipW,20);
+        setFont(7,'700',"'Share Tech Mono',monospace"); noGlow(); txt(tip,tipX+tipW/2,tipY+13,'rgba(220,245,255,0.95)');
+        ctx.restore();
+      }
+    }
+  } else {
+    setFont(10,'900'); noGlow(); txt(`${STATUS_LABELS[cardStatus]||'Offline'}`,x+30,y+62,'#d8f6ff','left');
+  }
   setFont(16,'900'); glow(CFG.CY,10); txt(name,x+14,y+96,CFG.CY,'left');
   setFont(8,'700',"'Share Tech Mono',monospace"); noGlow();
   const cardBest=playerCardPopup.isSelf?bestScore:Number(cardUser.bestScore||0);
@@ -456,7 +490,7 @@ function handleTap(e) {
     if (hitBtn(p,BTNS.playerCardClose)) { SFX.click(); playerCardPopup.active=false; return; }
     if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardEdit)) { SFX.click(); playerCardPopup.active=false; doTransition('PROFILE'); return; }
     if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFav)) { SFX.click(); playerCardPopup.favorite=!playerCardPopup.favorite; return; }
-    if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFind)) { SFX.click(); openInputDialog({title:'FIND USER',label:'Username',value:'',maxLen:32,onSubmit:async v=>{ await openMiniProfileByUsername(v||''); }}); return; }
+    if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFind)) { SFX.click(); openInputDialog({title:'FIND USER',label:'Username',value:'',maxLen:32,saveLabel:'FIND',cancelLabel:'CANCEL',onSubmit:async v=>{ await openMiniProfileByUsername(v||''); }}); return; }
     if (!playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardAdd)) { SFX.click(); sendFriendRequestToViewed(); return; }
     return;
   }
@@ -469,7 +503,7 @@ function handleTap(e) {
 
   if (usernameChangeFlow.active) {
     if (usernameChangeFlow.phase==='error') {
-      if (hitBtn(p,BTNS.usernameTryAgain)) { SFX.click(); usernameChangeFlow.active=false; openInputDialog({title:'CHANGE USERNAME',label:'New Username',value:usernameChangeFlow.candidate||auth.name||'',maxLen:24,onSubmit:async v=>{ await requestUsernameChange(v||''); }}); return; }
+      if (hitBtn(p,BTNS.usernameTryAgain)) { SFX.click(); usernameChangeFlow.active=false; openInputDialog({title:'CHANGE USERNAME',label:'New Username',value:usernameChangeFlow.candidate||auth.name||'',maxLen:32,onSubmit:async v=>{ await requestUsernameChange(v||''); }}); return; }
       if (hitBtn(p,BTNS.usernameExit)) { SFX.click(); usernameChangeFlow.active=false; return; }
       return;
     }
@@ -838,8 +872,10 @@ canvas.addEventListener('mousedown', e => {
   }
 });
 canvas.addEventListener('mousemove', e => {
+  const mp=getCanvasXY(e);
+  mouseCanvasPos.x=mp.x; mouseCanvasPos.y=mp.y;
   if (gs==='PROFILE' && profileUploadState.active && profileUploadState.mode==='preview' && profileUploadState.drag) {
-    const p=getCanvasXY(e);
+    const p=mp;
     profileUploadState.offX += p.x-profileUploadState.lastX;
     profileUploadState.offY += p.y-profileUploadState.lastY;
     profileUploadState.lastX=p.x; profileUploadState.lastY=p.y;
@@ -2532,7 +2568,14 @@ function drawSocialRows(t,title,sub,list,mode){
     const ry=listY+8+i*58;
     ctx.fillStyle=(i%2===0)?'rgba(255,255,255,0.03)':'rgba(0,0,0,0.0)'; ctx.fillRect(listX,ry-12,listW,54);
     setFont(10,'900'); glow(CFG.CY,6); txt((it.name||'Runner').slice(0,20),listX+12,ry+4,CFG.CY,'left');
-    setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt(`${it.status||'offline'} · ${fmtOfflineAgo(it.lastSeen||Date.now())} ago`,listX+12,ry+20,'rgba(210,230,255,0.78)','left');
+    setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); const rowStatus=String(it.status||'offline').toLowerCase();
+    if (rowStatus==='offline') {
+      const om=offlineMeta(it.lastSeen||Date.now());
+      const offText=om.isLong?'Offline':`Offline · was seen ${om.short} ago`;
+      txt(offText,listX+12,ry+20,'rgba(210,230,255,0.78)','left');
+    } else {
+      txt(`${STATUS_LABELS[rowStatus]||rowStatus}`,listX+12,ry+20,'rgba(210,230,255,0.78)','left');
+    }
     if (mode==='requests') {
       BTNS.socialActionA={x:listX+listW-88,y:ry-8,w:36,h:22,idx:i};
       BTNS.socialActionB={x:listX+listW-46,y:ry-8,w:36,h:22,idx:i};
@@ -2542,7 +2585,7 @@ function drawSocialRows(t,title,sub,list,mode){
     }
   }
   ctx.restore();
-  if (socialView.loading) drawLoadingDots(LW/2,y+h-20,t,CFG.CY);
+  if (socialView.loading) { drawLoadingDots(LW/2,y+h-20,t,CFG.CY); drawLoadingSquares(LW/2,y+h-40,t,CFG.CY); }
   if (!list.length && !socialView.loading) { setFont(10,'700',"'Share Tech Mono',monospace"); noGlow(); txt('No entries yet.',LW/2,y+44,'rgba(220,230,255,0.9)'); }
 
   if (minSocialScroll()<0) {
@@ -2710,6 +2753,9 @@ function drawModeSelect(t) {
     setFont(26,'900'); glow(c.col,14); txt(c.icon,x+cardW/2,y+100,c.col);
     setFont(8,'400',"'Share Tech Mono',monospace"); noGlow();
     c.feats.forEach((f,j)=>txt(`• ${f}`,x+10,y+136+j*16,c.col,'left'));
+    const modeBest=i===0?Number(modeScores.endless||0):i===1?Number(modeScores.adventure||0):i===2?Number(modeScores.impossible||0):Number(modeScores.ltm||0);
+    setFont(7,'700',"'Share Tech Mono',monospace"); noGlow();
+    txt(`MY HIGHSCORE ${Math.floor(modeBest||0)}`,x+cardW/2,y+cardH-50,'rgba(220,245,255,0.85)');
     const btnLbl=(c.key==='modeLtm'&&!isAdminUser)?'PLAY':c.btn;
     drawNeonBtn(x+10,y+cardH-38,cardW-20,28,c.col,btnLbl,10,1,Math.sin(t*3+i));
     ctx.restore();
@@ -2736,7 +2782,7 @@ function drawModeSelect(t) {
   setFont(9,'900',"'Share Tech Mono',monospace"); noGlow();
   txt(`LTM ${dailyIdx+1}/10 • ${daily.name}`,soonX+10,soonY+18,'#0d0d0d','left');
   setFont(8,'700',"'Share Tech Mono',monospace");
-  txt(`${daily.desc||'Live special mode'} • ${(daily.specialName||'Mode bonus').slice(0,26)}`,soonX+10,soonY+34,'#0d0d0d','left');
+  txt(`${daily.desc||'Live special mode'} • ${(daily.specialName||'Mode bonus').slice(0,26)}`,soonX+10,soonY+34,'#ffffff','left');
   const netTxt=navigator.onLine?`GLOBAL ROTATION • NEXT UPDATE IN ${getDailyCountdown()}`:'OFFLINE • LTM PLAY DISABLED';
   txt(netTxt,soonX+10,soonY+50,'#0d0d0d','left');
   ctx.restore();
@@ -4304,7 +4350,138 @@ let authFlowTimer=0;
 let authFlowError='';
 let authFlowMsg='';
 let signinForm={email:'',password:''};
-let signupForm={username:'Neon Runner',email:'',password:'',confirm:''};
+let signupForm={username:'',email:'',password:'',confirm:''};
+
+const USERNAME_CHANGE_KEY='slope_username_change';
+const USERNAME_TRY_WINDOW_MS=7*24*60*60*1000;
+let usernameChangeFlow={active:false,phase:'idle',progress:0,msg:'',candidate:'',elapsed:0};
+function loadUsernameChangeState(){
+  const now=Date.now();
+  try {
+    const raw=JSON.parse(localStorage.getItem(USERNAME_CHANGE_KEY)||'{}');
+    let triesLeft=Number.isFinite(raw.triesLeft)?Math.floor(raw.triesLeft):2;
+    let refreshAt=Number(raw.refreshAt||0)||0;
+    if (refreshAt>0 && now>=refreshAt) { triesLeft=2; refreshAt=0; }
+    triesLeft=clamp(triesLeft,0,2);
+    return {triesLeft,refreshAt};
+  } catch(e){ return {triesLeft:2,refreshAt:0}; }
+}
+function saveUsernameChangeState(v){
+  localStorage.setItem(USERNAME_CHANGE_KEY,JSON.stringify({triesLeft:clamp(Math.floor(v.triesLeft||0),0,2),refreshAt:Number(v.refreshAt||0)||0}));
+}
+let usernameChangeState=loadUsernameChangeState();
+function refreshUsernameChangeState(){
+  const now=Date.now();
+  if (usernameChangeState.refreshAt>0 && now>=usernameChangeState.refreshAt) {
+    usernameChangeState={triesLeft:2,refreshAt:0};
+    saveUsernameChangeState(usernameChangeState);
+  }
+}
+function usernameCountdownStr(){
+  refreshUsernameChangeState();
+  if (usernameChangeState.triesLeft>0) return 'READY';
+  const left=Math.max(0,usernameChangeState.refreshAt-Date.now());
+  const d=Math.floor(left/86400000); const h=Math.floor((left%86400000)/3600000); const m=Math.floor((left%3600000)/60000);
+  return `${d}d ${String(h).padStart(2,'0')}h ${String(m).padStart(2,'0')}m`;
+}
+function consumeUsernameTry(){
+  refreshUsernameChangeState();
+  if (usernameChangeState.triesLeft<=0) return false;
+  usernameChangeState.triesLeft=Math.max(0,usernameChangeState.triesLeft-1);
+  if (usernameChangeState.triesLeft<=0) usernameChangeState.refreshAt=Date.now()+USERNAME_TRY_WINDOW_MS;
+  saveUsernameChangeState(usernameChangeState);
+  return true;
+}
+function usernameUnavailableMsg(name){ return `Username ${name} is taken.`; }
+function openUsernameFlowPhase(phase,msg=''){ usernameChangeFlow.active=true; usernameChangeFlow.phase=phase; usernameChangeFlow.msg=String(msg||''); if (phase!=='loading') usernameChangeFlow.progress=1; }
+async function isUsernameTaken(desired){
+  if (!fbReady || !fbDb) return false;
+  const uid=String((fbUser&&fbUser.uid)||(auth&&auth.uid)||'');
+  const needle=String(desired||'').trim().toLowerCase();
+  if (!needle) return true;
+  const roots=[];
+  [cloudProfileRoot||CLOUD_INFO_ROOT, ...CLOUD_INFO_ROOT_FALLBACKS, CLOUD_SLOPE_ROOT].forEach(r=>{ if (r && !roots.includes(r)) roots.push(r); });
+  for (const root of roots){
+    try {
+      const snap=await fbDb.ref(root).get();
+      const all=snap&&snap.val?snap.val():{};
+      for (const [k,v] of Object.entries(all||{})) {
+        const row=v||{};
+        const rowUid=String(row.uid||k||'');
+        const rowName=String((row.name||row.displayName||'')).trim().toLowerCase();
+        if (!rowName) continue;
+        if (rowUid===uid) continue;
+        if (rowName===needle) return true;
+      }
+    } catch(e){}
+  }
+  return false;
+}
+async function requestUsernameChange(newNameRaw){
+  const desired=String(newNameRaw||'').trim();
+  usernameChangeFlow.candidate=desired;
+  refreshUsernameChangeState();
+  if (!isSignedIn || !fbUser) { openUsernameFlowPhase('error','Sign in required.'); return; }
+  if (!navigator.onLine) { openUsernameFlowPhase('error','You are offline.'); return; }
+  if (usernameChangeState.triesLeft<=0) { openUsernameFlowPhase('error',`No tries left. Refresh in ${usernameCountdownStr()}.`); return; }
+  if (desired.length<3 || desired.length>32) { openUsernameFlowPhase('error','Username must be 3-32 chars.'); return; }
+  if (!/^[a-zA-Z0-9_\- ]+$/.test(desired)) { openUsernameFlowPhase('error','Use letters, numbers, spaces, _ or -.'); return; }
+  if (String(auth.name||'').trim().toLowerCase()===desired.toLowerCase()) { openUsernameFlowPhase('error','That is already your username.'); return; }
+
+  openUsernameFlowPhase('loading','Checking username availability...');
+  usernameChangeFlow.elapsed=0;
+  try {
+    await new Promise(r=>setTimeout(r,520));
+    const taken=await isUsernameTaken(desired);
+    if (taken) { openUsernameFlowPhase('error',usernameUnavailableMsg(desired)); return; }
+
+    if (!consumeUsernameTry()) { openUsernameFlowPhase('error',`No tries left. Refresh in ${usernameCountdownStr()}.`); return; }
+
+    if (fbUser.updateProfile) await fbUser.updateProfile({displayName:desired});
+    auth={...auth,name:desired};
+    saveAuth(auth);
+    try { await writeCloudUserInfo({name:desired,displayName:desired}); } catch(e){}
+    try { await syncSlopeMirror({displayName:String(desired)}); } catch(e){}
+
+    openUsernameFlowPhase('success',`Congratulations ${desired}! Username updated.`);
+    addNotif('USERNAME UPDATED',CFG.GR);
+  } catch(e){
+    openUsernameFlowPhase('error','Could not update username. Try again.');
+  }
+}
+function drawUsernameChangeOverlay(t){
+  if (!usernameChangeFlow.active) return;
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.74)'; ctx.fillRect(0,0,LW,LH);
+  const w=320,h=188,x=(LW-w)/2,y=(LH-h)/2;
+  const col=usernameChangeFlow.phase==='success'?CFG.GR:(usernameChangeFlow.phase==='error'?CFG.PK:CFG.CY);
+  ctx.fillStyle='#000'; ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle=col; ctx.lineWidth=2; glow(col,14); ctx.strokeRect(x,y,w,h);
+  const title=usernameChangeFlow.phase==='loading'?'CHECKING USERNAME':(usernameChangeFlow.phase==='success'?'CONGRATULATIONS':'USERNAME ERROR');
+  setFont(14,'900'); glow(col,10); txt(title,LW/2,y+28,col);
+  setFont(9,'700',"'Share Tech Mono',monospace"); noGlow();
+  const m=String(usernameChangeFlow.msg||'').slice(0,90);
+  txt(m,LW/2,y+58,'rgba(220,240,255,0.9)');
+
+  if (usernameChangeFlow.phase==='loading') {
+    usernameChangeFlow.elapsed+=1/60;
+    const prog=clamp((Math.sin(t*2.2)+1)/2*0.55 + clamp(usernameChangeFlow.elapsed/1.8,0,0.45),0,0.97);
+    const bx=x+22,by=y+88,bw=w-44,bh=10;
+    ctx.fillStyle='rgba(0,245,255,0.12)'; ctx.fillRect(bx,by,bw,bh);
+    const g=ctx.createLinearGradient(bx,0,bx+bw,0); g.addColorStop(0,'#00f5ff'); g.addColorStop(1,'#66bbff');
+    ctx.fillStyle=g; glow(CFG.CY,8); ctx.fillRect(bx,by,bw*prog,bh);
+    setFont(8,'400',"'Share Tech Mono',monospace"); noGlow(); txt('Loading...',LW/2,by+24,'rgba(180,230,255,0.75)');
+  } else if (usernameChangeFlow.phase==='error') {
+    BTNS.usernameTryAgain={x:x+88,y:y+92,w:144,h:30};
+    BTNS.usernameExit={x:x+88,y:y+128,w:144,h:30};
+    drawNeonBtn(BTNS.usernameTryAgain.x,BTNS.usernameTryAgain.y,BTNS.usernameTryAgain.w,BTNS.usernameTryAgain.h,CFG.CY,'TRY AGAIN',11,1,Math.sin(t*2));
+    drawNeonBtn(BTNS.usernameExit.x,BTNS.usernameExit.y,BTNS.usernameExit.w,BTNS.usernameExit.h,CFG.PK,'EXIT',11,1,Math.sin(t*2));
+  } else {
+    BTNS.usernameContinue={x:x+88,y:y+124,w:144,h:30};
+    drawNeonBtn(BTNS.usernameContinue.x,BTNS.usernameContinue.y,BTNS.usernameContinue.w,BTNS.usernameContinue.h,CFG.GR,'CONTINUE',11,1,Math.sin(t*2));
+  }
+  ctx.restore();
+}
 
 const USERNAME_CHANGE_KEY='slope_username_change';
 const USERNAME_TRY_WINDOW_MS=7*24*60*60*1000;
@@ -4507,7 +4684,7 @@ function adminLockAll(){
   addNotif('Admin: locked all cosmetics.',CFG.PK);
 }
 
-let inputDialog={active:false,title:'',label:'',value:'',maxLen:64,secret:false,multiline:false,onSubmit:null,selectAll:false};
+let inputDialog={active:false,title:'',label:'',value:'',maxLen:64,secret:false,multiline:false,onSubmit:null,selectAll:false,saveLabel:'SAVE',cancelLabel:'CANCEL'};
 function openInputDialog(cfg={}){
   inputDialog={
     active:true,
@@ -4519,6 +4696,8 @@ function openInputDialog(cfg={}){
     multiline:!!cfg.multiline,
     onSubmit:typeof cfg.onSubmit==='function'?cfg.onSubmit:null,
     selectAll:false,
+    saveLabel:String(cfg.saveLabel||'SAVE').slice(0,12),
+    cancelLabel:String(cfg.cancelLabel||'CANCEL').slice(0,12),
   };
 }
 function closeInputDialog(save=false){
@@ -4558,8 +4737,8 @@ function drawInputDialog(t){
 
   BTNS.inputSave={x:x+22,y:y+h-44,w:120,h:28};
   BTNS.inputCancel={x:x+w-142,y:y+h-44,w:120,h:28};
-  drawNeonBtn(BTNS.inputSave.x,BTNS.inputSave.y,120,28,CFG.GR,'SAVE',10,1,Math.sin(t*2));
-  drawNeonBtn(BTNS.inputCancel.x,BTNS.inputCancel.y,120,28,CFG.PK,'CANCEL',10,1,Math.sin(t*2.2));
+  drawNeonBtn(BTNS.inputSave.x,BTNS.inputSave.y,120,28,CFG.GR,inputDialog.saveLabel||'SAVE',10,1,Math.sin(t*2));
+  drawNeonBtn(BTNS.inputCancel.x,BTNS.inputCancel.y,120,28,CFG.PK,inputDialog.cancelLabel||'CANCEL',10,1,Math.sin(t*2.2));
   ctx.restore();
 }
 
@@ -4602,6 +4781,15 @@ function drawLoadingDots(x,y,t,col='#888') {
   for (let i=0;i<3;i++) {
     ctx.globalAlpha=0.25+0.75*Math.max(0,Math.sin(t*5+i));
     circle(x+i*14,y,4,col);
+  }
+  ctx.globalAlpha=1;
+}
+function drawLoadingSquares(x,y,t,col='#888') {
+  const size=7, gap=6;
+  for (let i=0;i<3;i++) {
+    ctx.globalAlpha=0.2+0.8*Math.max(0,Math.sin(t*4.5+i*0.85));
+    ctx.fillStyle=col;
+    ctx.fillRect(x-((size*3+gap*2)/2)+i*(size+gap),y,size,size);
   }
   ctx.globalAlpha=1;
 }
@@ -4875,6 +5063,16 @@ function resetLocalForNewAccount(){
   localStorage.setItem('slope_totalTime','0');
 }
 
+async function generateUniqueNeonRunnerName(){
+  if (!fbDb) return `NeonRunner${Math.floor(10000000+Math.random()*90000000)}`;
+  for (let i=0;i<9;i++) {
+    const candidate=`NeonRunner${Math.floor(10000000+Math.random()*90000000)}`;
+    const taken=await isUsernameTaken(candidate);
+    if (!taken) return candidate;
+  }
+  return `NeonRunner${Date.now().toString().slice(-8)}`;
+}
+
 async function handleAuthSignUp(){
   const pwd=signupForm.password||'';
   if (pwd.length<6 || pwd.length>20) { authFlowState='error'; authFlowError='Password must be 6 to 20 chars.'; return; }
@@ -4882,24 +5080,23 @@ async function handleAuthSignUp(){
   if (!fbReady || !fbAuth) { authFlowState='error'; authFlowError='Cloud service unavailable'; return; }
   try {
     authFlowState='loading'; authFlowError='';
-    const desired=(signupForm.username||'Runner').trim()||'Runner';
-    if (fbDb) {
-      const root=await resolveCloudRoot(fbUser&&fbUser.uid,true);
-      const snap=await fbDb.ref(root).get();
-      const all=snap&&snap.val?snap.val():{};
-      const clash=Object.values(all||{}).some(v=>String((v&&v.name)||'').toLowerCase()===desired.toLowerCase());
-      if (clash) {
-        const sug=`${desired}${Math.floor(100+Math.random()*900)}`;
-        authFlowState='error'; authFlowError=`Username taken. Try ${sug}`;
-        return;
-      }
+    const desired=(signupForm.username||'').trim();
+    let finalName='';
+    if (desired) {
+      if (desired.length<3 || desired.length>32) { authFlowState='error'; authFlowError='Username must be 3 to 32 chars.'; return; }
+      if (!/^[a-zA-Z0-9_\- ]+$/.test(desired)) { authFlowState='error'; authFlowError='Use letters, numbers, spaces, _ or -.'; return; }
+      const clash=await isUsernameTaken(desired);
+      if (clash) { authFlowState='error'; authFlowError='Username taken. Try another one.'; return; }
+      finalName=desired;
+    } else {
+      finalName=await generateUniqueNeonRunnerName();
     }
     const cred=await fbAuth.createUserWithEmailAndPassword((signupForm.email||'').trim(),pwd);
     if (cred.user) {
-      await cred.user.updateProfile({displayName:(signupForm.username||'Runner').trim()||'Runner'});
+      await cred.user.updateProfile({displayName:finalName});
       await cred.user.sendEmailVerification();
       fbUser=cred.user;
-      auth={signedIn:true,name:cred.user.displayName||signupForm.username,email:cred.user.email||signupForm.email,uid:cred.user.uid,verified:false,bio:'',avatar:'',status:'online',statusPref:'online',lastSeen:Date.now()};
+      auth={signedIn:true,name:finalName,email:cred.user.email||signupForm.email,uid:cred.user.uid,verified:false,bio:'',avatar:'',status:'online',statusPref:'online',lastSeen:Date.now()};
       isSignedIn=true; saveAuth(auth);
       resetLocalForNewAccount();
       await writeCloudUserInfo({name:auth.name,email:auth.email,verified:false,createdAt:Date.now(),admin:false,status:'online',statusPref:'online',lastSeen:Date.now(),progress:{bestScore:0,gems:0,modeScores:{endless:0,adventure:0,impossible:0,ltm:0}}});
@@ -4926,7 +5123,7 @@ function handleSignInTap(p){
 function handleSignUpTap(p){
   if (hitBtn(p,BTNS.authBack)) { SFX.click(); doTransition('MENU'); return; }
   if (hitBtn(p,BTNS.signupSwitch)) { SFX.click(); doTransition('SIGNIN'); return; }
-  if (hitBtn(p,BTNS.signupName)) { SFX.click(); openInputDialog({title:'SIGN UP',label:'Username',value:signupForm.username||'',maxLen:24,onSubmit:v=>{signupForm.username=(v||'').trim();}}); return; }
+  if (hitBtn(p,BTNS.signupName)) { SFX.click(); openInputDialog({title:'SIGN UP',label:'Username',value:signupForm.username||'',maxLen:32,onSubmit:v=>{signupForm.username=(v||'').trim();}}); return; }
   if (hitBtn(p,BTNS.signupEmail)) { SFX.click(); openInputDialog({title:'SIGN UP',label:'Email',value:signupForm.email||'',maxLen:64,onSubmit:v=>{signupForm.email=(v||'').trim();}}); return; }
   if (hitBtn(p,BTNS.signupPass)) { SFX.click(); openInputDialog({title:'SIGN UP',label:'Password (6-20)',value:'',maxLen:20,secret:true,onSubmit:v=>{signupForm.password=v||'';}}); return; }
   if (hitBtn(p,BTNS.signupConfirm)) { SFX.click(); openInputDialog({title:'SIGN UP',label:'Confirm Password',value:'',maxLen:20,secret:true,onSubmit:v=>{signupForm.confirm=v||'';}}); return; }
@@ -5146,7 +5343,7 @@ function drawProfileScreen(t){
   const avatarX=x+64, avatarY=y+104, avatarR=34;
   BTNS.profileAvatar={x:avatarX-avatarR-6,y:avatarY-avatarR-6,w:(avatarR+6)*2,h:(avatarR+6)*2,cx:avatarX,cy:avatarY,r:avatarR+6};
   ctx.save();
-  const cardAvatar=playerCardPopup.isSelf?profileAvatar:String(cardUser.avatar||'');
+  const cardAvatar=String(profileAvatar||'');
   if (cardAvatar) {
     const img=new Image(); img.src=cardAvatar;
     ctx.beginPath(); ctx.arc(avatarX,avatarY,avatarR,0,Math.PI*2); ctx.clip();
@@ -5169,7 +5366,8 @@ function drawProfileScreen(t){
   const left=x+118;
   const btnH=30, btnGap=8;
   const signOutY=y+h-74;
-  const passY=signOutY-(btnH+btnGap);
+  const deleteY=signOutY-(btnH+btnGap);
+  const passY=deleteY-(btnH+btnGap);
   const bioBtnY=passY-(btnH+btnGap);
   const uploadY=bioBtnY-(btnH+btnGap);
   const usernameBtnY=uploadY-(btnH+btnGap);
@@ -5281,13 +5479,15 @@ function drawProfileScreen(t){
   drawNeonBtn(BTNS.profileBio.x,BTNS.profileBio.y,BTNS.profileBio.w,BTNS.profileBio.h,canEditProfile?CFG.GR:'#2f5f2f',canEditProfile?'EDIT PUBLIC PROFILE':'PUBLIC PROFILE LOCKED',10,1,0);
   BTNS.profileChangePassword={x:x+14,y:passY,w:w-28,h:btnH};
   drawNeonBtn(BTNS.profileChangePassword.x,BTNS.profileChangePassword.y,BTNS.profileChangePassword.w,BTNS.profileChangePassword.h,canEditProfile?CFG.YL:'#6a6222',canEditProfile?'CHANGE PASSWORD':'PASSWORD LOCKED',10,1,0);
+  BTNS.profileDelete={x:x+14,y:deleteY,w:w-28,h:btnH};
+  drawNeonBtn(BTNS.profileDelete.x,BTNS.profileDelete.y,BTNS.profileDelete.w,BTNS.profileDelete.h,isSignedIn?'#ff3355':'#5a3238',isSignedIn?'DELETE ACCOUNT':'DELETE LOCKED',9,1,0);
   BTNS.profileSignOut={x:x+14,y:signOutY,w:w-28,h:btnH};
   drawNeonBtn(BTNS.profileSignOut.x,BTNS.profileSignOut.y,BTNS.profileSignOut.w,BTNS.profileSignOut.h,isSignedIn?CFG.PK:CFG.CY,isSignedIn?'SIGN OUT':'GO TO SIGN IN',10,1,0);
   BTNS.profileDelete={x:x+14,y:signOutY-36,w:w-28,h:28};
   drawNeonBtn(BTNS.profileDelete.x,BTNS.profileDelete.y,BTNS.profileDelete.w,BTNS.profileDelete.h,isSignedIn?'#ff3355':'#5a3238',isSignedIn?'DELETE ACCOUNT':'DELETE LOCKED',9,1,0);
 
   const minP=minProfileScroll();
-  const sbX=infoX+infoW+4, sbY=infoY-2, sbH=uploadY-infoY-8;
+  const sbX=infoX+infoW+4, sbY=infoY-2, sbH=Math.max(24,uidLabelY-infoY-6);
   if (sbH>20) {
     ctx.save();
     ctx.fillStyle='rgba(0,245,255,0.10)'; ctx.fillRect(sbX,sbY,4,sbH);
@@ -5443,7 +5643,7 @@ function handleProfileTap(p){
     if (!isSignedIn) { addNotif('Username change is locked for guests.',CFG.YL); return; }
     refreshUsernameChangeState();
     if (usernameChangeState.triesLeft<=0) { usernameChangeFlow.candidate=''; openUsernameFlowPhase('error',`No tries left. Refresh in ${usernameCountdownStr()}.`); return; }
-    openInputDialog({title:'CHANGE USERNAME',label:'New Username',value:auth.name||'',maxLen:24,onSubmit:async v=>{ await requestUsernameChange(v||''); }});
+    openInputDialog({title:'CHANGE USERNAME',label:'New Username',value:auth.name||'',maxLen:32,onSubmit:async v=>{ await requestUsernameChange(v||''); }});
     return;
   }
   if (hitBtn(p,BTNS.profileBio)) {
@@ -5661,18 +5861,22 @@ async function fetchSocialData(){
 }
 async function openMiniProfileByUsername(raw){
   const q=String(raw||'').trim().toLowerCase();
-  if (!q) return;
-  if (!fbReady || !fbDb) { addNotif('Cloud unavailable.',CFG.PK); return; }
+  if (!q) { openActionPopup('FIND USER','Cannot find user.',false); return false; }
+  if (!fbReady || !fbDb) { openActionPopup('FIND USER','Cloud unavailable.',false); return false; }
+  socialView.loading=true;
   try {
     const snap=await fbDb.ref(CLOUD_SLOPE_ROOT).get();
     const all=snap&&snap.val?snap.val():{};
     let foundUid='';
     Object.keys(all||{}).some(uid=>{ const u=all[uid]||{}; const nm=String(u.displayName||u.name||u.email||'').toLowerCase(); if (nm===q) { foundUid=uid; return true; } return false; });
-    if (!foundUid) { addNotif('User not found.',CFG.PK); return; }
+    if (!foundUid) { openActionPopup('FIND USER','Cannot find user.',false); return false; }
     const u=all[foundUid]||{};
     playerCardPopup.active=true; playerCardPopup.isSelf=!!(isSignedIn&&auth&&auth.uid===foundUid); playerCardPopup.fromMenu=false;
     playerCardPopup.viewed={uid:foundUid,name:String(u.displayName||u.name||'Runner'),avatar:String(u.pfpLink||u.avatar||''),status:String(u.status||'offline'),lastSeen:Number(u.lastSeen||0),bio:String(u.bio||''),bestScore:Number(u.bestScore||0)};
-  } catch(e) { addNotif('Search failed.',CFG.PK); }
+    openActionPopup('FIND USER',`Found ${playerCardPopup.viewed.name}.`,true);
+    return true;
+  } catch(e) { openActionPopup('FIND USER','Search failed.',false); return false; }
+  finally { socialView.loading=false; }
 }
 async function sendFriendRequestToViewed(){
   const v=playerCardPopup.viewed||{};
