@@ -194,7 +194,7 @@ const BTNS = {
   authAction:null, authBack:null, authSubmit:null, authRestart:null,
   pauseOptions:null, optionsBack:null, optionsToggleQuests:null, optionsToggleTutorials:null, hudOptions:null,
   signinEmail:null, signinPass:null, signupName:null, signupEmail:null, signupPass:null, signupConfirm:null, signupSwitch:null, signinSwitch:null, signinGoogle:null,
-  profileChangePassword:null, profileAvatar:null, profileTrash:null, profileUploadOk:null, profileUploadCancel:null, profileUploadZoomIn:null, profileUploadZoomOut:null, profileUploadErrOk:null,
+  profileChangePassword:null, profileAvatar:null, profileTrash:null, profileUploadOk:null, profileUploadCancel:null, profileUploadZoomIn:null, profileUploadZoomOut:null, profileUploadReset:null, profileUploadErrOk:null,
   controls:null, controlsBack:null, touchJoyL:null, touchJoyR:null,
 };
 
@@ -375,7 +375,7 @@ canvas.addEventListener('touchstart', e => {
     const dx=p.x-BTNS.profileAvatar.cx, dy=p.y-BTNS.profileAvatar.cy;
     if ((dx*dx+dy*dy) <= (BTNS.profileAvatar.r*BTNS.profileAvatar.r)) { profileAvatarPressing=true; profileAvatarPressStart=Date.now(); profileAvatarHoldFX=false; }
     if (profileUploadState.active && profileUploadState.mode==='preview') {
-      const frame=220, fx=(LW-frame)/2, fy=((LH-320)/2)+44;
+      const frame=220, fx=(LW-frame)/2, fy=((LH-380)/2)+44;
       if (p.x>=fx && p.x<=fx+frame && p.y>=fy && p.y<=fy+frame) { profileUploadState.drag=true; profileUploadState.lastX=p.x; profileUploadState.lastY=p.y; }
     }
   }
@@ -455,7 +455,7 @@ canvas.addEventListener('mousedown', e => {
       if ((dx*dx+dy*dy) <= (BTNS.profileAvatar.r*BTNS.profileAvatar.r)) { profileAvatarPressing=true; profileAvatarPressStart=Date.now(); profileAvatarHoldFX=false; }
     }
     if (profileUploadState.active && profileUploadState.mode==='preview') {
-      const frame=220, fx=(LW-frame)/2, fy=((LH-320)/2)+44;
+      const frame=220, fx=(LW-frame)/2, fy=((LH-380)/2)+44;
       if (p.x>=fx && p.x<=fx+frame && p.y>=fy && p.y<=fy+frame) { profileUploadState.drag=true; profileUploadState.lastX=p.x; profileUploadState.lastY=p.y; }
     }
   }
@@ -3203,6 +3203,7 @@ let profileUploadState={active:false,mode:'idle',error:'',rawData:'',img:null,zo
 let cloudProfileRoot=CLOUD_INFO_ROOT;
 let cloudGemCount=loadBank();
 let cloudUpdatedAt=0;
+let cloudJoinedAt=0;
 
 
 function drawDefaultProfileIcon(cx,cy,r,col='rgba(216,246,255,0.9)'){
@@ -3281,6 +3282,15 @@ function fmtCloudTs(ts){
   const d=new Date(ts);
   if (Number.isNaN(d.getTime())) return '—';
   return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+}
+
+
+function parseCloudTs(v){
+  if (Number.isFinite(v) && v>0) return Number(v);
+  const n=Number(v);
+  if (Number.isFinite(n) && n>0) return n;
+  const p=Date.parse(String(v||''));
+  return Number.isFinite(p) && p>0 ? p : 0;
 }
 
 function getAvatarLinkId(avatar){
@@ -3423,6 +3433,7 @@ function initFirebase(){
         cloudProfileRoot=CLOUD_INFO_ROOT;
         cloudGemCount=loadBank();
         cloudUpdatedAt=0;
+        cloudJoinedAt=0;
         saveAuth(auth);
       }
     });
@@ -3603,6 +3614,7 @@ async function loadCloudProfileAndProgress() {
       await syncProgressToCloud('init');
       cloudGemCount=loadBank();
       cloudUpdatedAt=Date.now();
+      cloudJoinedAt=cloudUpdatedAt;
       await syncSlopeMirror({createdAt:String(cloudUpdatedAt),updatedAt:String(cloudUpdatedAt)});
       return;
     }
@@ -3631,6 +3643,7 @@ async function loadCloudProfileAndProgress() {
     cloudGemCount=Number((val.progress&&val.progress.gems)|| (slopeMirror&&slopeMirror.gems));
     if (!Number.isFinite(cloudGemCount)) cloudGemCount=loadBank();
     cloudUpdatedAt=Number((val.progress&&val.progress.updatedAt)||val.updatedAt||(slopeMirror&&slopeMirror.updatedAt)||0)||0;
+    cloudJoinedAt=parseCloudTs(val.createdAt||(slopeMirror&&slopeMirror.createdAt)||(fbUser&&fbUser.metadata&&fbUser.metadata.creationTime)||0);
     auth={...auth,signedIn:true,name:val.name||auth.name,email:val.email||auth.email,uid:fbUser.uid,verified:!!fbUser.emailVerified,bio:profileBio,avatar:profileAvatar};
     saveAuth(auth);
   } catch (e) {}
@@ -3751,6 +3764,7 @@ function drawProfileScreen(t){
   const totalTimeSec=Math.max(0, Number(localStorage.getItem('slope_totalTime')||0));
   const lines=isSignedIn ? [
     ['Display Name',auth.name||'Player'],
+    ['When Joined',fmtCloudTs(cloudJoinedAt)],
     ['Email',auth.email||''],
     ['Verified',auth.verified?'YES':'NO'],
     ['Best Score',String(Math.floor(bestScore))],
@@ -3846,7 +3860,7 @@ function drawProfileUploadOverlay(t){
   if (!st.active) return;
   ctx.save();
   ctx.fillStyle='rgba(0,0,0,0.82)'; ctx.fillRect(0,0,LW,LH);
-  const w=332,h=320,x=(LW-w)/2,y=(LH-h)/2;
+  const w=332,h=380,x=(LW-w)/2,y=(LH-h)/2;
   ctx.fillStyle='#000'; ctx.fillRect(x,y,w,h);
   ctx.strokeStyle=st.mode==='error'?CFG.PK:CFG.CY; ctx.lineWidth=2; glow(st.mode==='error'?CFG.PK:CFG.CY,12); ctx.strokeRect(x,y,w,h);
   if (st.mode==='error') {
@@ -3871,13 +3885,24 @@ function drawProfileUploadOverlay(t){
   }
   ctx.restore();
   ctx.strokeStyle='rgba(0,245,255,0.7)'; ctx.lineWidth=2; ctx.strokeRect(fx,fy,frame,frame);
+  ctx.save();
+  ctx.strokeStyle='rgba(0,245,255,0.26)';
+  ctx.lineWidth=1;
+  for (let i=1;i<3;i++) {
+    const s=(frame/3)*i;
+    ctx.beginPath(); ctx.moveTo(fx+s,fy); ctx.lineTo(fx+s,fy+frame); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(fx,fy+s); ctx.lineTo(fx+frame,fy+s); ctx.stroke();
+  }
+  ctx.restore();
   setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt('Drag to reposition. Use +/- to zoom.',LW/2,fy+frame+16,'rgba(220,245,255,0.8)');
   BTNS.profileUploadZoomOut={x:fx,y:fy+frame+26,w:48,h:26};
   BTNS.profileUploadZoomIn={x:fx+56,y:fy+frame+26,w:48,h:26};
+  BTNS.profileUploadReset={x:fx+112,y:fy+frame+26,w:72,h:26};
   drawNeonBtn(BTNS.profileUploadZoomOut.x,BTNS.profileUploadZoomOut.y,48,26,CFG.PU,'-',14,1,0);
   drawNeonBtn(BTNS.profileUploadZoomIn.x,BTNS.profileUploadZoomIn.y,48,26,CFG.PU,'+',14,1,0);
-  BTNS.profileUploadOk={x:LW/2+10,y:fy+frame+24,w:104,h:30};
-  BTNS.profileUploadCancel={x:LW/2+120,y:fy+frame+24,w:104,h:30};
+  drawNeonBtn(BTNS.profileUploadReset.x,BTNS.profileUploadReset.y,72,26,CFG.CY,'RESET',9,1,0);
+  BTNS.profileUploadOk={x:fx+frame-104,y:fy+frame+58,w:104,h:30};
+  BTNS.profileUploadCancel={x:fx+frame-104,y:fy+frame+94,w:104,h:30};
   drawNeonBtn(BTNS.profileUploadOk.x,BTNS.profileUploadOk.y,104,30,CFG.GR,'UPLOAD',10,1,Math.sin(t*2));
   drawNeonBtn(BTNS.profileUploadCancel.x,BTNS.profileUploadCancel.y,104,30,CFG.PK,'CANCEL',10,1,Math.sin(t*2));
   ctx.restore();
@@ -3904,10 +3929,11 @@ function handleProfileTap(p){
       return;
     }
     const st=profileUploadState;
-    const frame=220, fx=(LW-frame)/2, fy=((LH-320)/2)+44;
+    const frame=220, fx=(LW-frame)/2, fy=((LH-380)/2)+44;
     if (p.x>=fx && p.x<=fx+frame && p.y>=fy && p.y<=fy+frame) { st.drag=true; st.lastX=p.x; st.lastY=p.y; return; }
     if (hitBtn(p,BTNS.profileUploadZoomIn)) { SFX.click(); st.zoom=clamp(st.zoom+0.1,0.8,3); return; }
     if (hitBtn(p,BTNS.profileUploadZoomOut)) { SFX.click(); st.zoom=clamp(st.zoom-0.1,0.8,3); return; }
+    if (hitBtn(p,BTNS.profileUploadReset)) { SFX.click(); st.zoom=1; st.offX=0; st.offY=0; return; }
     if (hitBtn(p,BTNS.profileUploadOk)) { SFX.click(); applyProfileCropAndSave(); return; }
     if (hitBtn(p,BTNS.profileUploadCancel)) { SFX.click(); resetProfileUploadState(); return; }
     return;
