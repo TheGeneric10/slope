@@ -3859,7 +3859,7 @@ function buildSlopeUserPayload(extra={}){
     uid:String((fbUser&&fbUser.uid)||auth.uid||''),
     email:String((fbUser&&fbUser.email)||auth.email||''),
     displayName:String((fbUser&&fbUser.displayName)||auth.name||'Runner'),
-    verified:String(!!((fbUser&&fbUser.emailVerified)||auth.verified)),
+    verified:String(!!(auth&&auth.verified===true)),
     bio:String(profileBio||''),
     pfpLink,
     pfpLinkId:getAvatarLinkId(pfpLink),
@@ -4186,7 +4186,8 @@ function initFirebase(){
       fbUser=u||null;
       if (u) {
         isSignedIn=true;
-        auth={signedIn:true,name:u.displayName||auth.name||'Runner',email:u.email||'',uid:u.uid||'',verified:!!u.emailVerified,bio:profileBio||'',avatar:profileAvatar||'',admin:!!(auth&&auth.admin)};
+        const keepVerified=(auth&&typeof auth.verified==='boolean')?auth.verified:!!u.emailVerified;
+        auth={signedIn:true,name:u.displayName||auth.name||'Runner',email:u.email||'',uid:u.uid||'',verified:!!keepVerified,bio:profileBio||'',avatar:profileAvatar||'',admin:!!(auth&&auth.admin)};
         saveAuth(auth);
         refreshAdminFlag();
         await loadCloudProfileAndProgress();
@@ -4319,7 +4320,7 @@ async function writeCloudUserInfo(extra={}) {
     email:fbUser.email||'',
     name:fbUser.displayName||auth.name||'Runner',
     displayName:fbUser.displayName||auth.name||'Runner',
-    verified:!!((extra&&extra.verified===true)||(auth&&auth.verified===true)||fbUser.emailVerified),
+    verified:((extra&&typeof extra.verified==='boolean')?!!extra.verified:!!(auth&&auth.verified===true)),
     bio:profileBio||'',
     avatar:profileAvatar||'',
     pfpLink:profileAvatar||'',
@@ -4418,7 +4419,9 @@ async function loadCloudProfileAndProgress() {
     cloudUpdatedAt=Number((val.progress&&val.progress.updatedAt)||val.updatedAt||(slopeMirror&&slopeMirror.updatedAt)||0)||0;
     cloudJoinedAt=parseCloudTs(val.createdAt||(slopeMirror&&slopeMirror.createdAt)||(fbUser&&fbUser.metadata&&fbUser.metadata.creationTime)||0);
     const isAdminDb=(String(val.admin??(slopeMirror&&slopeMirror.admin)??'false')==='true') || val.admin===true || (slopeMirror&&slopeMirror.admin===true);
-    auth={...auth,signedIn:true,name:val.name||auth.name,email:val.email||auth.email,uid:fbUser.uid,verified:!!((auth&&auth.verified===true)||fbUser.emailVerified),bio:profileBio,avatar:profileAvatar,admin:isAdminDb};
+    const dbVerifiedRaw=(val.verified??(slopeMirror&&slopeMirror.verified));
+    const dbVerified=(dbVerifiedRaw===true||String(dbVerifiedRaw)==='true');
+    auth={...auth,signedIn:true,name:val.name||auth.name,email:val.email||auth.email,uid:fbUser.uid,verified:dbVerified,bio:profileBio,avatar:profileAvatar,admin:isAdminDb};
     saveAuth(auth);
     refreshAdminFlag();
   } catch (e) {}
@@ -4760,8 +4763,14 @@ function drawProfileScreen(t){
   }
 
   const left=x+118;
-  const uploadY=y+h-204;
-  const infoX=x+110, infoY=y+74, infoW=w-136, infoH=Math.max(120, uploadY-infoY-10);
+  const btnH=30, btnGap=8;
+  const signOutY=y+h-74;
+  const passY=signOutY-(btnH+btnGap);
+  const bioBtnY=passY-(btnH+btnGap);
+  const uploadY=bioBtnY-(btnH+btnGap);
+  const usernameBtnY=uploadY-(btnH+btnGap);
+  const usernameInfoY=usernameBtnY-8;
+  const infoX=x+110, infoY=y+74, infoW=w-148, infoH=Math.max(120, usernameInfoY-infoY-10);
   const totalTimeSec=Math.max(0, Number(localStorage.getItem('slope_totalTime')||0));
   const lines=isSignedIn ? [
     ['Display Name',auth.name||'Player'],
@@ -4826,7 +4835,7 @@ function drawProfileScreen(t){
 
   const canEditProfile=isSignedIn;
   const hasCustomAvatar=!!profileAvatar;
-  const uploadH=34;
+  const uploadH=btnH;
   const trashW=42;
   const uploadW=(canEditProfile && hasCustomAvatar) ? (w-28-trashW-8) : (w-28);
   BTNS.profileUpload={x:x+14,y:uploadY,w:uploadW,h:uploadH};
@@ -4837,18 +4846,16 @@ function drawProfileScreen(t){
     drawNeonBtn(BTNS.profileTrash.x,BTNS.profileTrash.y,BTNS.profileTrash.w,BTNS.profileTrash.h,CFG.PK,'🗑',12,1,0);
   }
   refreshUsernameChangeState();
-  const usernameBtnY=uploadY-52;
-  const usernameInfoY=uploadY-14;
   setFont(8,'400',"'Share Tech Mono',monospace"); noGlow();
   const triesTxt=`Username tries: ${usernameChangeState.triesLeft}/2  •  Refresh: ${usernameCountdownStr()}`;
   txt(triesTxt.slice(0,56),x+14,usernameInfoY,'rgba(190,230,255,0.75)','left');
-  BTNS.profileChangeUsername={x:x+14,y:usernameBtnY,w:w-28,h:34};
+  BTNS.profileChangeUsername={x:x+14,y:usernameBtnY,w:w-28,h:btnH};
   drawNeonBtn(BTNS.profileChangeUsername.x,BTNS.profileChangeUsername.y,BTNS.profileChangeUsername.w,BTNS.profileChangeUsername.h,canEditProfile&&usernameChangeState.triesLeft>0?CFG.CY:'#3a5661',canEditProfile?(usernameChangeState.triesLeft>0?'CHANGE USERNAME':'USERNAME LOCKED (WAIT)'):'USERNAME LOCKED',10,1,0);
-  BTNS.profileBio={x:x+14,y:y+h-164,w:w-28,h:34};
+  BTNS.profileBio={x:x+14,y:bioBtnY,w:w-28,h:btnH};
   drawNeonBtn(BTNS.profileBio.x,BTNS.profileBio.y,BTNS.profileBio.w,BTNS.profileBio.h,canEditProfile?CFG.GR:'#2f5f2f',canEditProfile?'UPDATE BIO':'BIO LOCKED (SIGN IN)',10,1,0);
-  BTNS.profileChangePassword={x:x+14,y:y+h-122,w:w-28,h:34};
+  BTNS.profileChangePassword={x:x+14,y:passY,w:w-28,h:btnH};
   drawNeonBtn(BTNS.profileChangePassword.x,BTNS.profileChangePassword.y,BTNS.profileChangePassword.w,BTNS.profileChangePassword.h,canEditProfile?CFG.YL:'#6a6222',canEditProfile?'CHANGE PASSWORD':'PASSWORD LOCKED',10,1,0);
-  BTNS.profileSignOut={x:x+14,y:y+h-80,w:w-28,h:34};
+  BTNS.profileSignOut={x:x+14,y:signOutY,w:w-28,h:btnH};
   drawNeonBtn(BTNS.profileSignOut.x,BTNS.profileSignOut.y,BTNS.profileSignOut.w,BTNS.profileSignOut.h,isSignedIn?CFG.PK:CFG.CY,isSignedIn?'SIGN OUT':'GO TO SIGN IN',10,1,0);
 
   const minP=minProfileScroll();
