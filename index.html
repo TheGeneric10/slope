@@ -247,13 +247,15 @@ function stopProfileCropInteraction(){
 }
 
 let confirmDialog={active:false,title:'',msg:'',action:''};
-let actionPopup={active:false,title:'',msg:'',ok:true,loading:false};
+let actionPopup={active:false,title:'',msg:'',ok:true,loading:false,onContinue:null};
 function openConfirm(action,title,msg) {
   confirmDialog={active:true,action,title,msg};
 }
-function openActionPopup(title,msg,ok=true,loading=false){
-  actionPopup={active:true,title:String(title||'STATUS'),msg:String(msg||''),ok:!!ok,loading:!!loading};
+function openActionPopup(title,msg,ok=true,loading=false,onContinue=null){
+  actionPopup={active:true,title:String(title||'STATUS'),msg:String(msg||''),ok:!!ok,loading:!!loading,onContinue:(typeof onContinue==='function'?onContinue:null)};
 }
+
+let pendingFoundProfile=null;
 
 let uidVisible=false;
 let playerCardPopup={active:false,isSelf:false,favorite:false,fromMenu:false,viewed:null};
@@ -497,7 +499,7 @@ function handleTap(e) {
     if (hitBtn(p,BTNS.playerCardClose)) { SFX.click(); playerCardPopup.active=false; return; }
     if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardEdit)) { SFX.click(); playerCardPopup.active=false; doTransition('PROFILE'); return; }
     if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFav)) { SFX.click(); playerCardPopup.favorite=!playerCardPopup.favorite; return; }
-    if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFind)) { SFX.click(); openInputDialog({title:'FIND USER',label:'Username',value:'',maxLen:32,saveLabel:'FIND',cancelLabel:'CANCEL',onSubmit:async v=>{ await openMiniProfileByUsername(v||''); }}); return; }
+    if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFind)) { SFX.click(); playerCardPopup.active=false; openInputDialog({title:'FIND USER',label:'Username',value:'',maxLen:32,saveLabel:'FIND',cancelLabel:'CANCEL',onSubmit:async v=>{ await openMiniProfileByUsername(v||''); }}); return; }
     if (!playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardAdd)) { SFX.click(); sendFriendRequestToViewed(); return; }
     return;
   }
@@ -522,7 +524,14 @@ function handleTap(e) {
   }
 
   if (actionPopup.active) {
-    if (!actionPopup.loading && hitBtn(p,BTNS.actionPopupBtn)) { SFX.click(); actionPopup.active=false; return; }
+    if (!actionPopup.loading && hitBtn(p,BTNS.actionPopupBtn)) {
+      SFX.click();
+      const cb=actionPopup.onContinue;
+      actionPopup.active=false;
+      actionPopup.onContinue=null;
+      if (typeof cb==='function') cb();
+      return;
+    }
     return;
   }
 
@@ -666,8 +675,10 @@ function handleTap(e) {
     if (hitBtn(p,BTNS.publicProfileBack)) { SFX.click(); doTransition('PUBLIC_PROFILE'); return; }
     if (hitBtn(p,BTNS.socialTabFriends)) { SFX.click(); socialView.mode='received'; socialView.scroll=0; return; }
     if (hitBtn(p,BTNS.socialTabFollowers)) { SFX.click(); socialView.mode='sent'; socialView.scroll=0; return; }
-    if (BTNS.socialActionA&&hitBtn(p,BTNS.socialActionA)) { SFX.click(); handleSocialPrimaryAction(); return; }
-    if (BTNS.socialActionB&&hitBtn(p,BTNS.socialActionB)) { SFX.click(); handleSocialSecondaryAction(); return; }
+    const aList=Array.isArray(BTNS.socialActionAList)?BTNS.socialActionAList:[];
+    const bList=Array.isArray(BTNS.socialActionBList)?BTNS.socialActionBList:[];
+    for (let i=0;i<aList.length;i++) if (aList[i]&&hitBtn(p,aList[i])) { SFX.click(); handleSocialPrimaryAction(i); return; }
+    for (let i=0;i<bList.length;i++) if (bList[i]&&hitBtn(p,bList[i])) { SFX.click(); handleSocialSecondaryAction(i); return; }
     return;
   }
   if (gs === 'FRIENDS_LIST') {
@@ -675,6 +686,13 @@ function handleTap(e) {
     if (hitBtn(p,BTNS.socialTabFriends)) { SFX.click(); socialView.mode='friends'; socialView.scroll=0; return; }
     if (hitBtn(p,BTNS.socialTabFollowers)) { SFX.click(); socialView.mode='followers'; socialView.scroll=0; return; }
     if (hitBtn(p,BTNS.socialTabFollowing)) { SFX.click(); socialView.mode='following'; socialView.scroll=0; return; }
+    const rowBtns=Array.isArray(BTNS.socialRowOpenList)?BTNS.socialRowOpenList:[];
+    for (let i=0;i<rowBtns.length;i++) if (rowBtns[i]&&hitBtn(p,rowBtns[i])) {
+      const list=socialView.mode==='followers'?socialData.followers:(socialView.mode==='following'?socialData.following:socialData.friends);
+      const item=list[rowBtns[i].idx]||null;
+      if (item) { SFX.click(); playerCardPopup.active=true; playerCardPopup.isSelf=!!(isSignedIn&&auth&&auth.uid===item.uid); playerCardPopup.fromMenu=false; playerCardPopup.viewed=item; }
+      return;
+    }
     return;
   }
   if (gs === 'ADMIN_AUTH') {
@@ -2552,6 +2570,9 @@ function drawPublicProfileScreen(t){
 }
 
 function drawSocialRows(t,title,sub,list,mode){
+  BTNS.socialActionAList=[];
+  BTNS.socialActionBList=[];
+  BTNS.socialRowOpenList=[];
   const x=28,y=102,w=LW-56,h=520;
   ctx.fillStyle='rgba(8,10,14,0.95)'; ctx.fillRect(x,y,w,h);
   ctx.strokeStyle='rgba(255,230,0,0.35)'; ctx.strokeRect(x,y,w,h);
@@ -2584,11 +2605,14 @@ function drawSocialRows(t,title,sub,list,mode){
       txt(`${STATUS_LABELS[rowStatus]||rowStatus}`,listX+12,ry+20,'rgba(210,230,255,0.78)','left');
     }
     if (mode==='requests') {
-      BTNS.socialActionA={x:listX+listW-88,y:ry-8,w:36,h:22,idx:i};
-      BTNS.socialActionB={x:listX+listW-46,y:ry-8,w:36,h:22,idx:i};
+      BTNS.socialActionAList[i]={x:listX+listW-88,y:ry-8,w:36,h:22,idx:i};
+      BTNS.socialActionBList[i]={x:listX+listW-46,y:ry-8,w:36,h:22,idx:i};
       const aLbl=(socialView.mode==='received')?'✓':'👤';
-      drawNeonBtn(BTNS.socialActionA.x,BTNS.socialActionA.y,36,22,socialView.mode==='received'?CFG.GR:'#888',aLbl,9,1,0);
-      drawNeonBtn(BTNS.socialActionB.x,BTNS.socialActionB.y,36,22,CFG.PK,'✕',9,1,0);
+      drawNeonBtn(BTNS.socialActionAList[i].x,BTNS.socialActionAList[i].y,36,22,socialView.mode==='received'?CFG.GR:'#888',aLbl,9,1,0);
+      drawNeonBtn(BTNS.socialActionBList[i].x,BTNS.socialActionBList[i].y,36,22,CFG.PK,'✕',9,1,0);
+    } else if (mode==='list') {
+      BTNS.socialRowOpenList[i]={x:listX+listW-74,y:ry-8,w:66,h:22,idx:i};
+      drawNeonBtn(BTNS.socialRowOpenList[i].x,BTNS.socialRowOpenList[i].y,66,22,CFG.CY,'VIEW',8,1,0);
     }
   }
   ctx.restore();
@@ -4635,6 +4659,7 @@ function initFirebase(){
         saveAuth(auth);
         refreshAdminFlag();
         await loadCloudProfileAndProgress();
+        totalGems=loadBank();
         await applyConnectivityStatus(false);
       } else {
         isSignedIn=false;
@@ -4642,6 +4667,7 @@ function initFirebase(){
         profileBio=''; profileAvatar='';
         cloudProfileRoot=CLOUD_INFO_ROOT;
         cloudGemCount=loadBank();
+        totalGems=loadBank();
         cloudUpdatedAt=0;
         cloudJoinedAt=0;
         saveAuth(auth);
@@ -4906,14 +4932,21 @@ async function handleAuthSignIn(){
 async function handleAuthGoogleSignIn(){
   if (!fbReady || !fbAuth || !window.firebase || !firebase.auth) { authFlowState='error'; authFlowError='Cloud service unavailable'; return; }
   try {
-    authFlowState='loading'; authFlowError='';
+    authFlowState='loading'; authFlowError=''; authFlowMsg='Open in Google popup...';
     const provider=new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({prompt:'select_account'});
-    await fbAuth.signInWithRedirect(provider);
-    authFlowMsg='Redirecting to Google sign-in...';
+    const cred=await fbAuth.signInWithPopup(provider);
+    fbUser=cred&&cred.user?cred.user:null;
+    await loadCloudProfileAndProgress();
+    totalGems=loadBank();
+    authFlowState='success';
+    authFlowMsg='Google sign-in complete. Cloud data refreshed.';
   } catch (e) {
+    const code=String((e&&e.code)||'');
     authFlowState='error';
-    authFlowError='Google sign in failed. Please try again.';
+    if (code.includes('popup-blocked')) authFlowError='Popup blocked. Allow popups and try again.';
+    else if (code.includes('popup-closed-by-user')) authFlowError='Google popup closed before completion.';
+    else authFlowError='Google sign in failed. Please try again.';
   }
 }
 
@@ -5727,6 +5760,7 @@ async function openMiniProfileByUsername(raw){
   if (!q) { openActionPopup('FIND USER','Cannot find user.',false); return false; }
   if (!fbReady || !fbDb) { openActionPopup('FIND USER','Cloud unavailable.',false); return false; }
   socialView.loading=true;
+  pendingFoundProfile=null;
   openActionPopup('FIND USER','Searching user...',true,true);
   try {
     const snap=await fbDb.ref(CLOUD_SLOPE_ROOT).get();
@@ -5735,9 +5769,15 @@ async function openMiniProfileByUsername(raw){
     Object.keys(all||{}).some(uid=>{ const u=all[uid]||{}; const nm=String(u.displayName||u.name||u.email||'').toLowerCase(); if (nm===q) { foundUid=uid; return true; } return false; });
     if (!foundUid) { openActionPopup('FIND USER','Cannot find user.',false,false); return false; }
     const u=all[foundUid]||{};
-    playerCardPopup.active=true; playerCardPopup.isSelf=!!(isSignedIn&&auth&&auth.uid===foundUid); playerCardPopup.fromMenu=false;
-    playerCardPopup.viewed={uid:foundUid,name:String(u.displayName||u.name||'Runner'),avatar:String(u.pfpLink||u.avatar||''),status:String(u.status||'offline'),lastSeen:Number(u.lastSeen||0),bio:String(u.bio||''),bestScore:Number(u.bestScore||0)};
-    openActionPopup('FIND USER',`Found: ${playerCardPopup.viewed.name} • Best ${Math.floor(playerCardPopup.viewed.bestScore||0)}`,true,false);
+    pendingFoundProfile={uid:foundUid,name:String(u.displayName||u.name||'Runner'),avatar:String(u.pfpLink||u.avatar||''),status:String(u.status||'offline'),lastSeen:Number(u.lastSeen||0),bio:String(u.bio||''),bestScore:Number(u.bestScore||0)};
+    openActionPopup('FIND USER',`Found: ${pendingFoundProfile.name} • Best ${Math.floor(pendingFoundProfile.bestScore||0)}`,true,false,()=>{
+      if (!pendingFoundProfile) return;
+      playerCardPopup.active=true;
+      playerCardPopup.isSelf=!!(isSignedIn&&auth&&auth.uid===pendingFoundProfile.uid);
+      playerCardPopup.fromMenu=false;
+      playerCardPopup.viewed={...pendingFoundProfile};
+      pendingFoundProfile=null;
+    });
     return true;
   } catch(e) { openActionPopup('FIND USER','Search failed.',false,false); return false; }
   finally { socialView.loading=false; }
@@ -5756,9 +5796,10 @@ async function sendFriendRequestToViewed(){
     fetchSocialData();
   } catch(e) { addNotif('Request failed.',CFG.PK); }
 }
-async function handleSocialPrimaryAction(){
+async function handleSocialPrimaryAction(idxOverride=-1){
   const idx=(socialView.mode==='sent'?socialData.sent:socialData.received);
-  const item=idx[BTNS.socialActionA&&BTNS.socialActionA.idx]||null;
+  const btnIdx=idxOverride>=0?idxOverride:((BTNS.socialActionA&&BTNS.socialActionA.idx)||-1);
+  const item=idx[btnIdx]||null;
   if (!item||!fbUser||!fbDb) return;
   if (socialView.mode==='received') {
     const uid=fbUser.uid, ou=item.uid, ts=Date.now();
@@ -5772,9 +5813,10 @@ async function handleSocialPrimaryAction(){
     playerCardPopup.active=true; playerCardPopup.isSelf=false; playerCardPopup.viewed=item;
   }
 }
-async function handleSocialSecondaryAction(){
+async function handleSocialSecondaryAction(idxOverride=-1){
   const idx=(socialView.mode==='sent'?socialData.sent:socialData.received);
-  const item=idx[BTNS.socialActionB&&BTNS.socialActionB.idx]||null;
+  const btnIdx=idxOverride>=0?idxOverride:((BTNS.socialActionB&&BTNS.socialActionB.idx)||-1);
+  const item=idx[btnIdx]||null;
   if (!item||!fbUser||!fbDb) return;
   const uid=fbUser.uid, ou=item.uid;
   if (socialView.mode==='received') {
