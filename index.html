@@ -5346,6 +5346,8 @@ function drawProfileScreen(t){
   drawNeonBtn(BTNS.profileDelete.x,BTNS.profileDelete.y,BTNS.profileDelete.w,BTNS.profileDelete.h,isSignedIn?'#ff3355':'#5a3238',isSignedIn?'DELETE ACCOUNT':'DELETE LOCKED',9,1,0);
   BTNS.profileSignOut={x:x+14,y:signOutY,w:w-28,h:btnH};
   drawNeonBtn(BTNS.profileSignOut.x,BTNS.profileSignOut.y,BTNS.profileSignOut.w,BTNS.profileSignOut.h,isSignedIn?CFG.PK:CFG.CY,isSignedIn?'SIGN OUT':'GO TO SIGN IN',10,1,0);
+  BTNS.profileDelete={x:x+14,y:signOutY-36,w:w-28,h:28};
+  drawNeonBtn(BTNS.profileDelete.x,BTNS.profileDelete.y,BTNS.profileDelete.w,BTNS.profileDelete.h,isSignedIn?'#ff3355':'#5a3238',isSignedIn?'DELETE ACCOUNT':'DELETE LOCKED',9,1,0);
 
   const minP=minProfileScroll();
   const sbX=infoX+infoW+4, sbY=infoY-2, sbH=Math.max(24,uidLabelY-infoY-6);
