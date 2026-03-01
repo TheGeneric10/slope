@@ -230,7 +230,7 @@ const BTNS = {
   authAction:null, authBack:null, authSubmit:null, authRestart:null,
   pauseOptions:null, optionsBack:null, optionsToggleQuests:null, optionsToggleTutorials:null, hudOptions:null,
   signinEmail:null, signinPass:null, signupName:null, signupEmail:null, signupPass:null, signupConfirm:null, signupSwitch:null, signinSwitch:null, signinGoogle:null, signupGoogle:null,
-  profileChangeUsername:null, profileChangePassword:null, profileAvatar:null, profileTrash:null, profileUploadOk:null, profileUploadCancel:null, profileUploadZoomIn:null, profileUploadZoomOut:null, profileUploadReset:null, profileUploadErrOk:null, profileInfoBox:null, profileUidToggle:null, profileUidCopy:null, profileStatusDefault:null, profileStatusIdle:null, profileStatusDnd:null, profileStatusOffline:null, usernameTryAgain:null, usernameExit:null, usernameContinue:null, playerCardClose:null, playerCardEdit:null, playerCardFav:null, menuProfileBox:null, guestPromptSignIn:null, guestPromptContinue:null, publicProfileBack:null, publicProfileRequests:null, publicProfileFriends:null, playerCardFind:null, playerCardAdd:null, socialTabFriends:null, socialTabFollowers:null, socialTabFollowing:null, socialActionA:null, socialActionB:null, profileDelete:null,
+  profileChangeUsername:null, profileChangePassword:null, profileAvatar:null, profileTrash:null, profileUploadOk:null, profileUploadCancel:null, profileUploadZoomIn:null, profileUploadZoomOut:null, profileUploadReset:null, profileUploadErrOk:null, profileInfoBox:null, profileUidToggle:null, profileUidCopy:null, profileStatusDefault:null, profileStatusIdle:null, profileStatusDnd:null, profileStatusOffline:null, usernameTryAgain:null, usernameExit:null, usernameContinue:null, playerCardClose:null, playerCardEdit:null, playerCardFav:null, menuProfileBox:null, guestPromptSignIn:null, guestPromptContinue:null, publicProfileBack:null, publicProfileRequests:null, publicProfileFriends:null, playerCardFind:null, playerCardAdd:null, playerCardFollow:null, playerCardUnfriend:null, socialTabFriends:null, socialTabFollowers:null, socialTabFollowing:null, socialActionA:null, socialActionB:null, profileDelete:null,
   adminBack:null, adminAuthInput:null, adminAuthSubmit:null, adminSetGems:null, adminGrantSelected:null, adminUnlockAll:null, adminLockAll:null, adminLockSelectedSkin:null, adminLockSelectedAura:null, adminLockSelectedTheme:null, adminVerifyUid:null, adminVerifyToggle:null, adminVerifyApply:null, adminViewLtm:null, adminLtmBack:null,
   controls:null, controlsBack:null, touchJoyL:null, touchJoyR:null, noAds:null, noAdsBuy:null, noAdsContinue:null, overLeaderboard:null,
 };
@@ -247,13 +247,31 @@ function stopProfileCropInteraction(){
 }
 
 let confirmDialog={active:false,title:'',msg:'',action:''};
-let actionPopup={active:false,title:'',msg:'',ok:true,loading:false};
+let actionPopup={active:false,title:'',msg:'',ok:true,loading:false,onContinue:null};
 function openConfirm(action,title,msg) {
   confirmDialog={active:true,action,title,msg};
 }
-function openActionPopup(title,msg,ok=true,loading=false){
-  actionPopup={active:true,title:String(title||'STATUS'),msg:String(msg||''),ok:!!ok,loading:!!loading};
+function openActionPopup(title,msg,ok=true,loading=false,onContinue=null){
+  actionPopup={active:true,title:String(title||'STATUS'),msg:String(msg||''),ok:!!ok,loading:!!loading,onContinue:(typeof onContinue==='function'?onContinue:null)};
 }
+
+let pendingFoundProfile=null;
+
+
+const CARD_FAV_KEY='slope_profile_card_favs';
+function loadCardFavs(){
+  try { const arr=JSON.parse(localStorage.getItem(CARD_FAV_KEY)||'[]'); return new Set(Array.isArray(arr)?arr.map(v=>String(v)):[]); }
+  catch(e){ return new Set(); }
+}
+function saveCardFavs(){
+  localStorage.setItem(CARD_FAV_KEY,JSON.stringify(Array.from(cardFavUids)));
+}
+let cardFavUids=loadCardFavs();
+let socialRelationCache={friends:new Set(),followers:new Set(),following:new Set(),received:new Set(),sent:new Set()};
+let socialUserIndexCache={};
+let lastSocialSnapshot={statusByUid:{},received:new Set()};
+let socialPollTimer=0;
+let profileLiveRefreshTimer=0;
 
 let uidVisible=false;
 let playerCardPopup={active:false,isSelf:false,favorite:false,fromMenu:false,viewed:null};
@@ -278,12 +296,60 @@ const STATUS_COLORS={online:'#39ff14',idle:'#ffe45a',dnd:'#ff3366',offline:'#8a9
 const STATUS_LABELS={online:'Online',idle:'Idle',dnd:'Do Not Disturb',offline:'Offline'};
 function getStatusValue(){
   if (!isSignedIn || !navigator.onLine) return 'offline';
-  const st=String((auth&&auth.status)||'').toLowerCase();
-  return STATUS_COLORS[st]?st:'online';
+  return computeEffectiveStatus(auth);
 }
 function getStatusPref(){
   const st=String((auth&&auth.statusPref)||'').toLowerCase();
   return STATUS_COLORS[st]?st:'online';
+}
+function computeEffectiveStatus(meta){
+  const m=meta||{};
+  const base=String(m.status||'offline').toLowerCase();
+  const pref=String(m.statusPref||base||'online').toLowerCase();
+  const lastSeen=Number(m.lastSeen||0);
+  const now=Date.now();
+  if (base==='offline') return 'offline';
+  if (!lastSeen || (now-lastSeen)>(90*1000)) return 'offline';
+  if (pref==='dnd') return 'dnd';
+  if (pref==='idle') return 'idle';
+  if (pref==='offline') return 'offline';
+  if ((now-lastSeen)>=(10*60*1000)) return 'idle';
+  return 'online';
+}
+let lastPresenceActivityAt=Date.now();
+let lastPresenceSyncAt=0;
+let lastPresenceCloudSyncAt=0;
+function markPresenceActivity(source='input'){
+  lastPresenceActivityAt=Date.now();
+  if (!isSignedIn || !navigator.onLine) return;
+  const pref=getStatusPref();
+  if (pref!=='online') return;
+  if (String(auth.status||'')!=='online') {
+    auth={...auth,status:'online',lastSeen:lastPresenceActivityAt};
+    saveAuth(auth);
+  }
+}
+async function refreshSelfPresence(force=false){
+  if (!isSignedIn) return;
+  const now=Date.now();
+  const online=!!navigator.onLine;
+  const pref=getStatusPref();
+  let target='offline';
+  if (online) {
+    if (pref==='dnd' || pref==='idle' || pref==='offline') target=pref;
+    else target=(now-lastPresenceActivityAt)>=10*60*1000?'idle':'online';
+  }
+  const changed=String(auth.status||'')!==target;
+  const heartbeatDue=(now-lastPresenceSyncAt)>45000;
+  if (!changed && !force && !heartbeatDue) return;
+  auth={...auth,status:target,lastSeen:now};
+  saveAuth(auth);
+  lastPresenceSyncAt=now;
+  if (fbUser && fbReady && (changed || force || ((now-lastPresenceCloudSyncAt)>20000))) {
+    lastPresenceCloudSyncAt=now;
+    try { await writeCloudUserInfo({status:target,lastSeen:now,statusPref:pref}); } catch(e){}
+    try { await syncSlopeMirror({status:String(target),lastSeen:String(now)}); } catch(e){}
+  }
 }
 async function applyConnectivityStatus(syncCloud=false){
   if (!isSignedIn) {
@@ -291,18 +357,20 @@ async function applyConnectivityStatus(syncCloud=false){
     saveAuth(auth);
     return;
   }
-  const now=Date.now();
-  const target=navigator.onLine?getStatusPref():'offline';
-  if (String(auth.status||'')===target) return;
-  auth={...auth,status:target,lastSeen:now};
-  saveAuth(auth);
-  if (syncCloud && fbUser && fbReady) {
-    try { await writeCloudUserInfo({status:target,lastSeen:now,statusPref:getStatusPref()}); } catch(e){}
-    try { await syncSlopeMirror({status:String(target),lastSeen:String(now)}); } catch(e){}
+  if (!navigator.onLine) {
+    auth={...auth,status:'offline',lastSeen:Date.now()};
+    saveAuth(auth);
+    if (syncCloud && fbUser && fbReady) {
+      try { await writeCloudUserInfo({status:'offline',lastSeen:Date.now(),statusPref:getStatusPref()}); } catch(e){}
+      try { await syncSlopeMirror({status:'offline',lastSeen:String(Date.now())}); } catch(e){}
+    }
+    return;
   }
+  await refreshSelfPresence(syncCloud);
 }
 window.addEventListener('offline',()=>{ applyConnectivityStatus(true); });
 window.addEventListener('online',()=>{ applyConnectivityStatus(true); });
+
 function fmtOfflineAgo(ts){
   const sec=Math.max(0,Math.floor((Date.now()-Number(ts||0))/1000));
   if (sec<60) return `${sec}s`;
@@ -322,24 +390,27 @@ function offlineMeta(ts){
     isLong:weeks>12,
   };
 }
-async function setPlayerStatus(next){
-  if (!isSignedIn) { addNotif('Guest status is locked to OFFLINE.',CFG.PK); return; }
-  if (!navigator.onLine) { await applyConnectivityStatus(true); addNotif('STATUS LOCKED WHILE OFFLINE',CFG.PK); return; }
-  const st=String(next||'online').toLowerCase();
-  if (!STATUS_COLORS[st]) return;
-  const now=Date.now();
-  auth={...auth,status:st,statusPref:st,lastSeen:now}; saveAuth(auth);
-  if (fbUser) {
-    try { await writeCloudUserInfo({status:st,lastSeen:now,statusPref:st}); } catch(e){}
-    try { await syncSlopeMirror({status:String(st),lastSeen:String(now)}); } catch(e){}
-  }
-  addNotif(`STATUS: ${STATUS_LABELS[st].toUpperCase()}`,STATUS_COLORS[st]);
-}
 function drawStatusDot(x,y,status){
   const col=STATUS_COLORS[status]||STATUS_COLORS.offline;
   ctx.save();
   glow(col,8); circle(x,y,4,col,true);
   ctx.restore();
+}
+
+function getCardRelation(uid){
+  const id=String(uid||'');
+  if (!id || !isSignedIn || !fbUser) return {incoming:false,outgoing:false,friend:false,following:false,follower:false,favorite:false};
+  return {
+    incoming:socialRelationCache.received.has(id),
+    outgoing:socialRelationCache.sent.has(id),
+    friend:socialRelationCache.friends.has(id),
+    following:socialRelationCache.following.has(id),
+    follower:socialRelationCache.followers.has(id),
+    favorite:cardFavUids.has(id),
+  };
+}
+function resolveDisplayStatus(meta){
+  return computeEffectiveStatus(meta||{});
 }
 function drawPlayerCardPopup(t){
   if (!playerCardPopup.active) return;
@@ -351,21 +422,33 @@ function drawPlayerCardPopup(t){
   ctx.strokeStyle='rgba(0,245,255,0.45)'; ctx.lineWidth=2; glow(CFG.CY,12); ctx.strokeRect(x,y,w,h);
   BTNS.playerCardClose={x:x+w-34,y:y+8,w:24,h:24};
   drawNeonBtn(BTNS.playerCardClose.x,BTNS.playerCardClose.y,24,24,CFG.PK,'×',11,1,0);
+  const cardUser=playerCardPopup.viewed||{};
+  const rel=getCardRelation(cardUser.uid);
   if (playerCardPopup.isSelf) {
     BTNS.playerCardEdit={x:x+10,y:y+10,w:56,h:24};
     BTNS.playerCardFav={x:x+72,y:y+10,w:28,h:24};
     BTNS.playerCardFind={x:x+106,y:y+10,w:56,h:24};
+    BTNS.playerCardAdd=null; BTNS.playerCardFollow=null; BTNS.playerCardUnfriend=null;
     drawNeonBtn(BTNS.playerCardEdit.x,BTNS.playerCardEdit.y,56,24,CFG.CY,'EDIT',8,1,0);
     drawNeonBtn(BTNS.playerCardFav.x,BTNS.playerCardFav.y,28,24,playerCardPopup.favorite?'#ff9a1a':CFG.YL,playerCardPopup.favorite?'★':'☆',10,1,0);
     drawNeonBtn(BTNS.playerCardFind.x,BTNS.playerCardFind.y,56,24,CFG.GR,'FIND',8,1,0);
-    BTNS.playerCardAdd=null;
   } else {
-    BTNS.playerCardEdit=null; BTNS.playerCardFav=null; BTNS.playerCardFind=null;
-    BTNS.playerCardAdd={x:x+10,y:y+10,w:94,h:24};
-    drawNeonBtn(BTNS.playerCardAdd.x,BTNS.playerCardAdd.y,94,24,CFG.GR,'ADD FRIEND',8,1,Math.sin(t*2));
+    BTNS.playerCardEdit=null; BTNS.playerCardFind=null;
+    BTNS.playerCardFav={x:x+146,y:y+10,w:28,h:24};
+    BTNS.playerCardFollow={x:x+180,y:y+10,w:74,h:24};
+    BTNS.playerCardUnfriend=rel.friend?{x:x+260,y:y+10,w:24,h:24}:null;
+    let actionLabel='ADD FRIEND';
+    let actionCol=CFG.GR;
+    if (rel.incoming) { actionLabel='VIEW FRIEND REQUEST'; actionCol=CFG.YL; }
+    else if (rel.outgoing) { actionLabel='CANCEL FRIEND REQUEST'; actionCol=CFG.PK; }
+    else if (rel.friend) { actionLabel='FRIEND'; actionCol=CFG.CY; }
+    BTNS.playerCardAdd={x:x+10,y:y+10,w:130,h:24};
+    drawNeonBtn(BTNS.playerCardAdd.x,BTNS.playerCardAdd.y,130,24,actionCol,actionLabel,7,1,Math.sin(t*2));
+    drawNeonBtn(BTNS.playerCardFav.x,BTNS.playerCardFav.y,28,24,rel.favorite?'#ff9a1a':CFG.YL,rel.favorite?'★':'☆',10,1,0);
+    drawNeonBtn(BTNS.playerCardFollow.x,BTNS.playerCardFollow.y,74,24,rel.following?CFG.PK:CFG.CY,rel.following?'UNFOLLOW':'FOLLOW',8,1,0);
+    if (BTNS.playerCardUnfriend) drawNeonBtn(BTNS.playerCardUnfriend.x,BTNS.playerCardUnfriend.y,28,24,CFG.PK,'X',10,1,0);
   }
 
-  const cardUser=playerCardPopup.viewed||{};
   const name=String((playerCardPopup.isSelf?(auth&&auth.name):cardUser.name)||'Player');
   const pfpX=x+w-48, pfpY=y+58, r=22;
   const cardAvatar=playerCardPopup.isSelf?String(profileAvatar||''):String(cardUser.avatar||'');
@@ -377,7 +460,7 @@ function drawPlayerCardPopup(t){
   }
   ctx.strokeStyle='rgba(0,245,255,0.6)'; ctx.lineWidth=2; circle(pfpX,pfpY,r+2,CFG.CY,false);
 
-  if (playerCardPopup.favorite) {
+  if (playerCardPopup.isSelf?playerCardPopup.favorite:rel.favorite) {
     ctx.save();
     const baseX=pfpX, baseY=pfpY;
     for (let i=0;i<8;i++) {
@@ -389,7 +472,7 @@ function drawPlayerCardPopup(t){
     }
     ctx.restore();
   }
-  const cardStatus=playerCardPopup.isSelf?status:String(cardUser.status||'offline');
+  const cardStatus=playerCardPopup.isSelf?status:resolveDisplayStatus(cardUser);
   const cardSeen=playerCardPopup.isSelf?(auth&&auth.lastSeen):Number(cardUser.lastSeen||0);
   drawStatusDot(x+18,y+58,cardStatus);
   if (cardStatus==='offline') {
@@ -420,9 +503,12 @@ function drawPlayerCardPopup(t){
   setFont(8,'700',"'Share Tech Mono',monospace"); noGlow();
   const cardBest=playerCardPopup.isSelf?bestScore:Number(cardUser.bestScore||0);
   txt(`Best: ${Math.floor(cardBest||0)}`,x+14,y+122,'rgba(220,240,255,0.9)','left');
-  txt(`Skin: ${String((CHAR_CATALOG.find(c=>c.id===selectedChar)||CHAR_CATALOG[0]).name)}`,x+14,y+140,'rgba(220,240,255,0.85)','left');
-  txt(`Aura: ${String((AURA_CATALOG.find(a=>a.id===selectedAura)||AURA_CATALOG[0]).name)}`,x+14,y+158,'rgba(220,240,255,0.85)','left');
-  txt(`Theme: ${String((THEME_CATALOG.find(t2=>t2.id===selectedTheme)||THEME_CATALOG[0]).name)}`,x+14,y+176,'rgba(220,240,255,0.85)','left');
+  const skinName=playerCardPopup.isSelf?String((CHAR_CATALOG.find(c=>c.id===selectedChar)||CHAR_CATALOG[0]).name):String(cardUser.selectedSkin||cardUser.skin||'Unknown');
+  const auraName=playerCardPopup.isSelf?String((AURA_CATALOG.find(a=>a.id===selectedAura)||AURA_CATALOG[0]).name):String(cardUser.selectedAura||cardUser.aura||'Unknown');
+  const themeName=playerCardPopup.isSelf?String((THEME_CATALOG.find(t2=>t2.id===selectedTheme)||THEME_CATALOG[0]).name):String(cardUser.selectedTheme||cardUser.theme||'Unknown');
+  txt(`Skin: ${skinName}`,x+14,y+140,'rgba(220,240,255,0.85)','left');
+  txt(`Aura: ${auraName}`,x+14,y+158,'rgba(220,240,255,0.85)','left');
+  txt(`Theme: ${themeName}`,x+14,y+176,'rgba(220,240,255,0.85)','left');
   txt(`Bio: ${((playerCardPopup.isSelf?profileBio:cardUser.bio)||'No bio').slice(0,60)}`,x+14,y+196,'rgba(190,220,235,0.8)','left');
   const statW=88, statH=20, statGap=8, statY=y+h-28;
   const statX=x+12;
@@ -497,8 +583,11 @@ function handleTap(e) {
     if (hitBtn(p,BTNS.playerCardClose)) { SFX.click(); playerCardPopup.active=false; return; }
     if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardEdit)) { SFX.click(); playerCardPopup.active=false; doTransition('PROFILE'); return; }
     if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFav)) { SFX.click(); playerCardPopup.favorite=!playerCardPopup.favorite; return; }
-    if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFind)) { SFX.click(); openInputDialog({title:'FIND USER',label:'Username',value:'',maxLen:32,saveLabel:'FIND',cancelLabel:'CANCEL',onSubmit:async v=>{ await openMiniProfileByUsername(v||''); }}); return; }
-    if (!playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardAdd)) { SFX.click(); sendFriendRequestToViewed(); return; }
+    if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFind)) { SFX.click(); playerCardPopup.active=false; openInputDialog({title:'FIND USER',label:'Username',value:'',maxLen:32,saveLabel:'FIND',cancelLabel:'CANCEL',onSubmit:async v=>{ await openMiniProfileByUsername(v||''); }}); return; }
+    if (!playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFav)) { SFX.click(); toggleFavoriteViewed(); return; }
+    if (!playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFollow)) { SFX.click(); toggleFollowViewed(); return; }
+    if (!playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardUnfriend)) { SFX.click(); removeFriendWithViewed(); return; }
+    if (!playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardAdd)) { SFX.click(); handlePlayerCardPrimaryAction(); return; }
     return;
   }
 
@@ -522,7 +611,14 @@ function handleTap(e) {
   }
 
   if (actionPopup.active) {
-    if (!actionPopup.loading && hitBtn(p,BTNS.actionPopupBtn)) { SFX.click(); actionPopup.active=false; return; }
+    if (!actionPopup.loading && hitBtn(p,BTNS.actionPopupBtn)) {
+      SFX.click();
+      const cb=actionPopup.onContinue;
+      actionPopup.active=false;
+      actionPopup.onContinue=null;
+      if (typeof cb==='function') cb();
+      return;
+    }
     return;
   }
 
@@ -666,8 +762,10 @@ function handleTap(e) {
     if (hitBtn(p,BTNS.publicProfileBack)) { SFX.click(); doTransition('PUBLIC_PROFILE'); return; }
     if (hitBtn(p,BTNS.socialTabFriends)) { SFX.click(); socialView.mode='received'; socialView.scroll=0; return; }
     if (hitBtn(p,BTNS.socialTabFollowers)) { SFX.click(); socialView.mode='sent'; socialView.scroll=0; return; }
-    if (BTNS.socialActionA&&hitBtn(p,BTNS.socialActionA)) { SFX.click(); handleSocialPrimaryAction(); return; }
-    if (BTNS.socialActionB&&hitBtn(p,BTNS.socialActionB)) { SFX.click(); handleSocialSecondaryAction(); return; }
+    const aList=Array.isArray(BTNS.socialActionAList)?BTNS.socialActionAList:[];
+    const bList=Array.isArray(BTNS.socialActionBList)?BTNS.socialActionBList:[];
+    for (let i=0;i<aList.length;i++) if (aList[i]&&hitBtn(p,aList[i])) { SFX.click(); handleSocialPrimaryAction(i); return; }
+    for (let i=0;i<bList.length;i++) if (bList[i]&&hitBtn(p,bList[i])) { SFX.click(); handleSocialSecondaryAction(i); return; }
     return;
   }
   if (gs === 'FRIENDS_LIST') {
@@ -675,6 +773,13 @@ function handleTap(e) {
     if (hitBtn(p,BTNS.socialTabFriends)) { SFX.click(); socialView.mode='friends'; socialView.scroll=0; return; }
     if (hitBtn(p,BTNS.socialTabFollowers)) { SFX.click(); socialView.mode='followers'; socialView.scroll=0; return; }
     if (hitBtn(p,BTNS.socialTabFollowing)) { SFX.click(); socialView.mode='following'; socialView.scroll=0; return; }
+    const rowBtns=Array.isArray(BTNS.socialRowOpenList)?BTNS.socialRowOpenList:[];
+    for (let i=0;i<rowBtns.length;i++) if (rowBtns[i]&&hitBtn(p,rowBtns[i])) {
+      const list=socialView.mode==='followers'?socialData.followers:(socialView.mode==='following'?socialData.following:socialData.friends);
+      const item=list[rowBtns[i].idx]||null;
+      if (item) { SFX.click(); playerCardPopup.active=true; playerCardPopup.isSelf=!!(isSignedIn&&auth&&auth.uid===item.uid); playerCardPopup.fromMenu=false; playerCardPopup.viewed=item; }
+      return;
+    }
     return;
   }
   if (gs === 'ADMIN_AUTH') {
@@ -738,6 +843,7 @@ function handleTap(e) {
 
 // ── Touch: swipe left/right for movement ─────────────────────────
 canvas.addEventListener('touchstart', e => {
+  markPresenceActivity('touchstart');
   e.preventDefault();
   const p=getCanvasXY(e);
   if (gs==='PROFILE' && BTNS.profileAvatar) {
@@ -862,6 +968,7 @@ canvas.addEventListener('touchcancel', () => {
 
 // Mouse (desktop)
 canvas.addEventListener('mousedown', e => {
+  markPresenceActivity('mousedown');
   if (gs==='PROFILE') {
     const p=getCanvasXY(e);
     if (BTNS.profileAvatar) {
@@ -879,6 +986,7 @@ canvas.addEventListener('mousedown', e => {
   }
 });
 canvas.addEventListener('mousemove', e => {
+  markPresenceActivity('mousemove');
   const mp=getCanvasXY(e);
   mouseCanvasPos.x=mp.x; mouseCanvasPos.y=mp.y;
   if (gs==='PROFILE' && profileUploadState.active && profileUploadState.mode==='preview' && profileUploadState.drag) {
@@ -956,6 +1064,7 @@ document.addEventListener('wheel', e => {
 
 // Keyboard
 window.addEventListener('keydown', e => {
+  markPresenceActivity('keydown');
   if (inputDialog.active) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==='a') { inputDialog.selectAll=true; e.preventDefault(); return; }
     if (e.key==='Escape') { closeInputDialog(false); e.preventDefault(); return; }
@@ -1197,6 +1306,7 @@ function drawTransition() {
 }
 
 function drawTopOverlays(t){
+  drawSocialToasts();
   drawGlobalFps();
   drawPlayerCardPopup(t);
   drawUsernameChangeOverlay(t);
@@ -1457,12 +1567,31 @@ function drawFloats() {
 }
 
 const notifs=[];
+const socialToasts=[];
+const socialToastSquares=[];
 function addNotif(str,col) {
   notifs.push({str,col,t:1.8});
   if (notifs.length>3) notifs.shift();
 }
+function addSocialToast(str,col=CFG.CY){
+  const msg=String(str||'').slice(0,72);
+  socialToasts.push({str:msg,col,t:2.8,dur:2.8});
+  while (socialToasts.length>3) socialToasts.shift();
+  const cx=LW/2;
+  for (let i=0;i<16;i++) {
+    const ang=Math.random()*Math.PI*2;
+    const sp=28+Math.random()*42;
+    socialToastSquares.push({x:cx+rnd(-24,24),y:22+rnd(-8,8),vx:Math.cos(ang)*sp,vy:Math.sin(ang)*sp-12,t:0.7,size:rnd(2,4),col});
+  }
+}
 function updateNotifs(dt) {
   for (let i=notifs.length-1;i>=0;i--) { notifs[i].t-=dt; if(notifs[i].t<=0) notifs.splice(i,1); }
+  for (let i=socialToasts.length-1;i>=0;i--) { socialToasts[i].t-=dt; if (socialToasts[i].t<=0) socialToasts.splice(i,1); }
+  for (let i=socialToastSquares.length-1;i>=0;i--) {
+    const p=socialToastSquares[i];
+    p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=35*dt; p.t-=dt;
+    if (p.t<=0) socialToastSquares.splice(i,1);
+  }
 }
 function drawNotifs() {
   notifs.forEach((n,i)=>{
@@ -1473,11 +1602,39 @@ function drawNotifs() {
     glow(n.col,16); txt(`◆ ${n.str} ◆`,LW/2,y,n.col); ctx.restore();
   });
 }
+function drawSocialToasts(){
+  socialToastSquares.forEach(p=>{
+    ctx.save();
+    ctx.globalAlpha=clamp(p.t/0.7,0,1);
+    ctx.fillStyle=p.col;
+    glow(p.col,8);
+    ctx.fillRect(p.x,p.y,p.size,p.size);
+    ctx.restore();
+  });
+  socialToasts.forEach((n,i)=>{
+    setFont(9,'700',"'Share Tech Mono',monospace");
+    const inA=clamp((n.dur-n.t)/0.25,0,1);
+    const outA=clamp(n.t/0.4,0,1);
+    const a=Math.min(inA,outA);
+    const y=16+i*28;
+    const w=Math.min(336,Math.max(180,ctx.measureText(n.str).width+52));
+    const x=(LW-w)/2;
+    ctx.save();
+    ctx.globalAlpha=a;
+    ctx.fillStyle='rgba(0,0,0,0.86)';
+    ctx.fillRect(x,y,w,22);
+    ctx.strokeStyle=hexToRgba(n.col,0.85); ctx.lineWidth=1.5; glow(n.col,12); ctx.strokeRect(x,y,w,22);
+    setFont(9,'700',"'Share Tech Mono',monospace");
+    noGlow();
+    txt(n.str,LW/2,y+15,'#dff8ff');
+    ctx.restore();
+  });
+}
 
 function clearAllFX() {
   particles.length=0; exhaustParts.length=0;
   fogParts.length=0; rings.length=0;
-  floatTexts.length=0; notifs.length=0;
+  floatTexts.length=0; notifs.length=0; socialToasts.length=0; socialToastSquares.length=0;
 }
 </script>
 
@@ -2552,6 +2709,9 @@ function drawPublicProfileScreen(t){
 }
 
 function drawSocialRows(t,title,sub,list,mode){
+  BTNS.socialActionAList=[];
+  BTNS.socialActionBList=[];
+  BTNS.socialRowOpenList=[];
   const x=28,y=102,w=LW-56,h=520;
   ctx.fillStyle='rgba(8,10,14,0.95)'; ctx.fillRect(x,y,w,h);
   ctx.strokeStyle='rgba(255,230,0,0.35)'; ctx.strokeRect(x,y,w,h);
@@ -2575,7 +2735,7 @@ function drawSocialRows(t,title,sub,list,mode){
     const ry=listY+8+i*58;
     ctx.fillStyle=(i%2===0)?'rgba(255,255,255,0.03)':'rgba(0,0,0,0.0)'; ctx.fillRect(listX,ry-12,listW,54);
     setFont(10,'900'); glow(CFG.CY,6); txt((it.name||'Runner').slice(0,20),listX+12,ry+4,CFG.CY,'left');
-    setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); const rowStatus=String(it.status||'offline').toLowerCase();
+    setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); const rowStatus=resolveDisplayStatus(it);
     if (rowStatus==='offline') {
       const om=offlineMeta(it.lastSeen||Date.now());
       const offText=om.isLong?'Offline':`Offline · was seen ${om.short} ago`;
@@ -2584,11 +2744,14 @@ function drawSocialRows(t,title,sub,list,mode){
       txt(`${STATUS_LABELS[rowStatus]||rowStatus}`,listX+12,ry+20,'rgba(210,230,255,0.78)','left');
     }
     if (mode==='requests') {
-      BTNS.socialActionA={x:listX+listW-88,y:ry-8,w:36,h:22,idx:i};
-      BTNS.socialActionB={x:listX+listW-46,y:ry-8,w:36,h:22,idx:i};
+      BTNS.socialActionAList[i]={x:listX+listW-88,y:ry-8,w:36,h:22,idx:i};
+      BTNS.socialActionBList[i]={x:listX+listW-46,y:ry-8,w:36,h:22,idx:i};
       const aLbl=(socialView.mode==='received')?'✓':'👤';
-      drawNeonBtn(BTNS.socialActionA.x,BTNS.socialActionA.y,36,22,socialView.mode==='received'?CFG.GR:'#888',aLbl,9,1,0);
-      drawNeonBtn(BTNS.socialActionB.x,BTNS.socialActionB.y,36,22,CFG.PK,'✕',9,1,0);
+      drawNeonBtn(BTNS.socialActionAList[i].x,BTNS.socialActionAList[i].y,36,22,socialView.mode==='received'?CFG.GR:'#888',aLbl,9,1,0);
+      drawNeonBtn(BTNS.socialActionBList[i].x,BTNS.socialActionBList[i].y,36,22,CFG.PK,'✕',9,1,0);
+    } else if (mode==='list') {
+      BTNS.socialRowOpenList[i]={x:listX+listW-74,y:ry-8,w:66,h:22,idx:i};
+      drawNeonBtn(BTNS.socialRowOpenList[i].x,BTNS.socialRowOpenList[i].y,66,22,CFG.CY,'VIEW',8,1,0);
     }
   }
   ctx.restore();
@@ -4634,14 +4797,20 @@ function initFirebase(){
         auth={signedIn:true,name:u.displayName||auth.name||'Runner',email:u.email||'',uid:u.uid||'',verified:!!keepVerified,bio:profileBio||'',avatar:profileAvatar||'',admin:!!(auth&&auth.admin),status:'online',statusPref:'online'};
         saveAuth(auth);
         refreshAdminFlag();
+        socialData={friends:[],followers:[],following:[],received:[],sent:[]};
+        socialCounters={friends:0,followers:0,following:0,received:0,sent:0};
+        rebuildSocialRelationCache();
         await loadCloudProfileAndProgress();
+        totalGems=loadBank();
         await applyConnectivityStatus(false);
+        fetchSocialData();
       } else {
         isSignedIn=false;
         auth={...AUTH_GUEST};
         profileBio=''; profileAvatar='';
         cloudProfileRoot=CLOUD_INFO_ROOT;
         cloudGemCount=loadBank();
+        totalGems=loadBank();
         cloudUpdatedAt=0;
         cloudJoinedAt=0;
         saveAuth(auth);
@@ -4906,14 +5075,21 @@ async function handleAuthSignIn(){
 async function handleAuthGoogleSignIn(){
   if (!fbReady || !fbAuth || !window.firebase || !firebase.auth) { authFlowState='error'; authFlowError='Cloud service unavailable'; return; }
   try {
-    authFlowState='loading'; authFlowError='';
+    authFlowState='loading'; authFlowError=''; authFlowMsg='Open in Google popup...';
     const provider=new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({prompt:'select_account'});
-    await fbAuth.signInWithRedirect(provider);
-    authFlowMsg='Redirecting to Google sign-in...';
+    const cred=await fbAuth.signInWithPopup(provider);
+    fbUser=cred&&cred.user?cred.user:null;
+    await loadCloudProfileAndProgress();
+    totalGems=loadBank();
+    authFlowState='success';
+    authFlowMsg='Google sign-in complete. Cloud data refreshed.';
   } catch (e) {
+    const code=String((e&&e.code)||'');
     authFlowState='error';
-    authFlowError='Google sign in failed. Please try again.';
+    if (code.includes('popup-blocked')) authFlowError='Popup blocked. Allow popups and try again.';
+    else if (code.includes('popup-closed-by-user')) authFlowError='Google popup closed before completion.';
+    else authFlowError='Google sign in failed. Please try again.';
   }
 }
 
@@ -5535,16 +5711,38 @@ async function beginDeleteAccountFlow(){
   openInputDialog({title:'DELETE ACCOUNT',label:'Type your username to confirm',value:'',maxLen:32,onSubmit:v=>{
     const name=String(v||'').trim();
     if (name.toLowerCase()!==String(auth.name||'').trim().toLowerCase()) { addNotif('Username mismatch.',CFG.PK); return; }
-    openInputDialog({title:'DELETE ACCOUNT',label:'Type your password',value:'',maxLen:32,secret:true,onSubmit:async p=>{
-      const pwd=String(p||'');
-      if (!pwd) { addNotif('Password required.',CFG.PK); return; }
+    openInputDialog({title:'DELETE ACCOUNT',label:'Type your password (or type GOOGLE for Google sign-in)',value:'',maxLen:64,secret:true,onSubmit:async p=>{
+      const pwd=String(p||'').trim();
       openActionPopup('DELETE ACCOUNT','Removing account... Please wait.',true,true);
       try {
-        const email=String((fbUser&&fbUser.email)||(auth&&auth.email)||'').trim();
-        if (!email) throw new Error('No email');
-        const cred=firebase.auth.EmailAuthProvider.credential(email,pwd);
-        await fbUser.reauthenticateWithCredential(cred);
+        const providerData=Array.isArray(fbUser.providerData)?fbUser.providerData:[];
+        const hasGoogle=providerData.some(x=>String(x&&x.providerId||'')==='google.com');
+        if (pwd.toUpperCase()==='GOOGLE' && hasGoogle) {
+          const gp=new firebase.auth.GoogleAuthProvider();
+          await fbUser.reauthenticateWithPopup(gp);
+        } else {
+          if (!pwd) throw new Error('Password required');
+          const email=String((fbUser&&fbUser.email)||(auth&&auth.email)||'').trim();
+          if (!email) throw new Error('No email');
+          const cred=firebase.auth.EmailAuthProvider.credential(email,pwd);
+          await fbUser.reauthenticateWithCredential(cred);
+        }
         const uid=fbUser.uid;
+        const socialSnap=await fbDb.ref(CLOUD_SOCIAL_ROOT).get();
+        const socialAll=(socialSnap&&socialSnap.val)?(socialSnap.val()||{}):{};
+        const cleanupTasks=[];
+        ['friends','followers','following'].forEach(group=>{
+          const grp=socialAll[group]||{};
+          Object.keys(grp).forEach(owner=>{
+            if ((grp[owner]||{})[uid]!=null) cleanupTasks.push(fbDb.ref(`${CLOUD_SOCIAL_ROOT}/${group}/${owner}/${uid}`).remove());
+          });
+        });
+        const reqRoot=socialAll.requests||{};
+        Object.keys(reqRoot).forEach(owner=>{
+          const node=reqRoot[owner]||{};
+          if ((node.received||{})[uid]!=null) cleanupTasks.push(fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${owner}/received/${uid}`).remove());
+          if ((node.sent||{})[uid]!=null) cleanupTasks.push(fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${owner}/sent/${uid}`).remove());
+        });
         await Promise.allSettled([
           fbDb.ref(`${CLOUD_SLOPE_ROOT}/${uid}`).remove(),
           fbDb.ref(`${CLOUD_INFO_ROOT}/${uid}`).remove(),
@@ -5557,12 +5755,18 @@ async function beginDeleteAccountFlow(){
           fbDb.ref(`${CLOUD_SOCIAL_ROOT}/followers/${uid}`).remove(),
           fbDb.ref(`${CLOUD_SOCIAL_ROOT}/following/${uid}`).remove(),
           fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${uid}`).remove(),
+          ...cleanupTasks,
         ]);
         await fbUser.delete();
         openActionPopup('DELETE ACCOUNT','Success. Your account has been officially removed.',true,false);
         isSignedIn=false; auth={...AUTH_GUEST}; saveAuth(auth);
+        socialData={friends:[],followers:[],following:[],received:[],sent:[]};
+        socialCounters={friends:0,followers:0,following:0,received:0,sent:0};
+        rebuildSocialRelationCache();
         setTimeout(()=>{ actionPopup.active=false; goMenu(); doTransition('MENU'); },1200);
-      } catch(e) { openActionPopup('DELETE ACCOUNT','Failed. Re-auth failed or cloud delete failed.',false,false); }
+      } catch(e) {
+        openActionPopup('DELETE ACCOUNT','Failed. Re-auth failed or cloud delete failed.',false,false);
+      }
     }});
   }});
 }
@@ -5573,12 +5777,33 @@ function doSignOut(){
   cloudProfileRoot=CLOUD_INFO_ROOT;
   cloudGemCount=loadBank();
   cloudUpdatedAt=0;
+  socialData={friends:[],followers:[],following:[],received:[],sent:[]};
+  socialCounters={friends:0,followers:0,following:0,received:0,sent:0};
+  rebuildSocialRelationCache();
+  lastSocialSnapshot={statusByUid:{},received:new Set()};
   addNotif('Signed out. Guest local save active.',CFG.CY);
   goMenu();
   doTransition('MENU');
 }
 
 initFirebase();
+if (!socialPollTimer) {
+  socialPollTimer=setInterval(()=>{
+    if (!isSignedIn || !navigator.onLine) return;
+    refreshSelfPresence(false);
+    fetchSocialData();
+  },4000);
+}
+if (!profileLiveRefreshTimer) {
+  profileLiveRefreshTimer=setInterval(()=>{
+    if (!playerCardPopup.active || playerCardPopup.isSelf) return;
+    const uid=String((playerCardPopup.viewed&&playerCardPopup.viewed.uid)||'');
+    if (!uid) return;
+    const live=socialUserIndexCache[uid]||null;
+    if (live) playerCardPopup.viewed={...playerCardPopup.viewed,...live};
+  },50);
+}
+setInterval(()=>{ if (isSignedIn) refreshSelfPresence(false); },5000);
 const _profileUploadInput=document.getElementById('profileUploadInput');
 if (_profileUploadInput) {
   _profileUploadInput.addEventListener('change',async e=>{
@@ -5691,12 +5916,49 @@ async function fetchUserIndexMap(){
     const snap=await fbDb.ref(CLOUD_SLOPE_ROOT).get();
     const all=snap&&snap.val?snap.val():{};
     const out={};
-    Object.keys(all||{}).forEach(uid=>{ const u=all[uid]||{}; out[uid]={uid,name:u.displayName||u.name||u.email||'Runner',avatar:u.pfpLink||u.avatar||'',status:String(u.status||'offline').toLowerCase(),lastSeen:Number(u.lastSeen||0),bestScore:Number(u.bestScore||0),bio:String(u.bio||'')}; });
+    Object.keys(all||{}).forEach(uid=>{ const u=all[uid]||{}; out[uid]={uid,name:u.displayName||u.name||u.email||'Runner',avatar:u.pfpLink||u.avatar||'',status:String(u.status||'offline').toLowerCase(),statusPref:String(u.statusPref||u.status||'online').toLowerCase(),lastSeen:Number(u.lastSeen||0),bestScore:Number(u.bestScore||0),bio:String(u.bio||''),selectedSkin:String(u.selectedSkin||u.skin||''),selectedAura:String(u.selectedAura||u.aura||''),selectedTheme:String(u.selectedTheme||u.theme||'')}; });
     return out;
   } catch(e){ return {}; }
 }
+function rebuildSocialRelationCache(){
+  socialRelationCache={
+    friends:new Set((socialData.friends||[]).map(o=>String(o.uid||''))),
+    followers:new Set((socialData.followers||[]).map(o=>String(o.uid||''))),
+    following:new Set((socialData.following||[]).map(o=>String(o.uid||''))),
+    received:new Set((socialData.received||[]).map(o=>String(o.uid||''))),
+    sent:new Set((socialData.sent||[]).map(o=>String(o.uid||''))),
+  };
+}
+function emitSocialPresenceToasts(idx){
+  const watched=new Set();
+  ['friends','followers','following','received','sent'].forEach(k=>(socialData[k]||[]).forEach(it=>watched.add(String(it.uid||''))));
+  const next={...lastSocialSnapshot.statusByUid};
+  watched.forEach(uid=>{
+    const u=idx[uid]||{};
+    const st=resolveDisplayStatus(u);
+    const prev=lastSocialSnapshot.statusByUid[uid]||'offline';
+    next[uid]=st;
+    if (prev!==st && st==='online') addSocialToast(`${(u.name||'Runner').slice(0,18)} is online`,CFG.GR);
+  });
+  lastSocialSnapshot.statusByUid=next;
+}
+function emitFriendRequestToasts(){
+  const next=new Set((socialData.received||[]).map(o=>String(o.uid||'')));
+  next.forEach(uid=>{
+    if (!lastSocialSnapshot.received.has(uid)) {
+      const u=(socialData.received||[]).find(v=>String(v.uid||'')===uid)||{};
+      addSocialToast(`${String(u.name||'Runner').slice(0,18)} sent a friend request`,CFG.YL);
+    }
+  });
+  lastSocialSnapshot.received=next;
+}
 async function fetchSocialData(){
-  if (!isSignedIn || !fbUser || !fbReady || !fbDb) { socialData={friends:[],followers:[],following:[],received:[],sent:[]}; socialCounters={friends:0,followers:0,following:0,received:0,sent:0}; return; }
+  if (!isSignedIn || !fbUser || !fbReady || !fbDb) {
+    socialData={friends:[],followers:[],following:[],received:[],sent:[]};
+    socialCounters={friends:0,followers:0,following:0,received:0,sent:0};
+    rebuildSocialRelationCache();
+    return;
+  }
   socialView.loading=true; socialView.renderCount=0;
   try {
     const uid=fbUser.uid;
@@ -5708,6 +5970,7 @@ async function fetchSocialData(){
       fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${uid}/received`).get(),
       fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${uid}/sent`).get(),
     ]);
+    socialUserIndexCache=idx||{};
     socialData={
       friends:mapSocialSnapToList(fr,idx),
       followers:mapSocialSnapToList(fo,idx),
@@ -5716,9 +5979,13 @@ async function fetchSocialData(){
       sent:mapSocialSnapToList(st,idx),
     };
     socialCounters={friends:socialData.friends.length,followers:socialData.followers.length,following:socialData.following.length,received:socialData.received.length,sent:socialData.sent.length};
+    rebuildSocialRelationCache();
+    emitFriendRequestToasts();
+    emitSocialPresenceToasts(idx);
   } catch(e) {
     socialData={friends:[],followers:[],following:[],received:[],sent:[]};
     socialCounters={friends:0,followers:0,following:0,received:0,sent:0};
+    rebuildSocialRelationCache();
   }
   socialView.loading=false;
 }
@@ -5727,6 +5994,7 @@ async function openMiniProfileByUsername(raw){
   if (!q) { openActionPopup('FIND USER','Cannot find user.',false); return false; }
   if (!fbReady || !fbDb) { openActionPopup('FIND USER','Cloud unavailable.',false); return false; }
   socialView.loading=true;
+  pendingFoundProfile=null;
   openActionPopup('FIND USER','Searching user...',true,true);
   try {
     const snap=await fbDb.ref(CLOUD_SLOPE_ROOT).get();
@@ -5735,9 +6003,15 @@ async function openMiniProfileByUsername(raw){
     Object.keys(all||{}).some(uid=>{ const u=all[uid]||{}; const nm=String(u.displayName||u.name||u.email||'').toLowerCase(); if (nm===q) { foundUid=uid; return true; } return false; });
     if (!foundUid) { openActionPopup('FIND USER','Cannot find user.',false,false); return false; }
     const u=all[foundUid]||{};
-    playerCardPopup.active=true; playerCardPopup.isSelf=!!(isSignedIn&&auth&&auth.uid===foundUid); playerCardPopup.fromMenu=false;
-    playerCardPopup.viewed={uid:foundUid,name:String(u.displayName||u.name||'Runner'),avatar:String(u.pfpLink||u.avatar||''),status:String(u.status||'offline'),lastSeen:Number(u.lastSeen||0),bio:String(u.bio||''),bestScore:Number(u.bestScore||0)};
-    openActionPopup('FIND USER',`Found: ${playerCardPopup.viewed.name} • Best ${Math.floor(playerCardPopup.viewed.bestScore||0)}`,true,false);
+    pendingFoundProfile={uid:foundUid,name:String(u.displayName||u.name||'Runner'),avatar:String(u.pfpLink||u.avatar||''),status:String(u.status||'offline'),statusPref:String(u.statusPref||u.status||'online'),lastSeen:Number(u.lastSeen||0),bio:String(u.bio||''),bestScore:Number(u.bestScore||0),selectedSkin:String(u.selectedSkin||u.skin||''),selectedAura:String(u.selectedAura||u.aura||''),selectedTheme:String(u.selectedTheme||u.theme||'')};
+    openActionPopup('FIND USER',`Found: ${pendingFoundProfile.name} • Best ${Math.floor(pendingFoundProfile.bestScore||0)}`,true,false,()=>{
+      if (!pendingFoundProfile) return;
+      playerCardPopup.active=true;
+      playerCardPopup.isSelf=!!(isSignedIn&&auth&&auth.uid===pendingFoundProfile.uid);
+      playerCardPopup.fromMenu=false;
+      playerCardPopup.viewed={...pendingFoundProfile};
+      pendingFoundProfile=null;
+    });
     return true;
   } catch(e) { openActionPopup('FIND USER','Search failed.',false,false); return false; }
   finally { socialView.loading=false; }
@@ -5748,17 +6022,106 @@ async function sendFriendRequestToViewed(){
   if (!navigator.onLine) { addNotif('Offline.',CFG.PK); return; }
   const toUid=String(v.uid||'');
   if (!toUid || toUid===fbUser.uid) return;
+  if (socialRelationCache.sent.has(toUid)) { addNotif('Request already sent.',CFG.YL); return; }
   const ts=Date.now();
   try {
     await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${toUid}/received/${fbUser.uid}`).update({ts:String(ts)});
     await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${fbUser.uid}/sent/${toUid}`).update({ts:String(ts)});
     addNotif('Friend request sent.',CFG.GR);
-    fetchSocialData();
+    addSocialToast(`Request sent to ${(v.name||'Runner').slice(0,18)}`,CFG.CY);
+    await fetchSocialData();
   } catch(e) { addNotif('Request failed.',CFG.PK); }
 }
-async function handleSocialPrimaryAction(){
+async function cancelFriendRequestToViewed(){
+  const v=playerCardPopup.viewed||{};
+  const toUid=String(v.uid||'');
+  if (!toUid || !fbUser || !fbDb) return;
+  try {
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${fbUser.uid}/sent/${toUid}`).remove();
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${toUid}/received/${fbUser.uid}`).remove();
+    addNotif('Friend request canceled.',CFG.PK);
+    await fetchSocialData();
+  } catch(e){ addNotif('Cancel failed.',CFG.PK); }
+}
+async function acceptIncomingRequestForViewed(){
+  const v=playerCardPopup.viewed||{};
+  const ou=String(v.uid||'');
+  if (!ou || !fbUser || !fbDb) return;
+  const uid=fbUser.uid, ts=Date.now();
+  try {
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/friends/${uid}/${ou}`).update({ts:String(ts)});
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/friends/${ou}/${uid}`).update({ts:String(ts)});
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${uid}/received/${ou}`).remove();
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${ou}/sent/${uid}`).remove();
+    addNotif('Friend request accepted.',CFG.GR);
+    await fetchSocialData();
+  } catch(e){ addNotif('Accept failed.',CFG.PK); }
+}
+async function removeFriendWithViewed(){
+  const v=playerCardPopup.viewed||{};
+  const ou=String(v.uid||'');
+  if (!ou || !fbUser || !fbDb) return;
+  const uid=fbUser.uid;
+  try {
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/friends/${uid}/${ou}`).remove();
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/friends/${ou}/${uid}`).remove();
+    addNotif('Friend removed.',CFG.PK);
+    await fetchSocialData();
+  } catch(e){ addNotif('Remove friend failed.',CFG.PK); }
+}
+async function toggleFollowViewed(){
+  const v=playerCardPopup.viewed||{};
+  const toUid=String(v.uid||'');
+  if (!toUid || !fbUser || !fbDb) return;
+  const me=fbUser.uid;
+  const isFollowing=socialRelationCache.following.has(toUid);
+  try {
+    if (isFollowing) {
+      await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/following/${me}/${toUid}`).remove();
+      await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/followers/${toUid}/${me}`).remove();
+      addNotif('Unfollowed user.',CFG.PK);
+    } else {
+      const ts=Date.now();
+      await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/following/${me}/${toUid}`).update({ts:String(ts)});
+      await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/followers/${toUid}/${me}`).update({ts:String(ts)});
+      addNotif('Now following user.',CFG.GR);
+    }
+    await fetchSocialData();
+  } catch(e){ addNotif('Follow update failed.',CFG.PK); }
+}
+function toggleFavoriteViewed(){
+  const uid=String((playerCardPopup.viewed&&playerCardPopup.viewed.uid)||'');
+  if (!uid) return;
+  if (cardFavUids.has(uid)) {
+    cardFavUids.delete(uid);
+    addNotif('Removed favorite.',CFG.PK);
+  } else {
+    cardFavUids.add(uid);
+    addNotif('Added favorite.',CFG.YL);
+  }
+  saveCardFavs();
+}
+async function handlePlayerCardPrimaryAction(){
+  const v=playerCardPopup.viewed||{};
+  const uid=String(v.uid||'');
+  if (!uid) return;
+  const rel=getCardRelation(uid);
+  if (rel.incoming) {
+    playerCardPopup.active=false;
+    socialView.mode='received';
+    socialView.scroll=0;
+    doTransition('FRIEND_REQUESTS');
+    fetchSocialData();
+    return;
+  }
+  if (rel.outgoing) { await cancelFriendRequestToViewed(); return; }
+  if (rel.friend) { addNotif('Already friends.',CFG.CY); return; }
+  await sendFriendRequestToViewed();
+}
+async function handleSocialPrimaryAction(idxOverride=-1){
   const idx=(socialView.mode==='sent'?socialData.sent:socialData.received);
-  const item=idx[BTNS.socialActionA&&BTNS.socialActionA.idx]||null;
+  const btnIdx=idxOverride>=0?idxOverride:((BTNS.socialActionA&&BTNS.socialActionA.idx)||-1);
+  const item=idx[btnIdx]||null;
   if (!item||!fbUser||!fbDb) return;
   if (socialView.mode==='received') {
     const uid=fbUser.uid, ou=item.uid, ts=Date.now();
@@ -5772,9 +6135,10 @@ async function handleSocialPrimaryAction(){
     playerCardPopup.active=true; playerCardPopup.isSelf=false; playerCardPopup.viewed=item;
   }
 }
-async function handleSocialSecondaryAction(){
+async function handleSocialSecondaryAction(idxOverride=-1){
   const idx=(socialView.mode==='sent'?socialData.sent:socialData.received);
-  const item=idx[BTNS.socialActionB&&BTNS.socialActionB.idx]||null;
+  const btnIdx=idxOverride>=0?idxOverride:((BTNS.socialActionB&&BTNS.socialActionB.idx)||-1);
+  const item=idx[btnIdx]||null;
   if (!item||!fbUser||!fbDb) return;
   const uid=fbUser.uid, ou=item.uid;
   if (socialView.mode==='received') {
