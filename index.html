@@ -194,7 +194,7 @@ const BTNS = {
   authAction:null, authBack:null, authSubmit:null, authRestart:null,
   pauseOptions:null, optionsBack:null, optionsToggleQuests:null, optionsToggleTutorials:null, hudOptions:null,
   signinEmail:null, signinPass:null, signupName:null, signupEmail:null, signupPass:null, signupConfirm:null, signupSwitch:null, signinSwitch:null, signinGoogle:null,
-  profileChangePassword:null,
+  profileChangePassword:null, profileAvatar:null, profileTrash:null, profileUploadOk:null, profileUploadCancel:null, profileUploadZoomIn:null, profileUploadZoomOut:null, profileUploadErrOk:null,
   controls:null, controlsBack:null, touchJoyL:null, touchJoyR:null,
 };
 
@@ -217,6 +217,7 @@ function runConfirmAction() {
   if (a==='IMPOSSIBLE_START') { startImpossibleIntro(); return; }
   if (a==='IMPOSSIBLE_RETRY') { startImpossibleIntro(); return; }
   if (a==='SIGNOUT') { if (typeof doSignOut==='function') doSignOut(); return; }
+  if (a==='REMOVE_PFP') { if (typeof clearProfileAvatar==='function') clearProfileAvatar(); return; }
   if (a==='RESET_EVERYTHING') {
     localStorage.clear();
     location.reload();
@@ -370,6 +371,14 @@ function handleTap(e) {
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
   const p=getCanvasXY(e);
+  if (gs==='PROFILE' && BTNS.profileAvatar) {
+    const dx=p.x-BTNS.profileAvatar.cx, dy=p.y-BTNS.profileAvatar.cy;
+    if ((dx*dx+dy*dy) <= (BTNS.profileAvatar.r*BTNS.profileAvatar.r)) { profileAvatarPressing=true; profileAvatarPressStart=Date.now(); profileAvatarHoldFX=false; }
+    if (profileUploadState.active && profileUploadState.mode==='preview') {
+      const frame=220, fx=(LW-frame)/2, fy=((LH-320)/2)+44;
+      if (p.x>=fx && p.x<=fx+frame && p.y>=fy && p.y<=fy+frame) { profileUploadState.drag=true; profileUploadState.lastX=p.x; profileUploadState.lastY=p.y; }
+    }
+  }
   if (gs==='PLAY' && OPTION_PREFS.showTouchJoycons && isTouchDevice) {
     if (hitBtn(p,BTNS.touchJoyL)) { joyL=true; joyR=false; usingTouchJoy=true; return; }
     if (hitBtn(p,BTNS.touchJoyR)) { joyR=true; joyL=false; usingTouchJoy=true; return; }
@@ -399,9 +408,18 @@ canvas.addEventListener('touchmove', e => {
   }
   if (gs==='PROFILE') {
     const t=e.touches[0];
+    if (profileUploadState.active && profileUploadState.mode==='preview' && profileUploadState.drag) {
+      const np=getCanvasXY(e);
+      touchMoved=true;
+      profileUploadState.offX += np.x-profileUploadState.lastX;
+      profileUploadState.offY += np.y-profileUploadState.lastY;
+      profileUploadState.lastX=np.x; profileUploadState.lastY=np.y;
+      return;
+    }
     if (profileTouchY!==null) {
       const dy=t.clientY-profileTouchY;
       if (Math.abs(dy)>2) touchMoved=true;
+      if (Math.abs(dy)>8) profileAvatarPressing=false;
       profileScroll=clamp(profileScroll+dy, minProfileScroll(), 0);
     }
     profileTouchY=t.clientY;
@@ -421,29 +439,47 @@ canvas.addEventListener('touchend', e => {
   if (!touchMoved) {
     handleTap(e);
   }
-  touchActive = false; touchSwipe = 0; touchMoved = false; questTouchY = null; profileTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false;
+  touchActive = false; touchSwipe = 0; touchMoved = false; questTouchY = null; profileTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; if (profileUploadState.active) profileUploadState.drag=false;
 }, { passive:false });
 
 canvas.addEventListener('touchcancel', () => {
-  touchActive = false; touchSwipe = 0; touchMoved = false; questTouchY = null; profileTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false;
+  touchActive = false; touchSwipe = 0; touchMoved = false; questTouchY = null; profileTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; if (profileUploadState.active) profileUploadState.drag=false;
 });
 
 // Mouse (desktop)
 canvas.addEventListener('mousedown', e => {
+  if (gs==='PROFILE') {
+    const p=getCanvasXY(e);
+    if (BTNS.profileAvatar) {
+      const dx=p.x-BTNS.profileAvatar.cx, dy=p.y-BTNS.profileAvatar.cy;
+      if ((dx*dx+dy*dy) <= (BTNS.profileAvatar.r*BTNS.profileAvatar.r)) { profileAvatarPressing=true; profileAvatarPressStart=Date.now(); profileAvatarHoldFX=false; }
+    }
+    if (profileUploadState.active && profileUploadState.mode==='preview') {
+      const frame=220, fx=(LW-frame)/2, fy=((LH-320)/2)+44;
+      if (p.x>=fx && p.x<=fx+frame && p.y>=fy && p.y<=fy+frame) { profileUploadState.drag=true; profileUploadState.lastX=p.x; profileUploadState.lastY=p.y; }
+    }
+  }
   if (gs==='PLAY' || gs==='PAUSE') {
     touchActive = true; touchMoved = false;
     touchStartX = e.clientX; touchCurrentX = e.clientX; touchSwipe = 0;
   }
 });
 canvas.addEventListener('mousemove', e => {
+  if (gs==='PROFILE' && profileUploadState.active && profileUploadState.mode==='preview' && profileUploadState.drag) {
+    const p=getCanvasXY(e);
+    profileUploadState.offX += p.x-profileUploadState.lastX;
+    profileUploadState.offY += p.y-profileUploadState.lastY;
+    profileUploadState.lastX=p.x; profileUploadState.lastY=p.y;
+    return;
+  }
   if (!touchActive || gs !== 'PLAY') return;
   touchCurrentX = e.clientX;
   const delta = touchCurrentX - touchStartX;
   if (Math.abs(delta) > 8) touchMoved = true;
   touchSwipe = clamp(delta / 80, -1, 1);
 });
-canvas.addEventListener('mouseup', () => { touchActive=false; touchSwipe=0; joyL=false; joyR=false; usingTouchJoy=false; });
-canvas.addEventListener('mouseleave', () => { touchActive=false; touchSwipe=0; joyL=false; joyR=false; usingTouchJoy=false; });
+canvas.addEventListener('mouseup', () => { touchActive=false; touchSwipe=0; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; if (profileUploadState.active) profileUploadState.drag=false; });
+canvas.addEventListener('mouseleave', () => { touchActive=false; touchSwipe=0; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; if (profileUploadState.active) profileUploadState.drag=false; });
 
 document.addEventListener('click', e => {
   if (Date.now() - _lastTouchEnd < 450) return;
@@ -2327,7 +2363,8 @@ let optionsReturnState='PAUSE';
 let optionsScroll=0, optionsTouchY=null;
 let settingsScroll=0, settingsTouchY=null;
 let profileScroll=0;
-function minProfileScroll(){ const viewH=402, contentH=620; return Math.min(0, viewH-contentH); }
+let profileViewH=402, profileContentH=620;
+function minProfileScroll(){ return Math.min(0, profileViewH-profileContentH); }
 function minOptionsScroll(){ const viewH=LH-200, contentH=7*76; return Math.min(0, viewH-contentH); }
 function minSettingsScroll(){ const viewH=LH-210, contentH=860; return Math.min(0, viewH-contentH); }
 function handleOptionsTap(p){
@@ -3153,19 +3190,91 @@ const FIREBASE_CONFIG={
 };
 const CLOUD_INFO_ROOT='SLOPE/user/encrypted/info';
 const CLOUD_SLOPE_ROOT='SLOPE/users';
-const CLOUD_INFO_ROOT_FALLBACKS=[
-  CLOUD_INFO_ROOT,
-  'SLOPE/userencrypted/info',
-  'SLOPE/userencrypted/etc',
-];
+const CLOUD_INFO_ROOT_FALLBACKS=[CLOUD_INFO_ROOT];
 
 let fbReady=false, fbAuth=null, fbDb=null, fbUser=null;
 let cloudSyncTimer=0;
 let profileBio='';
 let profileAvatar='';
+let profileAvatarPressStart=0;
+let profileAvatarPressing=false;
+let profileAvatarHoldFX=false;
+let profileUploadState={active:false,mode:'idle',error:'',rawData:'',img:null,zoom:1,offX:0,offY:0,drag:false,lastX:0,lastY:0};
 let cloudProfileRoot=CLOUD_INFO_ROOT;
 let cloudGemCount=loadBank();
 let cloudUpdatedAt=0;
+
+
+function drawDefaultProfileIcon(cx,cy,r,col='rgba(216,246,255,0.9)'){
+  ctx.save();
+  noGlow();
+  ctx.strokeStyle=col; ctx.lineWidth=2;
+  circle(cx,cy-r*0.24,r*0.28,col,false);
+  ctx.beginPath();
+  ctx.arc(cx,cy+r*0.34,r*0.44,Math.PI*1.06,Math.PI*1.94,false);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function resetProfileUploadState(){
+  profileUploadState={active:false,mode:'idle',error:'',rawData:'',img:null,zoom:1,offX:0,offY:0,drag:false,lastX:0,lastY:0};
+}
+
+function openProfileUploadError(msg){
+  profileUploadState.active=true;
+  profileUploadState.mode='error';
+  profileUploadState.error=String(msg||'Profile icon upload failed.');
+}
+
+function beginProfileUploadPreview(dataUrl){
+  const img=new Image();
+  img.onload=()=>{
+    profileUploadState.active=true;
+    profileUploadState.mode='preview';
+    profileUploadState.error='';
+    profileUploadState.rawData=dataUrl;
+    profileUploadState.img=img;
+    profileUploadState.zoom=1;
+    profileUploadState.offX=0;
+    profileUploadState.offY=0;
+    profileUploadState.drag=false;
+  };
+  img.onerror=()=>openProfileUploadError('Image decode failed. Try a different file.');
+  img.src=dataUrl;
+}
+
+async function applyProfileCropAndSave(){
+  const st=profileUploadState;
+  if (!st.img) { openProfileUploadError('No image ready to upload.'); return; }
+  try {
+    const out=document.createElement('canvas');
+    out.width=256; out.height=256;
+    const octx=out.getContext('2d');
+    octx.clearRect(0,0,256,256);
+    const iw=st.img.width, ih=st.img.height;
+    const base=Math.max(256/Math.max(iw,1),256/Math.max(ih,1));
+    const sc=base*st.zoom;
+    const dw=iw*sc, dh=ih*sc;
+    const dx=(256-dw)/2+st.offX;
+    const dy=(256-dh)/2+st.offY;
+    octx.drawImage(st.img,dx,dy,dw,dh);
+    const data=out.toDataURL('image/png',0.92);
+    profileAvatar=String(data||'');
+    auth={...auth,avatar:profileAvatar}; saveAuth(auth);
+    await writeCloudUserInfo({avatar:profileAvatar,pfpLink:profileAvatar,pfpLinkId:getAvatarLinkId(profileAvatar)||'none'});
+    addNotif('Profile icon updated.',CFG.GR);
+    resetProfileUploadState();
+  } catch (e) {
+    openProfileUploadError('Upload failed while applying crop.');
+  }
+}
+
+async function clearProfileAvatar(){
+  profileAvatar='';
+  auth={...auth,avatar:''}; saveAuth(auth);
+  try { await writeCloudUserInfo({avatar:'',pfpLink:'',pfpLinkId:'none'}); } catch(e){}
+  addNotif('Profile icon removed.',CFG.YL);
+}
 
 function fmtCloudTs(ts){
   if (!Number.isFinite(ts) || ts<=0) return '—';
@@ -3429,9 +3538,18 @@ async function writeCloudUserInfo(extra={}) {
     uid:fbUser.uid,
     email:fbUser.email||'',
     name:fbUser.displayName||auth.name||'Runner',
+    displayName:fbUser.displayName||auth.name||'Runner',
     verified:!!fbUser.emailVerified,
     bio:profileBio||'',
     avatar:profileAvatar||'',
+    pfpLink:profileAvatar||'',
+    pfpLinkId:getAvatarLinkId(profileAvatar)||'none',
+    gems:loadBank(),
+    bestScore:Math.floor(bestScore||0),
+    selectedSkin:selectedChar||'default',
+    selectedAura:selectedAura||'none',
+    selectedTheme:selectedTheme||'classic',
+    cloudRoot:cloudProfileRoot||CLOUD_INFO_ROOT,
     updatedAt:Date.now(),
     ...extra,
   };
@@ -3606,20 +3724,32 @@ function drawProfileScreen(t){
   txt(isSignedIn?'CLOUD SAVE ENABLED':'GUEST LOCAL SAVE',LW/2,y+58,isSignedIn?CFG.GR:CFG.YL);
 
   const avatarX=x+64, avatarY=y+104, avatarR=34;
+  BTNS.profileAvatar={x:avatarX-avatarR-6,y:avatarY-avatarR-6,w:(avatarR+6)*2,h:(avatarR+6)*2,cx:avatarX,cy:avatarY,r:avatarR+6};
   ctx.save();
   if (profileAvatar) {
     const img=new Image(); img.src=profileAvatar;
     ctx.beginPath(); ctx.arc(avatarX,avatarY,avatarR,0,Math.PI*2); ctx.clip();
     ctx.drawImage(img,avatarX-avatarR,avatarY-avatarR,avatarR*2,avatarR*2);
   } else {
-    glow('#9fb8cc',10); circle(avatarX,avatarY,avatarR,'#9fb8cc');
-    setFont(18,'900'); noGlow(); txt('⬆',avatarX,avatarY+6,'#1f2c36');
+    glow('#9fb8cc',10); circle(avatarX,avatarY,avatarR,'#1f2c36');
+    drawDefaultProfileIcon(avatarX,avatarY,avatarR,'rgba(216,246,255,0.95)');
   }
   ctx.restore();
   glow(CFG.CY,12); ctx.strokeStyle='rgba(0,245,255,0.55)'; ctx.lineWidth=2; circle(avatarX,avatarY,avatarR+3,CFG.CY,false);
+  const isHold=profileAvatarHoldFX || (profileAvatarPressing && (Date.now()-profileAvatarPressStart>320));
+  if (isHold) {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(avatarX,avatarY,avatarR+1,0,Math.PI*2); ctx.clip();
+    ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(avatarX-avatarR-2,avatarY-avatarR-2,(avatarR+2)*2,(avatarR+2)*2);
+    setFont(9,'900',"'Share Tech Mono',monospace"); noGlow(); txt('UPLOAD',avatarX,avatarY+4,'#fff');
+    ctx.restore();
+  }
 
   const left=x+118;
-  const lines=[
+  const uploadY=y+h-204;
+  const infoX=x+110, infoY=y+74, infoW=w-136, infoH=Math.max(120, uploadY-infoY-10);
+  const totalTimeSec=Math.max(0, Number(localStorage.getItem('slope_totalTime')||0));
+  const lines=isSignedIn ? [
     ['Display Name',auth.name||'Player'],
     ['Email',auth.email||''],
     ['Verified',auth.verified?'YES':'NO'],
@@ -3630,6 +3760,7 @@ function drawProfileScreen(t){
     ['PFP Link ID',getAvatarLinkId(profileAvatar)||'none'],
     ['Last Cloud Sync',fmtCloudTs(cloudUpdatedAt)],
     ['Avg Run Time',`${runAvgTime().toFixed(1)}s`],
+    ['Total Time Played',`${totalTimeSec.toFixed(1)}s`],
     ['Active Skin',String((CHAR_CATALOG.find(c=>c.id===selectedChar)||CHAR_CATALOG[0]).name)],
     ['Active Aura',String((AURA_CATALOG.find(a=>a.id===selectedAura)||AURA_CATALOG[0]).name)],
     ['Active Theme',String((THEME_CATALOG.find(t2=>t2.id===selectedTheme)||THEME_CATALOG[0]).name)],
@@ -3637,36 +3768,118 @@ function drawProfileScreen(t){
     ['Unlocked Auras',String((unlockedAuras||[]).length)],
     ['Unlocked Themes',String((unlockedThemes||[]).length)],
     ['Upgrade Levels',Object.values(loadUpgrades()).join(' / ')],
+  ] : [
+    ['Time Played',`${totalTimeSec.toFixed(1)}s`],
+    ['Gems',`${Math.floor(loadBank())}`],
   ];
-  const infoX=x+110, infoY=y+74, infoW=w-124, infoH=402;
+  profileViewH=infoH;
+  profileContentH=10+lines.length*34 + (isSignedIn?84:0);
+  profileScroll=clamp(profileScroll,minProfileScroll(),0);
+
   ctx.save();
   ctx.beginPath(); ctx.rect(infoX,infoY,infoW,infoH); ctx.clip();
-  profileScroll=clamp(profileScroll,minProfileScroll(),0);
   ctx.translate(0,profileScroll);
   lines.forEach((entry,i)=>{
     const yy=infoY+10+i*34;
     setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt(entry[0],left,yy,'rgba(0,245,255,0.7)','left');
     setFont(10,'700'); glow('#d8f6ff',6); txt(entry[1],left,yy+14,'#d8f6ff','left');
   });
-  const bioY=infoY+10+lines.length*34+10;
-  ctx.fillStyle='rgba(0,245,255,0.06)'; ctx.fillRect(x+14,bioY,w-28,74);
-  ctx.strokeStyle='rgba(0,245,255,0.25)'; ctx.lineWidth=1; ctx.strokeRect(x+14,bioY,w-28,74);
-  setFont(9,'700',"'Share Tech Mono',monospace"); noGlow(); txt('BIO',x+24,bioY+14,CFG.CY,'left');
-  const bioTxt=(profileBio||'Tap UPDATE BIO to set one.').slice(0,100);
-  setFont(9,'400',"'Share Tech Mono',monospace"); txt(bioTxt,x+24,bioY+32,'rgba(220,245,255,0.9)','left');
+  if (isSignedIn) {
+    const bioY=infoY+10+lines.length*34+10;
+    ctx.fillStyle='rgba(0,245,255,0.06)'; ctx.fillRect(x+14,bioY,w-28,74);
+    ctx.strokeStyle='rgba(0,245,255,0.25)'; ctx.lineWidth=1; ctx.strokeRect(x+14,bioY,w-28,74);
+    setFont(9,'700',"'Share Tech Mono',monospace"); noGlow(); txt('BIO',x+24,bioY+14,CFG.CY,'left');
+    const bioTxt=(profileBio||'Tap UPDATE BIO to set one.').slice(0,100);
+    setFont(9,'400',"'Share Tech Mono',monospace"); txt(bioTxt,x+24,bioY+32,'rgba(220,245,255,0.9)','left');
+  } else {
+    setFont(8,'700',"'Share Tech Mono',monospace"); noGlow();
+    txt('Sign in to view full cloud profile details.',left,infoY+10+lines.length*34+8,'rgba(0,245,255,0.55)','left');
+  }
   ctx.restore();
 
-  BTNS.profileUpload={x:x+14,y:y+h-204,w:w-28,h:34};
-  drawNeonBtn(BTNS.profileUpload.x,BTNS.profileUpload.y,BTNS.profileUpload.w,BTNS.profileUpload.h,CFG.CY,'UPLOAD ICON (<256KB)',10,1,0);
+  const canEditProfile=isSignedIn;
+  const hasCustomAvatar=!!profileAvatar;
+  const uploadH=34;
+  const trashW=42;
+  const uploadW=(canEditProfile && hasCustomAvatar) ? (w-28-trashW-8) : (w-28);
+  BTNS.profileUpload={x:x+14,y:uploadY,w:uploadW,h:uploadH};
+  drawNeonBtn(BTNS.profileUpload.x,BTNS.profileUpload.y,BTNS.profileUpload.w,BTNS.profileUpload.h,canEditProfile?CFG.CY:'#255f66',canEditProfile?'UPLOAD ICON (<256KB)':'UPLOAD LOCKED (SIGN IN)',10,1,0);
+  BTNS.profileTrash=null;
+  if (canEditProfile && hasCustomAvatar) {
+    BTNS.profileTrash={x:BTNS.profileUpload.x+BTNS.profileUpload.w+8,y:uploadY,w:trashW,h:uploadH};
+    drawNeonBtn(BTNS.profileTrash.x,BTNS.profileTrash.y,BTNS.profileTrash.w,BTNS.profileTrash.h,CFG.PK,'🗑',12,1,0);
+  }
   BTNS.profileBio={x:x+14,y:y+h-164,w:w-28,h:34};
-  drawNeonBtn(BTNS.profileBio.x,BTNS.profileBio.y,BTNS.profileBio.w,BTNS.profileBio.h,CFG.GR,'UPDATE BIO',10,1,0);
+  drawNeonBtn(BTNS.profileBio.x,BTNS.profileBio.y,BTNS.profileBio.w,BTNS.profileBio.h,canEditProfile?CFG.GR:'#2f5f2f',canEditProfile?'UPDATE BIO':'BIO LOCKED (SIGN IN)',10,1,0);
   BTNS.profileChangePassword={x:x+14,y:y+h-122,w:w-28,h:34};
-  drawNeonBtn(BTNS.profileChangePassword.x,BTNS.profileChangePassword.y,BTNS.profileChangePassword.w,BTNS.profileChangePassword.h,CFG.YL,'CHANGE PASSWORD',10,1,0);
+  drawNeonBtn(BTNS.profileChangePassword.x,BTNS.profileChangePassword.y,BTNS.profileChangePassword.w,BTNS.profileChangePassword.h,canEditProfile?CFG.YL:'#6a6222',canEditProfile?'CHANGE PASSWORD':'PASSWORD LOCKED',10,1,0);
   BTNS.profileSignOut={x:x+14,y:y+h-80,w:w-28,h:34};
-  drawNeonBtn(BTNS.profileSignOut.x,BTNS.profileSignOut.y,BTNS.profileSignOut.w,BTNS.profileSignOut.h,CFG.PK,'SIGN OUT',10,1,0);
+  drawNeonBtn(BTNS.profileSignOut.x,BTNS.profileSignOut.y,BTNS.profileSignOut.w,BTNS.profileSignOut.h,isSignedIn?CFG.PK:CFG.CY,isSignedIn?'SIGN OUT':'GO TO SIGN IN',10,1,0);
+
+  const minP=minProfileScroll();
+  const sbX=infoX+infoW+6, sbY=infoY, sbH=uploadY-infoY-6;
+  if (sbH>20) {
+    ctx.save();
+    ctx.fillStyle='rgba(0,245,255,0.10)'; ctx.fillRect(sbX,sbY,6,sbH);
+    ctx.strokeStyle='rgba(0,245,255,0.25)'; ctx.strokeRect(sbX,sbY,6,sbH);
+    if (minP<0) {
+      const thumbH=Math.max(24,(infoH/(infoH+Math.abs(minP)))*sbH);
+      const track=sbH-thumbH;
+      const thumbY=sbY + ((-profileScroll)/Math.abs(minP))*track;
+      ctx.fillStyle='rgba(0,245,255,0.75)'; ctx.fillRect(sbX+1,thumbY,4,thumbH);
+    } else {
+      ctx.fillStyle='rgba(0,245,255,0.45)'; ctx.fillRect(sbX+1,sbY+1,4,sbH-2);
+    }
+    ctx.restore();
+  }
+
+  if (profileUploadState.active) drawProfileUploadOverlay(t);
 
   BTNS.authBack={x:(LW-140)/2,y:LH-44,w:140,h:30};
   drawNeonBtn(BTNS.authBack.x,BTNS.authBack.y,140,30,CFG.PK,'← BACK',11,1,Math.sin(t*2));
+  ctx.restore();
+}
+
+
+function drawProfileUploadOverlay(t){
+  const st=profileUploadState;
+  if (!st.active) return;
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.82)'; ctx.fillRect(0,0,LW,LH);
+  const w=332,h=320,x=(LW-w)/2,y=(LH-h)/2;
+  ctx.fillStyle='#000'; ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle=st.mode==='error'?CFG.PK:CFG.CY; ctx.lineWidth=2; glow(st.mode==='error'?CFG.PK:CFG.CY,12); ctx.strokeRect(x,y,w,h);
+  if (st.mode==='error') {
+    setFont(16,'900'); glow(CFG.PK,10); txt('UPLOAD FAILED',LW/2,y+30,CFG.PK);
+    setFont(9,'700',"'Share Tech Mono',monospace"); noGlow(); txt((st.error||'Unknown upload failure').slice(0,90),LW/2,y+72,'#ffc0d0');
+    BTNS.profileUploadErrOk={x:(LW-120)/2,y:y+h-46,w:120,h:30};
+    drawNeonBtn(BTNS.profileUploadErrOk.x,BTNS.profileUploadErrOk.y,120,30,CFG.PK,'OK',11,1,Math.sin(t*2));
+    ctx.restore();
+    return;
+  }
+  setFont(14,'900'); glow(CFG.CY,10); txt('CROP PROFILE ICON',LW/2,y+26,CFG.CY);
+  const frame=220, fx=(LW-frame)/2, fy=y+44;
+  ctx.fillStyle='rgba(0,245,255,0.06)'; ctx.fillRect(fx,fy,frame,frame);
+  ctx.save(); ctx.beginPath(); ctx.rect(fx,fy,frame,frame); ctx.clip();
+  if (st.img) {
+    const base=Math.max(frame/Math.max(st.img.width,1), frame/Math.max(st.img.height,1));
+    const sc=base*st.zoom;
+    const dw=st.img.width*sc, dh=st.img.height*sc;
+    const dx=fx+(frame-dw)/2+st.offX;
+    const dy=fy+(frame-dh)/2+st.offY;
+    ctx.drawImage(st.img,dx,dy,dw,dh);
+  }
+  ctx.restore();
+  ctx.strokeStyle='rgba(0,245,255,0.7)'; ctx.lineWidth=2; ctx.strokeRect(fx,fy,frame,frame);
+  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt('Drag to reposition. Use +/- to zoom.',LW/2,fy+frame+16,'rgba(220,245,255,0.8)');
+  BTNS.profileUploadZoomOut={x:fx,y:fy+frame+26,w:48,h:26};
+  BTNS.profileUploadZoomIn={x:fx+56,y:fy+frame+26,w:48,h:26};
+  drawNeonBtn(BTNS.profileUploadZoomOut.x,BTNS.profileUploadZoomOut.y,48,26,CFG.PU,'-',14,1,0);
+  drawNeonBtn(BTNS.profileUploadZoomIn.x,BTNS.profileUploadZoomIn.y,48,26,CFG.PU,'+',14,1,0);
+  BTNS.profileUploadOk={x:LW/2+10,y:fy+frame+24,w:104,h:30};
+  BTNS.profileUploadCancel={x:LW/2+120,y:fy+frame+24,w:104,h:30};
+  drawNeonBtn(BTNS.profileUploadOk.x,BTNS.profileUploadOk.y,104,30,CFG.GR,'UPLOAD',10,1,Math.sin(t*2));
+  drawNeonBtn(BTNS.profileUploadCancel.x,BTNS.profileUploadCancel.y,104,30,CFG.PK,'CANCEL',10,1,Math.sin(t*2));
   ctx.restore();
 }
 
@@ -3685,17 +3898,37 @@ async function handleChangePassword(){
 }
 
 function handleProfileTap(p){
+  if (profileUploadState.active) {
+    if (profileUploadState.mode==='error') {
+      if (hitBtn(p,BTNS.profileUploadErrOk)) { SFX.click(); resetProfileUploadState(); return; }
+      return;
+    }
+    const st=profileUploadState;
+    const frame=220, fx=(LW-frame)/2, fy=((LH-320)/2)+44;
+    if (p.x>=fx && p.x<=fx+frame && p.y>=fy && p.y<=fy+frame) { st.drag=true; st.lastX=p.x; st.lastY=p.y; return; }
+    if (hitBtn(p,BTNS.profileUploadZoomIn)) { SFX.click(); st.zoom=clamp(st.zoom+0.1,0.8,3); return; }
+    if (hitBtn(p,BTNS.profileUploadZoomOut)) { SFX.click(); st.zoom=clamp(st.zoom-0.1,0.8,3); return; }
+    if (hitBtn(p,BTNS.profileUploadOk)) { SFX.click(); applyProfileCropAndSave(); return; }
+    if (hitBtn(p,BTNS.profileUploadCancel)) { SFX.click(); resetProfileUploadState(); return; }
+    return;
+  }
   if (hitBtn(p,BTNS.authBack)) { SFX.click(); doTransition('MENU'); return; }
-  if (hitBtn(p,BTNS.profileUpload)) {
+  if (hitBtn(p,BTNS.profileAvatar) || hitBtn(p,BTNS.profileUpload)) {
     SFX.click();
-    if (!isSignedIn) { addNotif('Sign in to use cloud profile features.',CFG.YL); return; }
+    if (!isSignedIn) { addNotif('Upload is locked for guests. Sign in first.',CFG.YL); return; }
     const inp=document.getElementById('profileUploadInput');
     if (inp) inp.click();
     return;
   }
+  if (hitBtn(p,BTNS.profileTrash)) {
+    SFX.click();
+    if (!isSignedIn) { addNotif('Trash is locked for guests.',CFG.YL); return; }
+    openConfirm('REMOVE_PFP','REMOVE PROFILE ICON?','This resets avatar to default icon.');
+    return;
+  }
   if (hitBtn(p,BTNS.profileBio)) {
     SFX.click();
-    if (!isSignedIn) { addNotif('Bio editing unlocks after sign in.',CFG.YL); return; }
+    if (!isSignedIn) { addNotif('Bio is locked for guests. Sign in first.',CFG.YL); return; }
     openInputDialog({title:'UPDATE BIO',label:'Bio (max 100 chars)',value:profileBio||'',maxLen:100,multiline:true,onSubmit:(val)=>{ profileBio=(val||'').slice(0,100); auth={...auth,bio:profileBio}; saveAuth(auth); writeCloudUserInfo({bio:profileBio}); addNotif('BIO UPDATED',CFG.GR);} });
     return;
   }
@@ -3706,6 +3939,7 @@ function handleProfileTap(p){
   }
   if (hitBtn(p,BTNS.profileSignOut)) {
     SFX.click();
+    if (!isSignedIn) { doTransition('SIGNIN'); return; }
     openConfirm('SIGNOUT','SIGN OUT?','Cloud session will end and guest local save will be used.');
     return;
   }
@@ -3728,14 +3962,13 @@ if (_profileUploadInput) {
   _profileUploadInput.addEventListener('change',async e=>{
     const f=e.target&&e.target.files&&e.target.files[0]?e.target.files[0]:null;
     if (!f) return;
-    if (f.size>256*1024) { addNotif('Image must be under 256KB.',CFG.PK); e.target.value=''; return; }
+    if (f.size>256*1024) { openProfileUploadError('Image must be under 256KB.'); e.target.value=''; return; }
     const r=new FileReader();
-    r.onerror=()=>{ addNotif('Profile icon upload failed.',CFG.PK); e.target.value=''; };
-    r.onload=async()=>{
-      profileAvatar=String(r.result||'');
-      auth={...auth,avatar:profileAvatar}; saveAuth(auth);
-      await writeCloudUserInfo({avatar:profileAvatar});
-      addNotif('Profile icon updated.',CFG.GR);
+    r.onerror=()=>{ openProfileUploadError('Profile icon upload failed while reading file.'); e.target.value=''; };
+    r.onload=()=>{
+      const data=String(r.result||'');
+      if (!data) { openProfileUploadError('Empty file content.'); e.target.value=''; return; }
+      beginProfileUploadPreview(data);
       e.target.value='';
     };
     r.readAsDataURL(f);
