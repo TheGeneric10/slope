@@ -1,0 +1,9 @@
+{
+  "name": "slope",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Single-file Slope web game",
+  "scripts": {
+    "test": "node -e \"const fs=require('fs');const html=fs.readFileSync('index.html','utf8');const scripts=[...html.matchAll(/<script[^>]*>([\\s\\S]*?)<\\/script>/g)].map(m=>m[1].trim()).filter(Boolean);const os=require('os');const path=require('path');const cp=require('child_process');let i=0;for(const src of scripts){i++;const f=path.join(os.tmpdir(),'slope-inline-'+i+'-'+Date.now()+'.js');fs.writeFileSync(f,src);const p=cp.spawnSync(process.execPath,['--check',f],{encoding:'utf8'});if(p.status!==0){console.error('inline chunk failed',i);console.error(p.stderr||p.stdout);process.exit(1);}}console.log('checked',scripts.length,'inline script chunks');\""
+  }
+}

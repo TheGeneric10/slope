@@ -156,10 +156,12 @@ let touchActive = false;
 let touchStartX = 0;
 let touchCurrentX = 0;
 let touchSwipe = 0;   // -1 to 1 continuous
+let touchSwipeTarget = 0;
 let touchMoved = false;
 let _lastTouchEnd = 0;
 let questTouchY = null;
 let profileTouchY = null;
+let leaderboardTouchY = null;
 let joyL=false, joyR=false;
 let usingTouchJoy=false;
 const isTouchDevice=('ontouchstart' in window)||(navigator.maxTouchPoints>0);
@@ -194,7 +196,8 @@ const BTNS = {
   authAction:null, authBack:null, authSubmit:null, authRestart:null,
   pauseOptions:null, optionsBack:null, optionsToggleQuests:null, optionsToggleTutorials:null, hudOptions:null,
   signinEmail:null, signinPass:null, signupName:null, signupEmail:null, signupPass:null, signupConfirm:null, signupSwitch:null, signinSwitch:null, signinGoogle:null,
-  profileChangePassword:null, profileAvatar:null, profileTrash:null, profileUploadOk:null, profileUploadCancel:null, profileUploadZoomIn:null, profileUploadZoomOut:null, profileUploadErrOk:null,
+  profileChangePassword:null, profileAvatar:null, profileTrash:null, profileUploadOk:null, profileUploadCancel:null, profileUploadZoomIn:null, profileUploadZoomOut:null, profileUploadReset:null, profileUploadErrOk:null,
+  adminBack:null, adminAuthInput:null, adminAuthSubmit:null, adminSetGems:null, adminGrantSelected:null, adminUnlockAll:null, adminLockAll:null, adminLockSelectedSkin:null, adminLockSelectedAura:null, adminLockSelectedTheme:null, adminVerifyUid:null, adminVerifyToggle:null, adminVerifyApply:null,
   controls:null, controlsBack:null, touchJoyL:null, touchJoyR:null,
 };
 
@@ -203,6 +206,11 @@ function hitBtn(p, rect) {
   return p.x>=rect.x && p.x<=rect.x+rect.w && p.y>=rect.y && p.y<=rect.y+rect.h;
 }
 
+function stopProfileCropInteraction(){
+  if (!profileUploadState.active) return;
+  profileUploadState.drag=false;
+  if (typeof clampProfileUploadOffsets==='function') clampProfileUploadOffsets(profileUploadState,220);
+}
 
 let confirmDialog={active:false,title:'',msg:'',action:''};
 function openConfirm(action,title,msg) {
@@ -255,6 +263,12 @@ function handleTap(e) {
     return;
   }
 
+  if (showOptimizeConfirm) {
+    if (hitBtn(p, BTNS.confirmYes)) { SFX.click(); applyOptimize(); showOptimizeConfirm=false; return; }
+    if (hitBtn(p, BTNS.confirmNo))  { SFX.click(); showOptimizeConfirm=false; return; }
+    return;
+  }
+
   if (gs === 'PLAY') {
     if (hitBtn(p, BTNS.pause)) { SFX.click(); togglePause(); return; }
     if (hitBtn(p, BTNS.hudOptions)) { SFX.click(); optionsReturnState='PLAY'; doTransition('OPTIONS'); return; }
@@ -288,13 +302,9 @@ function handleTap(e) {
   }
   if (gs === 'SETTINGS') {
     if (hitBtn(p, BTNS.resetBtn)) { SFX.click(); openConfirm('RESET_EVERYTHING','RESET EVERYTHING?','This will erase all progress and purchases.'); return; }
-    if (showOptimizeConfirm) {
-      if (hitBtn(p, BTNS.confirmYes)) { SFX.click(); applyOptimize(); showOptimizeConfirm=false; return; }
-      if (hitBtn(p, BTNS.confirmNo))  { SFX.click(); showOptimizeConfirm=false; return; }
-      return;
-    }
     if (hitBtn(p, BTNS.back)) { SFX.click(); doTransition('MENU'); return; }
-    if (hitBtn(p, BTNS.optimizeBtn)) { SFX.click(); showOptimizeConfirm=true; return; }
+    const pSet={x:p.x,y:p.y-settingsScroll};
+    if (hitBtn(pSet, BTNS.optimizeBtn)) { SFX.click(); showOptimizeConfirm=true; return; }
     handleSettingsTap(p); return;
   }
   if (gs === 'QUESTS') {
@@ -343,6 +353,14 @@ function handleTap(e) {
     handleProfileTap(p);
     return;
   }
+  if (gs === 'ADMIN_AUTH') {
+    handleAdminAuthTap(p);
+    return;
+  }
+  if (gs === 'ADMIN_MENU') {
+    handleAdminMenuTap(p);
+    return;
+  }
   if (gs === 'CONTINUE') {
     if (hitBtn(p, BTNS.continueBuy)) { SFX.click(); tryContinueRun(); return; }
     if (hitBtn(p, BTNS.continueGiveUp)) { SFX.click(); openConfirm('CONTINUE_GIVEUP','GIVE UP RUN?','You will lose this run progress.'); return; }
@@ -375,7 +393,7 @@ canvas.addEventListener('touchstart', e => {
     const dx=p.x-BTNS.profileAvatar.cx, dy=p.y-BTNS.profileAvatar.cy;
     if ((dx*dx+dy*dy) <= (BTNS.profileAvatar.r*BTNS.profileAvatar.r)) { profileAvatarPressing=true; profileAvatarPressStart=Date.now(); profileAvatarHoldFX=false; }
     if (profileUploadState.active && profileUploadState.mode==='preview') {
-      const frame=220, fx=(LW-frame)/2, fy=((LH-320)/2)+44;
+      const frame=220, fx=(LW-frame)/2, fy=((LH-410)/2)+44;
       if (p.x>=fx && p.x<=fx+frame && p.y>=fy && p.y<=fy+frame) { profileUploadState.drag=true; profileUploadState.lastX=p.x; profileUploadState.lastY=p.y; }
     }
   }
@@ -388,7 +406,8 @@ canvas.addEventListener('touchstart', e => {
   touchStartX = t.clientX; touchCurrentX = t.clientX;
   questTouchY = t.clientY;
   profileTouchY = t.clientY;
-  touchSwipe = 0;
+  leaderboardTouchY = t.clientY;
+  touchSwipe = 0; touchSwipeTarget = 0;
 }, { passive:false });
 
 canvas.addEventListener('touchmove', e => {
@@ -406,6 +425,16 @@ canvas.addEventListener('touchmove', e => {
     questTouchY=t.clientY;
     return;
   }
+  if (gs==='LEADERBOARD') {
+    const t=e.touches[0];
+    if (leaderboardTouchY!==null) {
+      const dy=t.clientY-leaderboardTouchY;
+      if (Math.abs(dy)>2) touchMoved=true;
+      leaderboardScroll=clamp(leaderboardScroll+dy, minLeaderboardScroll(), 0);
+    }
+    leaderboardTouchY=t.clientY;
+    return;
+  }
   if (gs==='PROFILE') {
     const t=e.touches[0];
     if (profileUploadState.active && profileUploadState.mode==='preview' && profileUploadState.drag) {
@@ -414,6 +443,7 @@ canvas.addEventListener('touchmove', e => {
       profileUploadState.offX += np.x-profileUploadState.lastX;
       profileUploadState.offY += np.y-profileUploadState.lastY;
       profileUploadState.lastX=np.x; profileUploadState.lastY=np.y;
+      clampProfileUploadOffsets(profileUploadState,220);
       return;
     }
     if (profileTouchY!==null) {
@@ -425,12 +455,23 @@ canvas.addEventListener('touchmove', e => {
     profileTouchY=t.clientY;
     return;
   }
+  if (gs==='ADMIN_MENU') {
+    const t=e.touches[0];
+    if (profileTouchY!==null) {
+      const dy=t.clientY-profileTouchY;
+      if (Math.abs(dy)>2) touchMoved=true;
+      adminScroll=clamp(adminScroll+dy, minAdminScroll(), 0);
+    }
+    profileTouchY=t.clientY;
+    return;
+  }
 
   touchCurrentX = e.touches[0].clientX;
   const delta = touchCurrentX - touchStartX;
   if (Math.abs(delta) > 8) touchMoved = true;
-  // Smooth swipe: delta of 60px = full speed
-  touchSwipe = clamp(delta / 60, -1, 1);
+  // Smooth swipe target + easing
+  touchSwipeTarget = clamp(delta / 78, -1, 1);
+  touchSwipe = lerp(touchSwipe,touchSwipeTarget,0.25);
 }, { passive:false });
 
 canvas.addEventListener('touchend', e => {
@@ -439,11 +480,11 @@ canvas.addEventListener('touchend', e => {
   if (!touchMoved) {
     handleTap(e);
   }
-  touchActive = false; touchSwipe = 0; touchMoved = false; questTouchY = null; profileTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; if (profileUploadState.active) profileUploadState.drag=false;
+  touchActive = false; touchSwipe = 0; touchSwipeTarget = 0; touchMoved = false; questTouchY = null; profileTouchY=null; leaderboardTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
 }, { passive:false });
 
 canvas.addEventListener('touchcancel', () => {
-  touchActive = false; touchSwipe = 0; touchMoved = false; questTouchY = null; profileTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; if (profileUploadState.active) profileUploadState.drag=false;
+  touchActive = false; touchSwipe = 0; touchSwipeTarget = 0; touchMoved = false; questTouchY = null; profileTouchY=null; leaderboardTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
 });
 
 // Mouse (desktop)
@@ -455,7 +496,7 @@ canvas.addEventListener('mousedown', e => {
       if ((dx*dx+dy*dy) <= (BTNS.profileAvatar.r*BTNS.profileAvatar.r)) { profileAvatarPressing=true; profileAvatarPressStart=Date.now(); profileAvatarHoldFX=false; }
     }
     if (profileUploadState.active && profileUploadState.mode==='preview') {
-      const frame=220, fx=(LW-frame)/2, fy=((LH-320)/2)+44;
+      const frame=220, fx=(LW-frame)/2, fy=((LH-410)/2)+44;
       if (p.x>=fx && p.x<=fx+frame && p.y>=fy && p.y<=fy+frame) { profileUploadState.drag=true; profileUploadState.lastX=p.x; profileUploadState.lastY=p.y; }
     }
   }
@@ -470,16 +511,18 @@ canvas.addEventListener('mousemove', e => {
     profileUploadState.offX += p.x-profileUploadState.lastX;
     profileUploadState.offY += p.y-profileUploadState.lastY;
     profileUploadState.lastX=p.x; profileUploadState.lastY=p.y;
+    clampProfileUploadOffsets(profileUploadState,220);
     return;
   }
   if (!touchActive || gs !== 'PLAY') return;
   touchCurrentX = e.clientX;
   const delta = touchCurrentX - touchStartX;
   if (Math.abs(delta) > 8) touchMoved = true;
-  touchSwipe = clamp(delta / 80, -1, 1);
+  touchSwipeTarget = clamp(delta / 92, -1, 1);
+  touchSwipe = lerp(touchSwipe,touchSwipeTarget,0.22);
 });
-canvas.addEventListener('mouseup', () => { touchActive=false; touchSwipe=0; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; if (profileUploadState.active) profileUploadState.drag=false; });
-canvas.addEventListener('mouseleave', () => { touchActive=false; touchSwipe=0; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; if (profileUploadState.active) profileUploadState.drag=false; });
+canvas.addEventListener('mouseup', () => { touchActive=false; touchSwipe=0; touchSwipeTarget=0; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction(); });
+canvas.addEventListener('mouseleave', () => { touchActive=false; touchSwipe=0; touchSwipeTarget=0; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction(); });
 
 document.addEventListener('click', e => {
   if (Date.now() - _lastTouchEnd < 450) return;
@@ -495,12 +538,28 @@ document.addEventListener('wheel', e => {
   }
   if (gs==='PROFILE') {
     e.preventDefault();
+    if (profileUploadState.active && profileUploadState.mode==='preview') {
+      const st=profileUploadState;
+      st.zoom=clamp(st.zoom - e.deltaY*0.0015,1,3);
+      clampProfileUploadOffsets(st,220);
+      return;
+    }
     profileScroll=clamp(profileScroll - e.deltaY*0.6, minProfileScroll(), 0);
+    return;
+  }
+  if (gs==='LEADERBOARD') {
+    e.preventDefault();
+    leaderboardScroll=clamp(leaderboardScroll - e.deltaY*0.8, minLeaderboardScroll(), 0);
     return;
   }
   if (gs==='SETTINGS') {
     e.preventDefault();
     settingsScroll=clamp(settingsScroll - e.deltaY*0.8, minSettingsScroll(), 0);
+    return;
+  }
+  if (gs==='ADMIN_MENU') {
+    e.preventDefault();
+    adminScroll=clamp(adminScroll - e.deltaY*0.8, minAdminScroll(), 0);
     return;
   }
   if (gs==='OPTIONS') {
@@ -536,6 +595,25 @@ window.addEventListener('keydown', e => {
     }
     return;
   }
+  if (gs==='PROFILE' && profileUploadState.active) {
+    if (profileUploadState.mode==='error') {
+      if (e.key==='Enter' && BTNS.profileUploadErrOk) { SFX.click(); resetProfileUploadState(); e.preventDefault(); return; }
+      if (e.key==='Escape') { SFX.click(); resetProfileUploadState(); e.preventDefault(); return; }
+    } else {
+      const st=profileUploadState;
+      const step=e.shiftKey?18:8;
+      if (e.key==='ArrowLeft') { st.offX-=step; clampProfileUploadOffsets(st,220); e.preventDefault(); return; }
+      if (e.key==='ArrowRight') { st.offX+=step; clampProfileUploadOffsets(st,220); e.preventDefault(); return; }
+      if (e.key==='ArrowUp') { st.offY-=step; clampProfileUploadOffsets(st,220); e.preventDefault(); return; }
+      if (e.key==='ArrowDown') { st.offY+=step; clampProfileUploadOffsets(st,220); e.preventDefault(); return; }
+      if (e.key==='+' || e.key==='=' ) { st.zoom=clamp(st.zoom+0.1,1,3); clampProfileUploadOffsets(st,220); e.preventDefault(); return; }
+      if (e.key==='-' || e.key==='_' ) { st.zoom=clamp(st.zoom-0.1,1,3); clampProfileUploadOffsets(st,220); e.preventDefault(); return; }
+      if (e.key.toLowerCase()==='r') { st.zoom=1; st.offX=0; st.offY=0; clampProfileUploadOffsets(st,220); e.preventDefault(); return; }
+      if (e.key==='Enter') { SFX.click(); applyProfileCropAndSave(); e.preventDefault(); return; }
+      if (e.key==='Escape') { SFX.click(); resetProfileUploadState(); e.preventDefault(); return; }
+    }
+  }
+
   const l = e.key==='ArrowLeft'  || e.key.toLowerCase()==='a';
   const r = e.key==='ArrowRight' || e.key.toLowerCase()==='d';
   if (l) K.left  = true;
@@ -554,6 +632,14 @@ window.addEventListener('keydown', e => {
   if (e.key==='Escape' && gs==='SIGNIN')    { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='SIGNUP')    { doTransition('SIGNIN'); }
   if (e.key==='Escape' && gs==='PROFILE')   { doTransition('MENU'); }
+  if (e.key==='Escape' && gs==='ADMIN_AUTH') { doTransition('MENU'); }
+  if (e.key==='Escape' && gs==='ADMIN_MENU') { doTransition('MENU'); }
+  if (e.key.toLowerCase()==='m' && isAdminUser && (gs==='MENU' || gs==='PROFILE' || gs==='SETTINGS' || gs==='OPTIONS')) {
+    adminAuthState='idle'; adminAuthMsg=''; adminAuthInput='';
+    doTransition('ADMIN_AUTH');
+    e.preventDefault();
+    return;
+  }
   if (e.key==='Escape' && gs==='OPTIONS')   { doTransition(optionsReturnState); }
   if (e.key==='Escape' && gs==='SETTINGS')  { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='IMPOSSIBLE_INTRO') { doTransition('MENU'); }
@@ -702,6 +788,7 @@ function drawTransition() {
 
 function drawTopOverlays(t){
   drawAuthOverlay(t);
+  drawOptimizeConfirmPopup(t);
   drawConfirmDialog();
   drawInputDialog(t);
 }
@@ -1068,15 +1155,16 @@ class Player {
     }
 
     // Horizontal movement (keyboard or swipe)
-    const touchBoost=(1 + (touchSwipe!==0 ? Math.abs(touchSwipe)*0.4 : 0));
+    const smoothSwipe=clamp(touchSwipe,-1,1);
+    const touchBoost=(1 + (smoothSwipe!==0 ? Math.abs(smoothSwipe)*0.55 : 0));
     const lMul=Math.max(
       K.left?SETTINGS.keyboardSensitivity:0,
-      (touchSwipe<-0.1||joyL)?SETTINGS.touchSensitivity*touchBoost:0,
+      (smoothSwipe<-0.05||joyL)?SETTINGS.touchSensitivity*touchBoost*Math.max(0.2,Math.abs(smoothSwipe)):0,
       GP.left?SETTINGS.controllerSensitivity:0
     );
     const rMul=Math.max(
       K.right?SETTINGS.keyboardSensitivity:0,
-      (touchSwipe>0.1||joyR)?SETTINGS.touchSensitivity*touchBoost:0,
+      (smoothSwipe>0.05||joyR)?SETTINGS.touchSensitivity*touchBoost*Math.max(0.2,Math.abs(smoothSwipe)):0,
       GP.right?SETTINGS.controllerSensitivity:0
     );
     if (lMul>0) this.x-=CFG.PSPD*lMul*dt;
@@ -1188,6 +1276,7 @@ function randPwrKey() {
     let pool=[...PWR_WEIGHTED];
     if (!allowRegen) pool=pool.filter(k=>k!=='REGEN');
     if (adventureStage>=5 && Math.random()<0.28) return 'MINI_JETPACK';
+    pool=pool.filter(k=>k!=='BAD_LUCK');
     return pool[rndI(0,pool.length-1)];
   }
   if (gameMode==='IMPOSSIBLE') {
@@ -1197,7 +1286,7 @@ function randPwrKey() {
     if (impossibleStage<=1 && Math.random()<0.22) return 'BAD_LUCK';
     return pool[rndI(0,pool.length-1)];
   }
-  const pool=allowRegen?PWR_WEIGHTED:PWR_WEIGHTED.filter(k=>k!=='REGEN');
+  const pool=(allowRegen?PWR_WEIGHTED:PWR_WEIGHTED.filter(k=>k!=='REGEN')).filter(k=>k!=='BAD_LUCK');
   return pool[rndI(0,pool.length-1)];
 }
 
@@ -1581,8 +1670,8 @@ function drawHUD() {
 
 
   if (isTouchDevice && OPTION_PREFS.showTouchJoycons) {
-    const r=26, y=LH-82;
-    const lx=56, rx=LW-56;
+    const r=32, y=LH-92;
+    const lx=64, rx=LW-64;
     const pulse=0.72+0.28*Math.sin(menuT*5);
     BTNS.touchJoyL={x:lx-r,y:y-r,w:r*2,h:r*2};
     BTNS.touchJoyR={x:rx-r,y:y-r,w:r*2,h:r*2};
@@ -1603,9 +1692,18 @@ function drawHUD() {
     BTNS.touchJoyL=BTNS.touchJoyR=null;
   }
 
-  // Speed bar
+  // Speed bar + next-stage meter
   ctx.save();
   const bw=120,bh=3,bx=(LW-bw)/2,by=LH-pdY-bh;
+  if (gameMode!=='ENDLESS') {
+    const nby=by-12;
+    const stageFrac=clamp(stagePowerupElapsed/Math.max(0.001,stagePowerupNext),0,1);
+    setFont(7,'400',"'Share Tech Mono',monospace"); txt('NEXT STAGE',LW/2,nby-4,'rgba(140,255,220,0.55)');
+    ctx.fillStyle='rgba(136,255,204,0.12)'; ctx.fillRect(bx,nby,bw,bh);
+    const ng=ctx.createLinearGradient(bx,0,bx+bw,0);
+    ng.addColorStop(0,'#88ffcc'); ng.addColorStop(1,'#66bbff');
+    ctx.fillStyle=ng; glow('#88ffcc',7); ctx.fillRect(bx,nby,bw*stageFrac,bh);
+  }
   setFont(8,'400',"'Share Tech Mono',monospace"); txt('SPEED',LW/2,by-6,'rgba(0,245,255,0.35)');
   ctx.fillStyle='rgba(0,245,255,0.1)'; ctx.fillRect(bx,by,bw,bh);
   const spGrad=ctx.createLinearGradient(bx,0,bx+bw,0);
@@ -1650,7 +1748,9 @@ function drawHUD() {
   // Combo
   if (multi>1||gemStreak>0) {
     ctx.save(); const mx=pdX,my=LH-pdY-22;
-    setFont(9,'700'); glow(CFG.YL,10); txt(`×${multi} COMBO`,mx+30,my,CFG.YL,'left');
+    const sm=scoreMultiplier();
+    const comboShown=Math.max(0,multi-1);
+    setFont(9,'700'); glow(CFG.YL,10); txt(`COMBO ×${comboShown}  ·  SCORE ×${sm}`,mx+30,my,CFG.YL,'left');
     if (multi<4) {
       const bwm=60,bhm=2,pct=(gemStreak%5)/5;
       ctx.fillStyle='rgba(255,230,0,0.1)'; ctx.fillRect(mx,my+4,bwm,bhm);
@@ -1953,6 +2053,29 @@ function drawAboutScreen(t) {
   ctx.restore();
 }
 
+function drawOptimizeConfirmPopup(t){
+  if (!showOptimizeConfirm) return;
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.78)';
+  ctx.fillRect(0,0,LW,LH);
+  ctx.globalAlpha=0.95; ctx.fillStyle='#000';
+  rrect(LW/2-132,LH/2-84,264,168,8); ctx.fill();
+  ctx.strokeStyle=CFG.GR; ctx.lineWidth=2; glow(CFG.GR,14);
+  rrect(LW/2-132,LH/2-84,264,168,8); ctx.stroke();
+  ctx.globalAlpha=1;
+  setFont(13,'900'); glow(CFG.GR,12); txt('OPTIMIZE GAME?',LW/2,LH/2-54,CFG.GR);
+  setFont(8,'400',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.75;
+  txt('Sets LOW quality + 30 FPS',LW/2,LH/2-34,'rgba(57,255,20,0.9)');
+  txt('Disables particles, scanlines, shake',LW/2,LH/2-22,'rgba(57,255,20,0.9)');
+  txt('and keeps control sensitivity values.',LW/2,LH/2-10,'rgba(57,255,20,0.9)');
+  ctx.globalAlpha=1;
+  BTNS.confirmYes={x:LW/2-112,y:LH/2+10,w:104,h:38};
+  BTNS.confirmNo={x:LW/2+8,y:LH/2+10,w:104,h:38};
+  drawNeonBtn(BTNS.confirmYes.x,BTNS.confirmYes.y,BTNS.confirmYes.w,BTNS.confirmYes.h,CFG.GR,'YES',13,1,Math.sin(t*4));
+  drawNeonBtn(BTNS.confirmNo.x,BTNS.confirmNo.y,BTNS.confirmNo.w,BTNS.confirmNo.h,CFG.PK,'NO',13,1,Math.sin(t*3.5));
+  ctx.restore();
+}
+
 function drawControlsScreen(t) {
   drawPerspGrid(terrain.scrollY,0.03); drawTerrain(); drawBgSquares();
   ctx.save(); ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
@@ -2178,18 +2301,28 @@ function drawQuestsScreen(t) {
 function drawLeaderboardScreen(t) {
   ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
   drawPerspGrid(terrain.scrollY,0.06); drawBgSquares();
-  ctx.save(); ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
+  ctx.save();
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
   setFont(32,'900'); glow(CFG.GR,20); txt('LEADERBOARD',LW/2,54,CFG.GR);
   setFont(8,'400',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.6;
   txt('Top 100 · refreshes every hour',LW/2,72,CFG.CY); ctx.globalAlpha=1;
 
   const bx=24,by=98,bw=LW-48,bh=520;
+  const listX=bx+10, listY=by+42, listW=bw-20, listH=bh-54;
+  leaderboardViewH=listH;
   ctx.fillStyle='rgba(0,0,0,0.58)'; ctx.fillRect(bx,by,bw,bh);
   ctx.strokeStyle='rgba(57,255,20,0.35)'; ctx.lineWidth=1.5; ctx.strokeRect(bx,by,bw,bh);
+
+  setFont(10,'900'); glow(CFG.YL,10);
+  txt('RANK',listX+12,by+26,CFG.YL,'left');
+  txt('PLAYER',listX+74,by+26,CFG.YL,'left');
+  txt('SCORE',bx+bw-20,by+26,CFG.YL,'right');
+  ctx.strokeStyle='rgba(57,255,20,0.25)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(listX,by+30); ctx.lineTo(listX+listW,by+30); ctx.stroke();
 
   if (!isSignedIn) {
     setFont(14,'900'); glow(CFG.PK,12); txt('SIGN IN REQUIRED',LW/2,LH/2-8,CFG.PK);
     setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); txt('Please sign in to view leaderboard.',LW/2,LH/2+16,CFG.CY);
+    leaderboardContentH=listH;
   } else if (leaderboardState==='loading') {
     const sq=18, gap=10, total=3*sq+2*gap, sx=LW/2-total/2;
     for (let i=0;i<3;i++) {
@@ -2197,25 +2330,42 @@ function drawLeaderboardScreen(t) {
       ctx.globalAlpha=a; ctx.fillStyle=CFG.CY; ctx.fillRect(sx+i*(sq+gap),LH/2-20,sq,sq);
     }
     ctx.globalAlpha=0.9; setFont(11,'700'); glow(CFG.CY,10); txt('FETCHING...',LW/2,LH/2+20,CFG.CY);
+    leaderboardContentH=listH;
   } else if (leaderboardState==='error') {
     setFont(14,'900'); glow(CFG.PK,12); txt('UNAVAILABLE',LW/2,LH/2-8,CFG.PK);
     setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); txt('Could not fetch leaderboard.',LW/2,LH/2+16,CFG.CY);
+    leaderboardContentH=listH;
   } else {
-    const rowH=4.8;
+    const rowH=18;
+    leaderboardContentH=10 + (100*rowH);
+    leaderboardScroll=clamp(leaderboardScroll,minLeaderboardScroll(),0);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(listX,listY,listW,listH); ctx.clip();
+    ctx.translate(0,leaderboardScroll);
     for (let i=0;i<100;i++) {
       const r=leaderboardData[i]||{name:'—',score:0,empty:true};
-      const y=by+14+i*rowH;
-      if (y>by+bh-8) break;
-      let col='rgba(150,150,150,0.9)';
+      const y=listY+8+i*rowH;
+      const rowBg=(i%2===0)?'rgba(60,255,90,0.05)':'rgba(0,0,0,0)';
+      ctx.fillStyle=rowBg; ctx.fillRect(listX,y-10,listW,rowH);
+      let col='rgba(190,210,230,0.95)';
       if (i===0) col='#ffd700';
-      else if (i===1) col='#cfd5df';
+      else if (i===1) col='#e5ecf7';
       else if (i===2) col='#cd7f32';
-      else if (i<=4) col='#ffffff';
-      else if (i<=9) col='#d6d6d6';
-      setFont(7,'700',"'Share Tech Mono',monospace"); noGlow();
-      txt(`#${i+1}`,bx+10,y,col,'left');
-      txt(r.name||'—',bx+48,y,col,'left');
-      txt(`${Math.floor(r.score||0)}`,bx+bw-12,y,col,'right');
+      else if (i<=9) col='#ffffff';
+      setFont(11,'700',"'Share Tech Mono',monospace"); noGlow();
+      txt(`#${i+1}`,listX+8,y,col,'left');
+      txt(String(r.name||'—').slice(0,20),listX+72,y,col,'left');
+      txt(`${Math.floor(r.score||0)}`,listX+listW-10,y,col,'right');
+    }
+    ctx.restore();
+
+    if (minLeaderboardScroll()<0) {
+      const sbX=listX+listW-4, sbY=listY, sbH=listH;
+      const thumbH=Math.max(24,(listH/(listH+Math.abs(minLeaderboardScroll())))*sbH);
+      const track=sbH-thumbH;
+      const thumbY=sbY + ((-leaderboardScroll)/Math.abs(minLeaderboardScroll()))*track;
+      ctx.fillStyle='rgba(57,255,20,0.16)'; ctx.fillRect(sbX,sbY,4,sbH);
+      ctx.fillStyle='rgba(57,255,20,0.78)'; ctx.fillRect(sbX,thumbY,4,thumbH);
     }
   }
 
@@ -2552,10 +2702,48 @@ function drawShopScreen(t) {
 
 // ── SETTINGS SCREEN ───────────────────────────────────────────────
 let showOptimizeConfirm=false;
-function applyOptimize() {
-  SETTINGS.gfxQuality=0; SETTINGS.fpsLimit=0;
-  SETTINGS.particles=false; SETTINGS.scanlines=false; SETTINGS.screenShake=false; OPTION_PREFS.showFPS=true; saveOptionPrefs(); saveSettingsPrefs();
-  addNotif('GAME OPTIMIZED!',CFG.GR);
+async function detectDisplayHz(sampleCount=40){
+  return await new Promise(resolve=>{
+    const ts=[];
+    function step(t){
+      ts.push(t);
+      if (ts.length>=sampleCount){
+        const ds=[]; for (let i=1;i<ts.length;i++) ds.push(ts[i]-ts[i-1]);
+        const avg=ds.reduce((a,b)=>a+b,0)/Math.max(1,ds.length);
+        const hz=avg>0?1000/avg:60;
+        resolve(clamp(hz,30,240));
+        return;
+      }
+      requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  });
+}
+
+async function applyOptimize() {
+  const hc=Number(navigator.hardwareConcurrency||4);
+  const mem=Number(navigator.deviceMemory||4);
+  let hz=60;
+  try { hz=await detectDisplayHz(28); } catch(e) { hz=60; }
+
+  const lowTier=(hc<=4)||(mem&&mem<=4);
+  const midTier=(hc<=8)||(mem&&mem<=8);
+
+  if (lowTier) {
+    SETTINGS.gfxQuality=0;
+    SETTINGS.particles=false; SETTINGS.scanlines=false; SETTINGS.screenShake=false;
+  } else if (midTier) {
+    SETTINGS.gfxQuality=1;
+    SETTINGS.particles=true; SETTINGS.scanlines=false; SETTINGS.screenShake=true;
+  } else {
+    SETTINGS.gfxQuality=2;
+    SETTINGS.particles=true; SETTINGS.scanlines=true; SETTINGS.screenShake=true;
+  }
+
+  SETTINGS.fpsLimit=(hz>=60)?1:0;
+  OPTION_PREFS.showFPS=true;
+  saveOptionPrefs(); saveSettingsPrefs();
+  addNotif(`AUTO OPTIMIZED (${Math.round(hz)}Hz · ${hc}C/${mem||'?' }GB)`,CFG.GR);
 }
 
 const SETTING_DEFS=[
@@ -2696,25 +2884,6 @@ function drawSettingsScreen(t) {
   const bW=140,bH=36,bX=(LW-bW)/2,bY=LH-68;
   BTNS.back={x:bX,y:bY,w:bW,h:bH};
   drawNeonBtn(bX,bY,bW,bH,CFG.PU,'← BACK',13,1,Math.sin(t*2.5));
-
-  // Optimize confirm popup
-  if (showOptimizeConfirm) {
-    ctx.save(); ctx.globalAlpha=0.9; ctx.fillStyle='#000';
-    rrect(LW/2-120,LH/2-70,240,140,8); ctx.fill();
-    ctx.strokeStyle=CFG.GR; ctx.lineWidth=2; glow(CFG.GR,14);
-    rrect(LW/2-120,LH/2-70,240,140,8); ctx.stroke();
-    ctx.globalAlpha=1;
-    setFont(13,'900'); glow(CFG.GR,12); txt('OPTIMIZE?',LW/2,LH/2-44,CFG.GR);
-    setFont(8,'400',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.65;
-    txt('Sets LOW quality + 30 FPS',LW/2,LH/2-28,'rgba(57,255,20,0.8)');
-    txt('Disables particles & effects',LW/2,LH/2-16,'rgba(57,255,20,0.8)');
-    ctx.globalAlpha=1;
-    BTNS.confirmYes={x:LW/2-108,y:LH/2+4,w:100,h:36};
-    BTNS.confirmNo={x:LW/2+8,y:LH/2+4,w:100,h:36};
-    drawNeonBtn(LW/2-108,LH/2+4,100,36,CFG.GR,'YES',13,1,Math.sin(t*4));
-    drawNeonBtn(LW/2+8,LH/2+4,100,36,CFG.PK,'NO',13,1,Math.sin(t*3.5));
-    ctx.restore();
-  }
   drawFooter();
   ctx.restore();
 }
@@ -3203,6 +3372,8 @@ let profileUploadState={active:false,mode:'idle',error:'',rawData:'',img:null,zo
 let cloudProfileRoot=CLOUD_INFO_ROOT;
 let cloudGemCount=loadBank();
 let cloudUpdatedAt=0;
+let cloudJoinedAt=0;
+let profilePadPrev={a:false,b:false,x:false,y:false,lb:false,rb:false};
 
 
 function drawDefaultProfileIcon(cx,cy,r,col='rgba(216,246,255,0.9)'){
@@ -3238,6 +3409,7 @@ function beginProfileUploadPreview(dataUrl){
     profileUploadState.offX=0;
     profileUploadState.offY=0;
     profileUploadState.drag=false;
+    clampProfileUploadOffsets(profileUploadState,220);
   };
   img.onerror=()=>openProfileUploadError('Image decode failed. Try a different file.');
   img.src=dataUrl;
@@ -3246,6 +3418,7 @@ function beginProfileUploadPreview(dataUrl){
 async function applyProfileCropAndSave(){
   const st=profileUploadState;
   if (!st.img) { openProfileUploadError('No image ready to upload.'); return; }
+  clampProfileUploadOffsets(st,220);
   try {
     const out=document.createElement('canvas');
     out.width=256; out.height=256;
@@ -3255,8 +3428,9 @@ async function applyProfileCropAndSave(){
     const base=Math.max(256/Math.max(iw,1),256/Math.max(ih,1));
     const sc=base*st.zoom;
     const dw=iw*sc, dh=ih*sc;
-    const dx=(256-dw)/2+st.offX;
-    const dy=(256-dh)/2+st.offY;
+    const offScale=256/220;
+    const dx=(256-dw)/2+(st.offX*offScale);
+    const dy=(256-dh)/2+(st.offY*offScale);
     octx.drawImage(st.img,dx,dy,dw,dh);
     const data=out.toDataURL('image/png',0.92);
     profileAvatar=String(data||'');
@@ -3281,6 +3455,72 @@ function fmtCloudTs(ts){
   const d=new Date(ts);
   if (Number.isNaN(d.getTime())) return '—';
   return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+}
+
+
+function parseCloudTs(v){
+  if (Number.isFinite(v) && v>0) return Number(v);
+  const n=Number(v);
+  if (Number.isFinite(n) && n>0) return n;
+  const p=Date.parse(String(v||''));
+  return Number.isFinite(p) && p>0 ? p : 0;
+}
+
+
+function clampProfileUploadOffsets(st, frame=220){
+  if (!st || !st.img) return;
+  const iw=Math.max(st.img.width,1), ih=Math.max(st.img.height,1);
+  const base=Math.max(frame/iw, frame/ih);
+  const sc=base*st.zoom;
+  const dw=iw*sc, dh=ih*sc;
+  if (dw<=frame) st.offX=0;
+  else {
+    const lim=(dw-frame)/2;
+    st.offX=clamp(st.offX,-lim,lim);
+  }
+  if (dh<=frame) st.offY=0;
+  else {
+    const lim=(dh-frame)/2;
+    st.offY=clamp(st.offY,-lim,lim);
+  }
+}
+
+function updateProfileUploadController(dt){
+  if (gs!=='PROFILE' || !profileUploadState.active || profileUploadState.mode!=='preview') {
+    profilePadPrev={a:false,b:false,x:false,y:false,lb:false,rb:false};
+    return;
+  }
+  const pads=navigator.getGamepads ? navigator.getGamepads() : [];
+  const gp=(pads&&pads[0])||null;
+  if (!gp) {
+    profilePadPrev={a:false,b:false,x:false,y:false,lb:false,rb:false};
+    return;
+  }
+  const st=profileUploadState;
+  const btn=i=>!!(gp.buttons&&gp.buttons[i]&&gp.buttons[i].pressed);
+  let mx=0,my=0;
+  const ax=(gp.axes&&gp.axes.length>0)?gp.axes[0]:0;
+  const ay=(gp.axes&&gp.axes.length>1)?gp.axes[1]:0;
+  if (Math.abs(ax)>0.2) mx+=ax;
+  if (Math.abs(ay)>0.2) my+=ay;
+  if (btn(14)) mx-=1;
+  if (btn(15)) mx+=1;
+  if (btn(12)) my-=1;
+  if (btn(13)) my+=1;
+  if (mx||my) {
+    const move=130*dt;
+    st.offX+=mx*move;
+    st.offY+=my*move;
+    clampProfileUploadOffsets(st,220);
+  }
+
+  const a=btn(0), b=btn(1), x=btn(2), y=btn(3), lb=btn(4), rb=btn(5);
+  if (rb && !profilePadPrev.rb) { st.zoom=clamp(st.zoom+0.1,1,3); clampProfileUploadOffsets(st,220); SFX.click(); }
+  if (lb && !profilePadPrev.lb) { st.zoom=clamp(st.zoom-0.1,1,3); clampProfileUploadOffsets(st,220); SFX.click(); }
+  if ((x && !profilePadPrev.x) || (y && !profilePadPrev.y)) { st.zoom=1; st.offX=0; st.offY=0; clampProfileUploadOffsets(st,220); SFX.click(); }
+  if (a && !profilePadPrev.a) { SFX.click(); applyProfileCropAndSave(); }
+  if (b && !profilePadPrev.b) { SFX.click(); resetProfileUploadState(); }
+  profilePadPrev={a,b,x,y,lb,rb};
 }
 
 function getAvatarLinkId(avatar){
@@ -3308,6 +3548,7 @@ function buildSlopeUserPayload(extra={}){
     selectedTheme:String(selectedTheme||'classic'),
     cloudRoot:String(cloudProfileRoot||CLOUD_INFO_ROOT),
     updatedAt:String(now),
+    admin:String(!!(auth&&auth.admin)),
     ...extra,
   };
   return payload;
@@ -3345,6 +3586,76 @@ let authFlowError='';
 let authFlowMsg='';
 let signinForm={email:'',password:''};
 let signupForm={username:'Neon Runner',email:'',password:'',confirm:''};
+
+const ADMIN_SECRET_ENABLED=true;
+let isAdminUser=false;
+let adminSessionUnlocked=false;
+let adminAuthInput='';
+let adminAuthState='idle';
+let adminAuthMsg='';
+let adminScroll=0;
+let adminViewH=0;
+let adminContentH=0;
+let adminFlags={syncCloud:true, grantSkin:true, grantAura:true, grantTheme:true, confirmLocks:false};
+let adminVerifyUid='';
+let adminVerifyValue=false;
+refreshAdminFlag();
+
+function refreshAdminFlag(){
+  isAdminUser=!!(ADMIN_SECRET_ENABLED && isSignedIn && auth && auth.admin===true);
+  if (!isAdminUser) adminSessionUnlocked=false;
+}
+
+
+function minAdminScroll(){ return Math.min(0, adminViewH-adminContentH); }
+
+function saveAdminUnlocks(){
+  saveUnlocked(unlockedChars||['default']);
+  saveAuraUnlocks(unlockedAuras||['none']);
+  saveThemeUnlocks(unlockedThemes||['classic']);
+  if (adminFlags.syncCloud) queueCloudSync(50);
+}
+
+function adminUnlockSelected(){
+  if (adminFlags.grantSkin && selectedChar && !unlockedChars.includes(selectedChar)) unlockedChars.push(selectedChar);
+  if (adminFlags.grantAura && selectedAura && !unlockedAuras.includes(selectedAura)) unlockedAuras.push(selectedAura);
+  if (adminFlags.grantTheme && selectedTheme && !unlockedThemes.includes(selectedTheme)) unlockedThemes.push(selectedTheme);
+  saveAdminUnlocks();
+  addNotif('Admin: selected unlock flags applied.',CFG.YL);
+}
+
+function adminLockSelected(){
+  if (!adminFlags.confirmLocks) { addNotif('Enable CONFIRM LOCKS first.',CFG.PK); return; }
+  if (selectedChar!=='default') unlockedChars=unlockedChars.filter(id=>id!==selectedChar);
+  if (selectedAura!=='none') unlockedAuras=unlockedAuras.filter(id=>id!==selectedAura);
+  if (selectedTheme!=='classic') unlockedThemes=unlockedThemes.filter(id=>id!==selectedTheme);
+  if (!unlockedChars.includes('default')) unlockedChars.unshift('default');
+  if (!unlockedAuras.includes('none')) unlockedAuras.unshift('none');
+  if (!unlockedThemes.includes('classic')) unlockedThemes.unshift('classic');
+  if (!unlockedChars.includes(selectedChar)) setSelectedChar('default');
+  if (!unlockedAuras.includes(selectedAura)) setSelectedAura('none');
+  if (!unlockedThemes.includes(selectedTheme)) setSelectedTheme('classic');
+  saveAdminUnlocks();
+  addNotif('Admin: selected items locked.',CFG.PK);
+}
+
+function adminUnlockAll(){
+  unlockedChars=CHAR_CATALOG.map(c=>c.id);
+  unlockedAuras=AURA_CATALOG.map(a=>a.id);
+  unlockedThemes=THEME_CATALOG.map(t=>t.id);
+  saveAdminUnlocks();
+  addNotif('Admin: unlocked all cosmetics.',CFG.GR);
+}
+
+function adminLockAll(){
+  if (!adminFlags.confirmLocks) { addNotif('Enable CONFIRM LOCKS first.',CFG.PK); return; }
+  unlockedChars=['default'];
+  unlockedAuras=['none'];
+  unlockedThemes=['classic'];
+  setSelectedChar('default'); setSelectedAura('none'); setSelectedTheme('classic');
+  saveAdminUnlocks();
+  addNotif('Admin: locked all cosmetics.',CFG.PK);
+}
 
 let inputDialog={active:false,title:'',label:'',value:'',maxLen:64,secret:false,multiline:false,onSubmit:null,selectAll:false};
 function openInputDialog(cfg={}){
@@ -3413,8 +3724,9 @@ function initFirebase(){
       fbUser=u||null;
       if (u) {
         isSignedIn=true;
-        auth={signedIn:true,name:u.displayName||auth.name||'Runner',email:u.email||'',uid:u.uid||'',verified:!!u.emailVerified,bio:profileBio||'',avatar:profileAvatar||''};
+        auth={signedIn:true,name:u.displayName||auth.name||'Runner',email:u.email||'',uid:u.uid||'',verified:!!u.emailVerified,bio:profileBio||'',avatar:profileAvatar||'',admin:!!(auth&&auth.admin)};
         saveAuth(auth);
+        refreshAdminFlag();
         await loadCloudProfileAndProgress();
       } else {
         isSignedIn=false;
@@ -3423,7 +3735,9 @@ function initFirebase(){
         cloudProfileRoot=CLOUD_INFO_ROOT;
         cloudGemCount=loadBank();
         cloudUpdatedAt=0;
+        cloudJoinedAt=0;
         saveAuth(auth);
+        refreshAdminFlag();
       }
     });
   } catch (e) {
@@ -3551,6 +3865,7 @@ async function writeCloudUserInfo(extra={}) {
     selectedTheme:selectedTheme||'classic',
     cloudRoot:cloudProfileRoot||CLOUD_INFO_ROOT,
     updatedAt:Date.now(),
+    admin:!!(auth&&auth.admin),
     ...extra,
   };
   await fbDb.ref(`${cloudProfileRoot}/${fbUser.uid}`).update(payload);
@@ -3573,6 +3888,7 @@ function buildLocalProgressPayload(){
     runs:parseInt(localStorage.getItem('slope_runs')||'0',10),
     totalTime:parseFloat(localStorage.getItem('slope_totalTime')||'0'),
     updatedAt:Date.now(),
+    admin:!!(auth&&auth.admin),
   };
 }
 
@@ -3599,10 +3915,11 @@ async function loadCloudProfileAndProgress() {
     const snap=await fbDb.ref(`${cloudProfileRoot}/${fbUser.uid}`).get();
     const val=snap&&snap.val?snap.val():null;
     if (!val) {
-      await writeCloudUserInfo({createdAt:Date.now()});
+      await writeCloudUserInfo({createdAt:Date.now(),admin:false});
       await syncProgressToCloud('init');
       cloudGemCount=loadBank();
       cloudUpdatedAt=Date.now();
+      cloudJoinedAt=cloudUpdatedAt;
       await syncSlopeMirror({createdAt:String(cloudUpdatedAt),updatedAt:String(cloudUpdatedAt)});
       return;
     }
@@ -3631,8 +3948,11 @@ async function loadCloudProfileAndProgress() {
     cloudGemCount=Number((val.progress&&val.progress.gems)|| (slopeMirror&&slopeMirror.gems));
     if (!Number.isFinite(cloudGemCount)) cloudGemCount=loadBank();
     cloudUpdatedAt=Number((val.progress&&val.progress.updatedAt)||val.updatedAt||(slopeMirror&&slopeMirror.updatedAt)||0)||0;
-    auth={...auth,signedIn:true,name:val.name||auth.name,email:val.email||auth.email,uid:fbUser.uid,verified:!!fbUser.emailVerified,bio:profileBio,avatar:profileAvatar};
+    cloudJoinedAt=parseCloudTs(val.createdAt||(slopeMirror&&slopeMirror.createdAt)||(fbUser&&fbUser.metadata&&fbUser.metadata.creationTime)||0);
+    const isAdminDb=(String(val.admin??(slopeMirror&&slopeMirror.admin)??'false')==='true') || val.admin===true || (slopeMirror&&slopeMirror.admin===true);
+    auth={...auth,signedIn:true,name:val.name||auth.name,email:val.email||auth.email,uid:fbUser.uid,verified:!!fbUser.emailVerified,bio:profileBio,avatar:profileAvatar,admin:isAdminDb};
     saveAuth(auth);
+    refreshAdminFlag();
   } catch (e) {}
 }
 
@@ -3679,7 +3999,7 @@ async function handleAuthSignUp(){
       fbUser=cred.user;
       auth={signedIn:true,name:cred.user.displayName||signupForm.username,email:cred.user.email||signupForm.email,uid:cred.user.uid,verified:false,bio:'',avatar:''};
       isSignedIn=true; saveAuth(auth);
-      await writeCloudUserInfo({name:auth.name,email:auth.email,verified:false,createdAt:Date.now()});
+      await writeCloudUserInfo({name:auth.name,email:auth.email,verified:false,createdAt:Date.now(),admin:false});
       await syncProgressToCloud('signup');
       authFlowState='success';
       authFlowMsg='Verification email sent. Verify, then tap REFRESH GAME.';
@@ -3708,6 +4028,195 @@ function handleSignUpTap(p){
   if (hitBtn(p,BTNS.signupConfirm)) { SFX.click(); openInputDialog({title:'SIGN UP',label:'Confirm Password',value:'',maxLen:20,secret:true,onSubmit:v=>{signupForm.confirm=v||'';}}); return; }
   if (hitBtn(p,BTNS.authSubmit)) { SFX.click(); handleAuthSignUp(); return; }
   if (hitBtn(p,BTNS.authRestart)) { SFX.click(); goMenu(); doTransition('MENU'); authFlowState='idle'; return; }
+}
+
+
+function drawAdminAuthScreen(t){
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
+  drawPerspGrid(terrain.scrollY*0.08,0.03); drawBgSquares();
+  const x=32,y=118,w=LW-64,h=340;
+  ctx.save();
+  ctx.fillStyle='rgba(6,10,14,0.95)'; ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle='rgba(255,230,0,0.45)'; ctx.lineWidth=2; glow(CFG.YL,12); ctx.strokeRect(x,y,w,h);
+  setFont(24,'900'); glow(CFG.YL,16); txt('ADMIN AUTH',LW/2,y+38,CFG.YL);
+  setFont(9,'700',"'Share Tech Mono',monospace"); noGlow();
+  txt('ENTER ADMIN + YOUR ACCOUNT PASSWORD',LW/2,y+62,'rgba(255,245,160,0.9)');
+  BTNS.adminAuthInput={x:x+26,y:y+96,w:w-52,h:42};
+  drawNeonBtn(BTNS.adminAuthInput.x,BTNS.adminAuthInput.y,BTNS.adminAuthInput.w,BTNS.adminAuthInput.h,CFG.CY,adminAuthInput?'••••••••••':'TYPE ADMIN+PASSWORD',10,1,0);
+  BTNS.adminAuthSubmit={x:x+26,y:y+152,w:w-52,h:36};
+  drawNeonBtn(BTNS.adminAuthSubmit.x,BTNS.adminAuthSubmit.y,BTNS.adminAuthSubmit.w,BTNS.adminAuthSubmit.h,CFG.GR,'VERIFY',12,1,Math.sin(t*2));
+  const msgCol=adminAuthState==='error'?CFG.PK:adminAuthState==='ok'?CFG.GR:'rgba(200,235,255,0.8)';
+  const msg=adminAuthMsg || 'Tip: Press M from menu/profile/options.';
+  txt(msg,LW/2,y+214,msgCol);
+  BTNS.adminBack={x:(LW-140)/2,y:y+h-50,w:140,h:34};
+  drawNeonBtn(BTNS.adminBack.x,BTNS.adminBack.y,140,34,CFG.PK,'← BACK',11,1,Math.sin(t*2.2));
+  ctx.restore();
+}
+
+async function verifyAdminPassword(){
+  if (!isAdminUser) { adminAuthState='error'; adminAuthMsg='Admin account required.'; return; }
+  const raw=String(adminAuthInput||'').trim();
+  if (!raw.startsWith('ADMIN')) { adminAuthState='error'; adminAuthMsg='Prefix with ADMIN + your password.'; return; }
+  const pwd=raw.slice(5);
+  if (!pwd) { adminAuthState='error'; adminAuthMsg='Missing password after ADMIN prefix.'; return; }
+  if (!fbUser || !window.firebase || !firebase.auth || !firebase.auth.EmailAuthProvider) {
+    adminAuthState='error'; adminAuthMsg='Email/password auth required.'; return;
+  }
+  try {
+    const email=String((fbUser&&fbUser.email)||(auth&&auth.email)||'').trim();
+    if (!email) { adminAuthState='error'; adminAuthMsg='Current account has no email.'; return; }
+    const cred=firebase.auth.EmailAuthProvider.credential(email,pwd);
+    await fbUser.reauthenticateWithCredential(cred);
+    adminSessionUnlocked=true;
+    adminAuthState='ok';
+    adminAuthMsg='Access granted.';
+    addNotif('Admin menu unlocked.',CFG.YL);
+    doTransition('ADMIN_MENU');
+  } catch (e) {
+    adminAuthState='error';
+    adminAuthMsg='Invalid ADMIN+password.';
+    addNotif('Admin auth failed.',CFG.PK);
+  }
+}
+
+async function adminApplyVerifyStatus(){
+  const uid=String(adminVerifyUid||'').trim();
+  if (!uid) { addNotif('Admin: set target UID first.',CFG.PK); return; }
+  if (!fbReady || !fbDb) { addNotif('Admin: Firebase unavailable.',CFG.PK); return; }
+  try {
+    const root=cloudProfileRoot||CLOUD_INFO_ROOT;
+    await fbDb.ref(`${root}/${uid}`).update({verified:!!adminVerifyValue,updatedAt:Date.now()});
+    await fbDb.ref(`${CLOUD_SLOPE_ROOT}/${uid}`).update({verified:String(!!adminVerifyValue),updatedAt:String(Date.now())});
+    if (auth && auth.uid===uid) { auth={...auth,verified:!!adminVerifyValue}; saveAuth(auth); }
+    addNotif(`Admin: verified for ${uid.slice(0,8)}... = ${adminVerifyValue?'TRUE':'FALSE'}`,CFG.YL);
+  } catch (e) {
+    addNotif('Admin: verify update failed.',CFG.PK);
+  }
+}
+
+function handleAdminAuthTap(p){
+  if (hitBtn(p,BTNS.adminBack)) { SFX.click(); doTransition('MENU'); return; }
+  if (hitBtn(p,BTNS.adminAuthInput)) {
+    SFX.click();
+    openInputDialog({title:'ADMIN AUTH',label:'Password',value:'',maxLen:64,secret:true,onSubmit:v=>{adminAuthInput=String(v||'');}});
+    return;
+  }
+  if (hitBtn(p,BTNS.adminAuthSubmit)) { SFX.click(); verifyAdminPassword(); return; }
+}
+
+function drawAdminToggle(x,y,label,on,key){
+  const col=on?CFG.GR:'#45505a';
+  BTNS[key]={x,y,w:300,h:28};
+  drawNeonBtn(x,y,300,28,col,`${on?'☑':'☐'} ${label}`,9,1,0);
+}
+
+function drawAdminMenuScreen(t){
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
+  drawPerspGrid(terrain.scrollY*0.08,0.03); drawBgSquares();
+  const x=20,y=70,w=LW-40,h=620;
+  const viewX=x+10, viewY=y+58, viewW=w-20, viewH=h-106;
+  adminViewH=viewH;
+  ctx.save();
+  ctx.fillStyle='rgba(6,10,14,0.95)'; ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle='rgba(255,230,0,0.45)'; ctx.lineWidth=2; glow(CFG.YL,12); ctx.strokeRect(x,y,w,h);
+  setFont(22,'900'); glow(CFG.YL,14); txt('ADMIN MENU',LW/2,y+34,CFG.YL);
+  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt('WARNING: CLIENT-SIDE ADMIN TOOLS ARE FOR DEV USE ONLY.',LW/2,y+49,'rgba(255,200,140,0.9)');
+
+  ctx.beginPath(); ctx.rect(viewX,viewY,viewW,viewH); ctx.clip();
+  ctx.translate(0,adminScroll);
+  let cy=viewY+8;
+  const lh=34;
+  setFont(9,'700',"'Share Tech Mono',monospace"); noGlow();
+  txt(`Admin: ${auth.name||'Runner'} (${auth.email||'no-email'})`,viewX+8,cy,'rgba(240,255,190,0.95)','left');
+  cy+=18;
+  txt(`Selected Skin/Aura/Theme: ${selectedChar} / ${selectedAura} / ${selectedTheme}`,viewX+8,cy,'rgba(200,245,255,0.85)','left');
+  cy+=14;
+
+  BTNS.adminSetGems={x:viewX+8,y:cy,w:170,h:30};
+  drawNeonBtn(BTNS.adminSetGems.x,BTNS.adminSetGems.y,BTNS.adminSetGems.w,BTNS.adminSetGems.h,CFG.YL,'SET GEMS',10,1,Math.sin(t*2));
+  setFont(10,'700'); glow(CFG.CY,6); txt(`${Math.floor(loadBank())} ◆`,viewX+200,cy+20,CFG.CY,'left');
+  cy+=lh+6;
+
+  drawAdminToggle(viewX+8,cy,'SYNC TO CLOUD',adminFlags.syncCloud,'adminT0'); cy+=32;
+  drawAdminToggle(viewX+8,cy,'GRANT SELECTED SKIN',adminFlags.grantSkin,'adminT1'); cy+=32;
+  drawAdminToggle(viewX+8,cy,'GRANT SELECTED AURA',adminFlags.grantAura,'adminT2'); cy+=32;
+  drawAdminToggle(viewX+8,cy,'GRANT SELECTED THEME',adminFlags.grantTheme,'adminT3'); cy+=32;
+  drawAdminToggle(viewX+8,cy,'CONFIRM LOCK ACTIONS',adminFlags.confirmLocks,'adminT4'); cy+=38;
+
+  BTNS.adminGrantSelected={x:viewX+8,y:cy,w:viewW-16,h:30};
+  drawNeonBtn(BTNS.adminGrantSelected.x,BTNS.adminGrantSelected.y,BTNS.adminGrantSelected.w,BTNS.adminGrantSelected.h,CFG.GR,'APPLY GRANT FLAGS TO SELECTED',10,1,Math.sin(t*2));
+  cy+=36;
+
+  BTNS.adminLockSelectedSkin={x:viewX+8,y:cy,w:viewW-16,h:28};
+  drawNeonBtn(BTNS.adminLockSelectedSkin.x,BTNS.adminLockSelectedSkin.y,BTNS.adminLockSelectedSkin.w,BTNS.adminLockSelectedSkin.h,CFG.PK,'LOCK SELECTED SKIN',9,1,0); cy+=32;
+  BTNS.adminLockSelectedAura={x:viewX+8,y:cy,w:viewW-16,h:28};
+  drawNeonBtn(BTNS.adminLockSelectedAura.x,BTNS.adminLockSelectedAura.y,BTNS.adminLockSelectedAura.w,BTNS.adminLockSelectedAura.h,CFG.PK,'LOCK SELECTED AURA',9,1,0); cy+=32;
+  BTNS.adminLockSelectedTheme={x:viewX+8,y:cy,w:viewW-16,h:28};
+  drawNeonBtn(BTNS.adminLockSelectedTheme.x,BTNS.adminLockSelectedTheme.y,BTNS.adminLockSelectedTheme.w,BTNS.adminLockSelectedTheme.h,CFG.PK,'LOCK SELECTED THEME',9,1,0); cy+=38;
+
+  BTNS.adminVerifyUid={x:viewX+8,y:cy,w:viewW-16,h:28};
+  drawNeonBtn(BTNS.adminVerifyUid.x,BTNS.adminVerifyUid.y,BTNS.adminVerifyUid.w,BTNS.adminVerifyUid.h,CFG.CY,`TARGET UID: ${(adminVerifyUid||'NOT SET').slice(0,22)}`,9,1,0); cy+=32;
+  BTNS.adminVerifyToggle={x:viewX+8,y:cy,w:viewW-16,h:28};
+  drawNeonBtn(BTNS.adminVerifyToggle.x,BTNS.adminVerifyToggle.y,BTNS.adminVerifyToggle.w,BTNS.adminVerifyToggle.h,adminVerifyValue?CFG.GR:CFG.PK,`VERIFIED: ${adminVerifyValue?'TRUE':'FALSE'} (TOGGLE)`,9,1,0); cy+=32;
+  BTNS.adminVerifyApply={x:viewX+8,y:cy,w:viewW-16,h:30};
+  drawNeonBtn(BTNS.adminVerifyApply.x,BTNS.adminVerifyApply.y,BTNS.adminVerifyApply.w,BTNS.adminVerifyApply.h,CFG.YL,'APPLY VERIFY STATUS TO TARGET UID',9,1,Math.sin(t*2)); cy+=40;
+
+  BTNS.adminUnlockAll={x:viewX+8,y:cy,w:viewW-16,h:30};
+  drawNeonBtn(BTNS.adminUnlockAll.x,BTNS.adminUnlockAll.y,BTNS.adminUnlockAll.w,BTNS.adminUnlockAll.h,CFG.CY,'UNLOCK ALL SKINS / AURAS / THEMES',10,1,0); cy+=36;
+  BTNS.adminLockAll={x:viewX+8,y:cy,w:viewW-16,h:30};
+  drawNeonBtn(BTNS.adminLockAll.x,BTNS.adminLockAll.y,BTNS.adminLockAll.w,BTNS.adminLockAll.h,CFG.PK,'LOCK ALL TO DEFAULT',10,1,0); cy+=42;
+
+  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt('Scroll for more. Press M to reopen admin auth.',LW/2,cy,'rgba(180,230,255,0.65)');
+  adminContentH=(cy-viewY)+20;
+  adminScroll=clamp(adminScroll,minAdminScroll(),0);
+
+  ctx.restore();
+  const sbX=viewX+viewW-6, sbY=viewY, sbH=viewH;
+  ctx.fillStyle='rgba(255,230,0,0.14)'; ctx.fillRect(sbX,sbY,5,sbH);
+  if (minAdminScroll()<0) {
+    const thumbH=Math.max(24,(viewH/(viewH+Math.abs(minAdminScroll())))*sbH);
+    const track=sbH-thumbH;
+    const thumbY=sbY + ((-adminScroll)/Math.abs(minAdminScroll()))*track;
+    ctx.fillStyle='rgba(255,230,0,0.8)'; ctx.fillRect(sbX,thumbY,5,thumbH);
+  }
+
+  BTNS.adminBack={x:(LW-140)/2,y:y+h-40,w:140,h:30};
+  drawNeonBtn(BTNS.adminBack.x,BTNS.adminBack.y,140,30,CFG.PK,'← BACK',11,1,Math.sin(t*2));
+  ctx.restore();
+}
+
+function hitAdminBtn(p,b){
+  if (!b) return false;
+  const py=p.y-adminScroll;
+  return p.x>=b.x && p.x<=b.x+b.w && py>=b.y && py<=b.y+b.h;
+}
+
+function handleAdminMenuTap(p){
+  if (hitBtn(p,BTNS.adminBack)) { SFX.click(); doTransition('MENU'); return; }
+  if (!adminSessionUnlocked) { doTransition('ADMIN_AUTH'); return; }
+  if (hitAdminBtn(p,BTNS.adminSetGems)) {
+    SFX.click();
+    openInputDialog({title:'ADMIN',label:'Set Gems (0 to 999999999)',value:String(Math.floor(loadBank())),maxLen:12,onSubmit:v=>{ const raw=String(v||'').trim(); if (!/^[+-]?\d+$/.test(raw)) { addNotif('Admin: enter a whole number.',CFG.PK); return; } const parsed=Number.parseInt(raw,10); if (!Number.isFinite(parsed)) { addNotif('Admin: invalid gems value.',CFG.PK); return; } const n=clamp(parsed,0,999999999); saveBank(n); totalGems=n; if (adminFlags.syncCloud) queueCloudSync(50); addNotif('Admin: gems set to '+n+'.',CFG.YL); }});
+    return;
+  }
+  if (hitAdminBtn(p,BTNS.adminT0)) { SFX.click(); adminFlags.syncCloud=!adminFlags.syncCloud; return; }
+  if (hitAdminBtn(p,BTNS.adminT1)) { SFX.click(); adminFlags.grantSkin=!adminFlags.grantSkin; return; }
+  if (hitAdminBtn(p,BTNS.adminT2)) { SFX.click(); adminFlags.grantAura=!adminFlags.grantAura; return; }
+  if (hitAdminBtn(p,BTNS.adminT3)) { SFX.click(); adminFlags.grantTheme=!adminFlags.grantTheme; return; }
+  if (hitAdminBtn(p,BTNS.adminT4)) { SFX.click(); adminFlags.confirmLocks=!adminFlags.confirmLocks; return; }
+  if (hitAdminBtn(p,BTNS.adminGrantSelected)) { SFX.click(); adminUnlockSelected(); return; }
+  if (hitAdminBtn(p,BTNS.adminVerifyUid)) {
+    SFX.click();
+    openInputDialog({title:'ADMIN VERIFY',label:'Target UID',value:adminVerifyUid||'',maxLen:80,onSubmit:v=>{adminVerifyUid=String(v||'').trim();}});
+    return;
+  }
+  if (hitAdminBtn(p,BTNS.adminVerifyToggle)) { SFX.click(); adminVerifyValue=!adminVerifyValue; return; }
+  if (hitAdminBtn(p,BTNS.adminVerifyApply)) { SFX.click(); adminApplyVerifyStatus(); return; }
+  if (hitAdminBtn(p,BTNS.adminLockSelectedSkin)) { SFX.click(); if (!adminFlags.confirmLocks) { addNotif('Enable CONFIRM LOCK ACTIONS.',CFG.PK); return; } if (selectedChar!=='default') unlockedChars=unlockedChars.filter(id=>id!==selectedChar); if (!unlockedChars.includes('default')) unlockedChars.unshift('default'); if (!unlockedChars.includes(selectedChar)) setSelectedChar('default'); saveAdminUnlocks(); return; }
+  if (hitAdminBtn(p,BTNS.adminLockSelectedAura)) { SFX.click(); if (!adminFlags.confirmLocks) { addNotif('Enable CONFIRM LOCK ACTIONS.',CFG.PK); return; } if (selectedAura!=='none') unlockedAuras=unlockedAuras.filter(id=>id!==selectedAura); if (!unlockedAuras.includes('none')) unlockedAuras.unshift('none'); if (!unlockedAuras.includes(selectedAura)) setSelectedAura('none'); saveAdminUnlocks(); return; }
+  if (hitAdminBtn(p,BTNS.adminLockSelectedTheme)) { SFX.click(); if (!adminFlags.confirmLocks) { addNotif('Enable CONFIRM LOCK ACTIONS.',CFG.PK); return; } if (selectedTheme!=='classic') unlockedThemes=unlockedThemes.filter(id=>id!==selectedTheme); if (!unlockedThemes.includes('classic')) unlockedThemes.unshift('classic'); if (!unlockedThemes.includes(selectedTheme)) setSelectedTheme('classic'); saveAdminUnlocks(); return; }
+  if (hitAdminBtn(p,BTNS.adminUnlockAll)) { SFX.click(); adminUnlockAll(); return; }
+  if (hitAdminBtn(p,BTNS.adminLockAll)) { SFX.click(); adminLockAll(); return; }
 }
 
 function drawProfileScreen(t){
@@ -3751,6 +4260,7 @@ function drawProfileScreen(t){
   const totalTimeSec=Math.max(0, Number(localStorage.getItem('slope_totalTime')||0));
   const lines=isSignedIn ? [
     ['Display Name',auth.name||'Player'],
+    ['When Joined',fmtCloudTs(cloudJoinedAt)],
     ['Email',auth.email||''],
     ['Verified',auth.verified?'YES':'NO'],
     ['Best Score',String(Math.floor(bestScore))],
@@ -3782,7 +4292,10 @@ function drawProfileScreen(t){
   lines.forEach((entry,i)=>{
     const yy=infoY+10+i*34;
     setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt(entry[0],left,yy,'rgba(0,245,255,0.7)','left');
-    setFont(10,'700'); glow('#d8f6ff',6); txt(entry[1],left,yy+14,'#d8f6ff','left');
+    const isAdminLine=isAdminUser && entry[0]==='Display Name';
+    const vcol=isAdminLine?((Math.sin(t*7)>0)?CFG.YL:'#fff47a'):'#d8f6ff';
+    setFont(10,'700'); glow(vcol,6); txt(entry[1],left,yy+14,vcol,'left');
+    if (isAdminLine) { setFont(8,'900',"'Share Tech Mono',monospace"); glow(CFG.YL,8); txt('ADMIN',left+120,yy+14,CFG.YL,'left'); }
   });
   if (isSignedIn) {
     const bioY=infoY+10+lines.length*34+10;
@@ -3846,7 +4359,7 @@ function drawProfileUploadOverlay(t){
   if (!st.active) return;
   ctx.save();
   ctx.fillStyle='rgba(0,0,0,0.82)'; ctx.fillRect(0,0,LW,LH);
-  const w=332,h=320,x=(LW-w)/2,y=(LH-h)/2;
+  const w=354,h=410,x=(LW-w)/2,y=(LH-h)/2;
   ctx.fillStyle='#000'; ctx.fillRect(x,y,w,h);
   ctx.strokeStyle=st.mode==='error'?CFG.PK:CFG.CY; ctx.lineWidth=2; glow(st.mode==='error'?CFG.PK:CFG.CY,12); ctx.strokeRect(x,y,w,h);
   if (st.mode==='error') {
@@ -3871,15 +4384,28 @@ function drawProfileUploadOverlay(t){
   }
   ctx.restore();
   ctx.strokeStyle='rgba(0,245,255,0.7)'; ctx.lineWidth=2; ctx.strokeRect(fx,fy,frame,frame);
-  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt('Drag to reposition. Use +/- to zoom.',LW/2,fy+frame+16,'rgba(220,245,255,0.8)');
-  BTNS.profileUploadZoomOut={x:fx,y:fy+frame+26,w:48,h:26};
-  BTNS.profileUploadZoomIn={x:fx+56,y:fy+frame+26,w:48,h:26};
-  drawNeonBtn(BTNS.profileUploadZoomOut.x,BTNS.profileUploadZoomOut.y,48,26,CFG.PU,'-',14,1,0);
-  drawNeonBtn(BTNS.profileUploadZoomIn.x,BTNS.profileUploadZoomIn.y,48,26,CFG.PU,'+',14,1,0);
-  BTNS.profileUploadOk={x:LW/2+10,y:fy+frame+24,w:104,h:30};
-  BTNS.profileUploadCancel={x:LW/2+120,y:fy+frame+24,w:104,h:30};
-  drawNeonBtn(BTNS.profileUploadOk.x,BTNS.profileUploadOk.y,104,30,CFG.GR,'UPLOAD',10,1,Math.sin(t*2));
-  drawNeonBtn(BTNS.profileUploadCancel.x,BTNS.profileUploadCancel.y,104,30,CFG.PK,'CANCEL',10,1,Math.sin(t*2));
+  ctx.save();
+  ctx.strokeStyle='rgba(0,245,255,0.26)';
+  ctx.lineWidth=1;
+  for (let i=1;i<3;i++) {
+    const s=(frame/3)*i;
+    ctx.beginPath(); ctx.moveTo(fx+s,fy); ctx.lineTo(fx+s,fy+frame); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(fx,fy+s); ctx.lineTo(fx+frame,fy+s); ctx.stroke();
+  }
+  ctx.restore();
+  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt('Drag/touch to reposition. +/- or wheel to zoom.',LW/2,fy+frame+16,'rgba(220,245,255,0.8)');
+  const ctrlY=fy+frame+26;
+  BTNS.profileUploadZoomOut={x:fx+6,y:ctrlY,w:58,h:30};
+  BTNS.profileUploadZoomIn={x:fx+72,y:ctrlY,w:58,h:30};
+  BTNS.profileUploadReset={x:fx+138,y:ctrlY,w:76,h:30};
+  drawNeonBtn(BTNS.profileUploadZoomOut.x,BTNS.profileUploadZoomOut.y,BTNS.profileUploadZoomOut.w,BTNS.profileUploadZoomOut.h,CFG.PU,'-',14,1,0);
+  drawNeonBtn(BTNS.profileUploadZoomIn.x,BTNS.profileUploadZoomIn.y,BTNS.profileUploadZoomIn.w,BTNS.profileUploadZoomIn.h,CFG.PU,'+',14,1,0);
+  drawNeonBtn(BTNS.profileUploadReset.x,BTNS.profileUploadReset.y,BTNS.profileUploadReset.w,BTNS.profileUploadReset.h,CFG.CY,'RESET',9,1,0);
+  BTNS.profileUploadOk={x:fx+36,y:ctrlY+40,w:148,h:34};
+  BTNS.profileUploadCancel={x:fx+36,y:ctrlY+80,w:148,h:34};
+  drawNeonBtn(BTNS.profileUploadOk.x,BTNS.profileUploadOk.y,BTNS.profileUploadOk.w,BTNS.profileUploadOk.h,CFG.GR,'UPLOAD',11,1,Math.sin(t*2));
+  drawNeonBtn(BTNS.profileUploadCancel.x,BTNS.profileUploadCancel.y,BTNS.profileUploadCancel.w,BTNS.profileUploadCancel.h,CFG.PK,'CANCEL',11,1,Math.sin(t*2));
+  setFont(7,'700',"'Share Tech Mono',monospace"); noGlow(); txt('Controller: L/R stick move · LB/RB zoom · A upload · B cancel · X/Y reset',LW/2,ctrlY+124,'rgba(180,245,255,0.6)');
   ctx.restore();
 }
 
@@ -3904,10 +4430,11 @@ function handleProfileTap(p){
       return;
     }
     const st=profileUploadState;
-    const frame=220, fx=(LW-frame)/2, fy=((LH-320)/2)+44;
+    const frame=220, fx=(LW-frame)/2, fy=((LH-410)/2)+44;
     if (p.x>=fx && p.x<=fx+frame && p.y>=fy && p.y<=fy+frame) { st.drag=true; st.lastX=p.x; st.lastY=p.y; return; }
-    if (hitBtn(p,BTNS.profileUploadZoomIn)) { SFX.click(); st.zoom=clamp(st.zoom+0.1,0.8,3); return; }
-    if (hitBtn(p,BTNS.profileUploadZoomOut)) { SFX.click(); st.zoom=clamp(st.zoom-0.1,0.8,3); return; }
+    if (hitBtn(p,BTNS.profileUploadZoomIn)) { SFX.click(); st.zoom=clamp(st.zoom+0.1,1,3); clampProfileUploadOffsets(st,220); return; }
+    if (hitBtn(p,BTNS.profileUploadZoomOut)) { SFX.click(); st.zoom=clamp(st.zoom-0.1,1,3); clampProfileUploadOffsets(st,220); return; }
+    if (hitBtn(p,BTNS.profileUploadReset)) { SFX.click(); st.zoom=1; st.offX=0; st.offY=0; clampProfileUploadOffsets(st,220); return; }
     if (hitBtn(p,BTNS.profileUploadOk)) { SFX.click(); applyProfileCropAndSave(); return; }
     if (hitBtn(p,BTNS.profileUploadCancel)) { SFX.click(); resetProfileUploadState(); return; }
     return;
@@ -4024,23 +4551,29 @@ let camZoom=1;
 let immunityActive=false, immunityTimer=0;
 let obstacleClearTimer=0;
 let pauseToggleLock=0;
+let pauseStartedAt=0;
 
 let leaderboardState='idle';
 let leaderboardTimer=0;
 let leaderboardData=[];
 let leaderboardNextRefresh=0;
 let leaderboardReturnState='MENU';
+let leaderboardScroll=0;
+let leaderboardViewH=0;
+let leaderboardContentH=0;
+function minLeaderboardScroll(){ return Math.min(0,leaderboardViewH-leaderboardContentH); }
 
 // Score multiplier (includes mini jetpack bonus).
-const scoreMultiplier = () => (multi*(gemDoubleActive?2:1)) + (player.jetpackActive ? 10 : 0) + (miniJetpackActive ? 5 : 0);
+const scoreMultiplier = () => { const comboBonus=Math.max(0,multi-1); const base=1 + comboBonus + (player.jetpackActive ? 10 : 0) + (miniJetpackActive ? 5 : 0); return Math.max(1,Math.floor(base*(gemDoubleActive?2:1))); }; 
 
 async function triggerLeaderboardFetch(force=false) {
   if (!force && leaderboardState==='loading') return;
   if (!force && Date.now()<leaderboardNextRefresh && leaderboardState==='loaded' && leaderboardData.length) return;
-  if (!isSignedIn) { leaderboardState='error'; leaderboardData=[]; return; }
+  if (!isSignedIn) { leaderboardState='error'; leaderboardData=[]; leaderboardScroll=0; return; }
   leaderboardState='loading';
   leaderboardTimer=0;
   leaderboardData=[];
+  leaderboardScroll=0;
   leaderboardNextRefresh=Date.now()+3600*1000;
   try {
     if (!fbReady || !fbDb) throw new Error('Sign in required');
@@ -4070,6 +4603,7 @@ async function triggerLeaderboardFetch(force=false) {
   } catch (e) {
     leaderboardState='error';
     leaderboardData=[];
+    leaderboardScroll=0;
   }
 }
 
@@ -4236,8 +4770,11 @@ function togglePause() {
   const now=performance.now();
   if (now<pauseToggleLock) return;
   pauseToggleLock=now+110;
-  if (gs==='PLAY') { gs='PAUSE'; SFX.pause(); }
+  if (gs==='PLAY') { gs='PAUSE'; pauseStartedAt=performance.now(); SFX.pause(); }
   else if (gs==='PAUSE') {
+    const nowPerf=performance.now();
+    lastTime=nowPerf;
+    touchSwipe=0; touchSwipeTarget=0;
     gs='PLAY'; SFX.resume();
     touchSwipe=0; touchActive=false; K.left=false; K.right=false;
   }
@@ -4338,7 +4875,8 @@ function collectNearbyDrops(cx,cy,radius=120) {
 function collectGem(gem) {
   gem.collected=true; gem.active=false;
   gemsCollected++; gemStreak++;
-  if (gemStreak>=15) multi=4;
+  if (gemStreak>=20) multi=5;
+  else if (gemStreak>=15) multi=4;
   else if (gemStreak>=10) multi=3;
   else if (gemStreak>=5)  multi=2;
   else                     multi=1;
@@ -4436,7 +4974,8 @@ function activateGemDrop() {
 }
 
 function activateBadLuck() {
-  badLuckActive=true; badLuckTimer=5.5; badLuckSpawnT=0;
+  if (gameMode!=='IMPOSSIBLE') return;
+  badLuckActive=true; badLuckTimer=5.0; badLuckSpawnT=0;
   addNotif('☠ BAD LUCK! FALLING ROCKS','#ff3333');
   addFloat(player.x,player.y-24,'☠ BAD LUCK','#ff3333');
 }
@@ -4547,6 +5086,9 @@ function loop(ts) {
   if (fpsTimer>=0.5) { fps=Math.round(fpsFrames/fpsTimer); fpsFrames=0; fpsTimer=0; }
 
   menuT+=dt;
+  if (gs==='PLAY' || gs==='PAUSE') touchSwipe=lerp(touchSwipe,touchSwipeTarget,clamp(dt*14,0,1));
+  else touchSwipe=lerp(touchSwipe,0,clamp(dt*10,0,1));
+  updateProfileUploadController(dt);
   seasonScrollX+=seasonDir*130*dt;
   if (Math.abs(seasonScrollX)>130) seasonDir*=-1;
   if (leaderboardState==='loading') leaderboardTimer+=dt;
@@ -4728,6 +5270,20 @@ function loop(ts) {
     requestAnimationFrame(loop); return;
   }
 
+  if (gs==='ADMIN_AUTH') {
+    drawAdminAuthScreen(menuT);
+    drawTransition();
+    drawTopOverlays(menuT);
+    requestAnimationFrame(loop); return;
+  }
+
+  if (gs==='ADMIN_MENU') {
+    drawAdminMenuScreen(menuT);
+    drawTransition();
+    drawTopOverlays(menuT);
+    requestAnimationFrame(loop); return;
+  }
+
   if (gs==='OPTIONS') {
     drawOptionsScreen(menuT);
     drawTransition();
@@ -4852,6 +5408,7 @@ function loop(ts) {
 
   if (obstacleClearTimer>0) obstacleClearTimer=Math.max(0,obstacleClearTimer-dt);
 
+  if (badLuckActive && gameMode!=='IMPOSSIBLE') { badLuckActive=false; badLuckTimer=0; }
   if (badLuckActive) {
     badLuckTimer-=dt; badLuckSpawnT-=dt;
     if (badLuckSpawnT<=0) {
