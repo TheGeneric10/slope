@@ -226,7 +226,7 @@ const BTNS = {
   authAction:null, authBack:null, authSubmit:null, authRestart:null,
   pauseOptions:null, optionsBack:null, optionsToggleQuests:null, optionsToggleTutorials:null, hudOptions:null,
   signinEmail:null, signinPass:null, signupName:null, signupEmail:null, signupPass:null, signupConfirm:null, signupSwitch:null, signinSwitch:null, signinGoogle:null, signupGoogle:null,
-  profileChangeUsername:null, profileChangePassword:null, profileAvatar:null, profileTrash:null, profileUploadOk:null, profileUploadCancel:null, profileUploadZoomIn:null, profileUploadZoomOut:null, profileUploadReset:null, profileUploadErrOk:null, usernameTryAgain:null, usernameExit:null, usernameContinue:null,
+  profileChangeUsername:null, profileChangePassword:null, profileAvatar:null, profileTrash:null, profileUploadOk:null, profileUploadCancel:null, profileUploadZoomIn:null, profileUploadZoomOut:null, profileUploadReset:null, profileUploadErrOk:null, profileInfoBox:null, profileUidToggle:null, profileUidCopy:null, profileStatusDefault:null, profileStatusIdle:null, profileStatusDnd:null, profileStatusOffline:null, usernameTryAgain:null, usernameExit:null, usernameContinue:null, playerCardClose:null, playerCardEdit:null, playerCardFav:null,
   adminBack:null, adminAuthInput:null, adminAuthSubmit:null, adminSetGems:null, adminGrantSelected:null, adminUnlockAll:null, adminLockAll:null, adminLockSelectedSkin:null, adminLockSelectedAura:null, adminLockSelectedTheme:null, adminVerifyUid:null, adminVerifyToggle:null, adminVerifyApply:null, adminViewLtm:null, adminLtmBack:null,
   controls:null, controlsBack:null, touchJoyL:null, touchJoyR:null, noAds:null, noAdsBuy:null, noAdsContinue:null, overLeaderboard:null,
 };
@@ -249,6 +249,79 @@ function openConfirm(action,title,msg) {
 }
 function openActionPopup(title,msg,ok=true){
   actionPopup={active:true,title:String(title||'STATUS'),msg:String(msg||''),ok:!!ok};
+}
+
+let uidVisible=false;
+let playerCardPopup={active:false,isSelf:false,favorite:false};
+const STATUS_COLORS={online:'#39ff14',idle:'#ffe45a',dnd:'#ff3366',offline:'#8a95a5'};
+const STATUS_LABELS={online:'Online',idle:'Idle',dnd:'Do Not Disturb',offline:'Offline'};
+function getStatusValue(){
+  const st=String((auth&&auth.status)||'').toLowerCase();
+  return STATUS_COLORS[st]?st:'offline';
+}
+function fmtOfflineAgo(ts){
+  const sec=Math.max(0,Math.floor((Date.now()-Number(ts||0))/1000));
+  if (sec<60) return `${sec}s`;
+  const m=Math.floor(sec/60); if (m<60) return `${m}m`;
+  const h=Math.floor(m/60); if (h<24) return `${h}h`;
+  const d=Math.floor(h/24); if (d<7) return `${d}d`;
+  const w=Math.floor(d/7); if (w<52) return `${w}w`;
+  const y=Math.floor(d/365); return `${Math.max(1,y)}y`;
+}
+async function setPlayerStatus(next){
+  const st=String(next||'offline').toLowerCase();
+  if (!STATUS_COLORS[st]) return;
+  const now=Date.now();
+  auth={...auth,status:st,lastSeen:now}; saveAuth(auth);
+  if (isSignedIn && fbUser) {
+    try { await writeCloudUserInfo({status:st,lastSeen:now}); } catch(e){}
+    try { await syncSlopeMirror({status:String(st),lastSeen:String(now)}); } catch(e){}
+  }
+  addNotif(`STATUS: ${STATUS_LABELS[st].toUpperCase()}`,STATUS_COLORS[st]);
+}
+function drawStatusDot(x,y,status){
+  const col=STATUS_COLORS[status]||STATUS_COLORS.offline;
+  ctx.save();
+  glow(col,8); circle(x,y,4,col,true);
+  ctx.restore();
+}
+function drawPlayerCardPopup(t){
+  if (!playerCardPopup.active) return;
+  const status=getStatusValue();
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.74)'; ctx.fillRect(0,0,LW,LH);
+  const w=322,h=250,x=(LW-w)/2,y=(LH-h)/2;
+  ctx.fillStyle='rgba(5,12,18,0.98)'; ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle='rgba(0,245,255,0.45)'; ctx.lineWidth=2; glow(CFG.CY,12); ctx.strokeRect(x,y,w,h);
+  BTNS.playerCardClose={x:x+w-34,y:y+8,w:24,h:24};
+  drawNeonBtn(BTNS.playerCardClose.x,BTNS.playerCardClose.y,24,24,CFG.PK,'×',11,1,0);
+  if (playerCardPopup.isSelf) {
+    BTNS.playerCardEdit={x:x+10,y:y+10,w:56,h:24};
+    BTNS.playerCardFav={x:x+72,y:y+10,w:28,h:24};
+    drawNeonBtn(BTNS.playerCardEdit.x,BTNS.playerCardEdit.y,56,24,CFG.CY,'EDIT',8,1,0);
+    drawNeonBtn(BTNS.playerCardFav.x,BTNS.playerCardFav.y,28,24,CFG.YL,playerCardPopup.favorite?'★':'☆',10,1,0);
+  } else { BTNS.playerCardEdit=null; BTNS.playerCardFav=null; }
+
+  const name=String((auth&&auth.name)||'Player');
+  const pfpX=x+w-48, pfpY=y+58, r=22;
+  if (profileAvatar) {
+    const img=new Image(); img.src=profileAvatar;
+    ctx.save(); ctx.beginPath(); ctx.arc(pfpX,pfpY,r,0,Math.PI*2); ctx.clip(); ctx.drawImage(img,pfpX-r,pfpY-r,r*2,r*2); ctx.restore();
+  } else {
+    circle(pfpX,pfpY,r,'#1f2c36',true); drawDefaultProfileIcon(pfpX,pfpY,r,'rgba(216,246,255,0.95)');
+  }
+  ctx.strokeStyle='rgba(0,245,255,0.6)'; ctx.lineWidth=2; circle(pfpX,pfpY,r+2,CFG.CY,false);
+
+  drawStatusDot(x+18,y+58,status);
+  setFont(10,'900'); noGlow(); txt(`${STATUS_LABELS[status]}${status==='offline'?` (${fmtOfflineAgo(auth&&auth.lastSeen)} ago)`:''}`,x+30,y+62,'#d8f6ff','left');
+  setFont(16,'900'); glow(CFG.CY,10); txt(name,x+14,y+96,CFG.CY,'left');
+  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow();
+  txt(`Best: ${Math.floor(bestScore||0)}`,x+14,y+122,'rgba(220,240,255,0.9)','left');
+  txt(`Skin: ${String((CHAR_CATALOG.find(c=>c.id===selectedChar)||CHAR_CATALOG[0]).name)}`,x+14,y+140,'rgba(220,240,255,0.85)','left');
+  txt(`Aura: ${String((AURA_CATALOG.find(a=>a.id===selectedAura)||AURA_CATALOG[0]).name)}`,x+14,y+158,'rgba(220,240,255,0.85)','left');
+  txt(`Theme: ${String((THEME_CATALOG.find(t2=>t2.id===selectedTheme)||THEME_CATALOG[0]).name)}`,x+14,y+176,'rgba(220,240,255,0.85)','left');
+  txt(`Bio: ${(profileBio||'No bio').slice(0,60)}`,x+14,y+196,'rgba(190,220,235,0.8)','left');
+  ctx.restore();
 }
 function runConfirmAction() {
   const a=confirmDialog.action;
@@ -303,6 +376,13 @@ function drawActionPopup(t){
 
 function handleTap(e) {
   const p = getCanvasXY(e);
+
+  if (playerCardPopup.active) {
+    if (hitBtn(p,BTNS.playerCardClose)) { SFX.click(); playerCardPopup.active=false; return; }
+    if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardEdit)) { SFX.click(); playerCardPopup.active=false; return; }
+    if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFav)) { SFX.click(); playerCardPopup.favorite=!playerCardPopup.favorite; return; }
+    return;
+  }
 
   if (usernameChangeFlow.active) {
     if (usernameChangeFlow.phase==='error') {
@@ -368,8 +448,12 @@ function handleTap(e) {
     if (hitBtn(p, BTNS.modeAdventure)) { SFX.click(); gameMode='ADVENTURE'; doTransition('SHOP'); return; }
     if (hitBtn(p, BTNS.modeImpossible)) { SFX.click(); openConfirm('IMPOSSIBLE_START','IMPOSSIBLE MODE WARNING','One life only. No starter powerups. Are you sure?'); return; }
     if (hitBtn(p, BTNS.modeLtm)) {
-      if (!navigator.onLine) { addNotif('PLAYER OFFLINE',CFG.PK); return; }
-      SFX.click(); doTransition('ADMIN_LTM'); return;
+      if (!navigator.onLine) { addNotif('LTM REQUIRES INTERNET',CFG.PK); return; }
+      SFX.click();
+      gameMode='LTM';
+      if (isAdminUser) doTransition('ADMIN_LTM');
+      else doTransition('SHOP');
+      return;
     }
     if (hitBtn(p, BTNS.back)) { SFX.click(); doTransition('MENU'); return; }
     return;
@@ -457,6 +541,7 @@ function handleTap(e) {
         ltmForcedIndex=i;
         ltmSelectedIndex=i;
         ltmRotationIndex=i;
+        setGlobalLtmConfig(i);
         gameMode='LTM';
         doTransition('SHOP');
         return;
@@ -945,12 +1030,28 @@ function drawTransition() {
 }
 
 function drawTopOverlays(t){
+  drawGlobalFps();
+  drawPlayerCardPopup(t);
   drawUsernameChangeOverlay(t);
   drawActionPopup(t);
   drawAuthOverlay(t);
   drawOptimizeConfirmPopup(t);
   drawConfirmDialog();
   drawInputDialog(t);
+}
+
+function drawGlobalFps(){
+  if (!(SETTINGS.showFPS && OPTION_PREFS.showFPS)) return;
+  ctx.save();
+  const fpsCol=fps>=55?'rgba(57,255,20,0.78)':fps>=30?'rgba(255,230,0,0.78)':'rgba(255,0,110,0.82)';
+  setFont(8,'700',"'Share Tech Mono',monospace");
+  noGlow();
+  if (gs==='MENU') {
+    txt(`FPS ${fps}`,LW-90,38,fpsCol,'left');
+  } else {
+    txt(`FPS ${fps}`,LW-12,14,fpsCol,'right');
+  }
+  ctx.restore();
 }
 </script>
 
@@ -1806,13 +1907,19 @@ function drawHUD() {
 
   // Gem bank
   {
-    ctx.save(); const gbY=pdY+50;
-    ctx.translate(LW/2-32,gbY); ctx.fillStyle=CFG.CY; glow(CFG.CY,8);
-    ctx.beginPath(); ctx.moveTo(0,-4); ctx.lineTo(3,0); ctx.lineTo(0,4); ctx.lineTo(-3,0); ctx.closePath(); ctx.fill();
-    ctx.restore(); ctx.save();
-    setFont(9,'900'); glow(CFG.CY,8); txt(`${totalGems}`,LW/2-20,gbY+4,CFG.CY);
-    setFont(7,'400',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.4;
-    txt(`+${gemsCollected}`,LW/2+12,gbY+4,CFG.YL); ctx.restore();
+    const gbW=112, gbH=18, gbX=(LW-gbW)/2, gbY=pdY+42;
+    ctx.save();
+    ctx.fillStyle='rgba(0,245,255,0.06)'; ctx.fillRect(gbX,gbY,gbW,gbH);
+    ctx.strokeStyle='rgba(0,245,255,0.35)'; ctx.lineWidth=1; glow(CFG.CY,6); ctx.strokeRect(gbX,gbY,gbW,gbH);
+    ctx.fillStyle=CFG.CY;
+    ctx.beginPath();
+    ctx.moveTo(gbX+12,gbY+3); ctx.lineTo(gbX+16,gbY+9); ctx.lineTo(gbX+12,gbY+15); ctx.lineTo(gbX+8,gbY+9);
+    ctx.closePath();
+    ctx.fill();
+    setFont(9,'900'); glow(CFG.CY,8); txt(`${totalGems}`,gbX+24,gbY+13,CFG.CY,'left');
+    setFont(7,'700',"'Share Tech Mono',monospace"); noGlow();
+    txt(`+${gemsCollected}`,gbX+gbW-8,gbY+13,CFG.YL,'right');
+    ctx.restore();
   }
 
   ctx.save(); setFont(9,'400',"'Share Tech Mono',monospace");
@@ -1831,12 +1938,8 @@ function drawHUD() {
   // Lives (right side)
   ctx.save();
   const lx=LW-pdX-14;
-  if (SETTINGS.showFPS && OPTION_PREFS.showFPS) {
-    const fpsCol=fps>=55?'rgba(57,255,20,0.75)':fps>=30?'rgba(255,230,0,0.75)':'rgba(255,0,110,0.75)';
-    setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt(`${fps} FPS`,lx,pdY+4,fpsCol,'right');
-  }
-  const livesLabelY=SETTINGS.showFPS?pdY+18:pdY+8;
-  const livesDotsY=SETTINGS.showFPS?pdY+30:pdY+20;
+  const livesLabelY=pdY+8;
+  const livesDotsY=pdY+20;
   setFont(9,'400',"'Share Tech Mono',monospace");
   txt('LIVES',lx,livesLabelY,'rgba(0,245,255,0.4)','right');
   // Show dots up to maxLives (dimmed beyond current lives count)
@@ -1946,14 +2049,16 @@ function drawHUD() {
 
   // Combo
   if (multi>1||gemStreak>0) {
-    ctx.save(); const mx=pdX,my=LH-pdY-22;
+    ctx.save();
+    const mx=pdX+6,my=LH-pdY-34;
     const sm=scoreMultiplier();
     const comboShown=Math.max(0,multi-1);
-    setFont(9,'700'); glow(CFG.YL,10); txt(`COMBO ×${comboShown}  ·  SCORE ×${sm}`,mx+30,my,CFG.YL,'left');
+    setFont(9,'700'); glow(CFG.YL,10); txt(`COMBO ×${comboShown} · SCORE ×${sm}`,mx,my,CFG.YL,'left');
     if (multi<4) {
-      const bwm=60,bhm=2,pct=(gemStreak%5)/5;
-      ctx.fillStyle='rgba(255,230,0,0.1)'; ctx.fillRect(mx,my+4,bwm,bhm);
-      ctx.fillStyle=CFG.YL; glow(CFG.YL,6); ctx.fillRect(mx,my+4,bwm*pct,bhm);
+      const bwm=96,bhm=4,pct=(gemStreak%5)/5;
+      const by=my+7;
+      ctx.fillStyle='rgba(255,230,0,0.12)'; ctx.fillRect(mx,by,bwm,bhm);
+      ctx.fillStyle=CFG.YL; glow(CFG.YL,7); ctx.fillRect(mx,by,bwm*pct,bhm);
     }
     ctx.restore();
   }
@@ -2179,16 +2284,22 @@ function drawStartScreen(t) {
   const authW=188,authH=28,authX=(LW-authW)/2;
   BTNS.authAction={x:authX,y:btnY,w:authW,h:authH};
   drawNeonBtn(authX,btnY,authW,authH,'#8a8a8a',isSignedIn?'👤 VIEW PROFILE':'SIGN IN!',10,0.9,Math.sin(t*2.2));
-  const nameBannerW=120;
+  const nameBannerW=152;
   ctx.save();
-  ctx.fillStyle='rgba(60,130,255,0.65)'; ctx.fillRect(LW-nameBannerW-14,10,nameBannerW,20);
-  ctx.strokeStyle='rgba(180,220,255,0.85)'; ctx.lineWidth=1; ctx.strokeRect(LW-nameBannerW-14,10,nameBannerW,20);
-  const bannerName=(isSignedIn?(auth.name||'RUNNER'):'GUEST').slice(0,14);
-  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt(bannerName,LW-20,24,'#fff','right');
+  ctx.fillStyle='rgba(60,130,255,0.65)'; ctx.fillRect(LW-nameBannerW-14,10,nameBannerW,22);
+  ctx.strokeStyle='rgba(180,220,255,0.85)'; ctx.lineWidth=1; ctx.strokeRect(LW-nameBannerW-14,10,nameBannerW,22);
+  const bannerName=(isSignedIn?(auth.name||'RUNNER'):'GUEST').slice(0,12);
+  const pfpR=8, pfpX=LW-24, pfpY=21;
+  if (isSignedIn && profileAvatar) { const img=new Image(); img.src=profileAvatar; ctx.save(); ctx.beginPath(); ctx.arc(pfpX,pfpY,pfpR,0,Math.PI*2); ctx.clip(); ctx.drawImage(img,pfpX-pfpR,pfpY-pfpR,pfpR*2,pfpR*2); ctx.restore(); }
+  else { circle(pfpX,pfpY,pfpR,'#1f2c36',true); drawDefaultProfileIcon(pfpX,pfpY,pfpR,'#d8f6ff'); }
+  ctx.strokeStyle='rgba(0,245,255,0.7)'; ctx.lineWidth=1.2; circle(pfpX,pfpY,pfpR+1,CFG.CY,false);
+  const status=getStatusValue();
+  drawStatusDot(LW-nameBannerW+4,21,status);
+  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt(bannerName,LW-38,24,'#fff','right');
   const tw=ctx.measureText(bannerName).width;
-  let bx=LW-20-tw-10;
-  if (isSignedIn && auth && auth.admin===true) { drawRoleBadgeSquare(bx,19,9,CFG.YL,t,false); bx-=14; }
-  if (isSignedIn && auth && auth.verified===true) { drawRoleBadgeSquare(bx,19,9,'#33aaff',t,true); }
+  let bx=LW-38-tw-8;
+  if (isSignedIn && auth && auth.admin===true) { drawRoleBadgeSquare(bx,21,8,CFG.YL,t,false); bx-=12; }
+  if (isSignedIn && auth && auth.verified===true) { drawRoleBadgeSquare(bx,21,8,'#33aaff',t,true); }
   ctx.restore();
   BTNS.noAds={x:8,y:8,w:28,h:28};
   ctx.save(); ctx.fillStyle='rgba(255,30,30,0.75)'; ctx.fillRect(8,8,28,28); ctx.strokeStyle='#ff9090'; ctx.strokeRect(8,8,28,28);
@@ -2204,11 +2315,6 @@ function drawStartScreen(t) {
   }
   btnY+=authH+gap;
 
-
-  if (SETTINGS.showFPS && OPTION_PREFS.showFPS) {
-    ctx.save(); noGlow(); ctx.globalAlpha=0.3; setFont(9,'400',"'Share Tech Mono',monospace");
-    txt(`FPS: ${fps}`,LW-14,22,'rgba(0,245,255,0.4)','right'); ctx.restore();
-  }
   ctx.save(); noGlow(); setFont(10,'700'); glow(CFG.CY,8); ctx.globalAlpha=0.7;
   txt(`◆ ${totalGems}`,LW-14,LH-8,CFG.CY,'right'); ctx.restore();
   if (noAdsPopup) {
@@ -2350,7 +2456,7 @@ function drawModeSelect(t) {
     {key:'modeEndless',x:startX,col:CFG.CY,title:'ENDLESS',sub:'CLASSIC',icon:'∞',feats:['Classic run','No cap','Score chase'],btn:'PLAY'},
     {key:'modeAdventure',x:startX+cardW+gap,col:CFG.GR,title:'ADVENTURE',sub:'STAGES',icon:'🌀',feats:['Stage flow','Ramp','Rewards'],btn:'PLAY'},
     {key:'modeImpossible',x:startX+(cardW+gap)*2,col:'#ff4455',title:'IMPOSSIBLE',sub:'ONE LIFE',icon:'☠',feats:['4 brutal','No regen','Red storm'],btn:'PLAY'},
-    {key:'modeLtm',x:startX+(cardW+gap)*3,col:'#ffd700',title:'LTM',sub:'10 MODES',icon:'★',feats:['Pick any LTM','Unique rules','Mode-specific buffs'],btn:'SELECT'}
+    {key:'modeLtm',x:startX+(cardW+gap)*3,col:'#ffd700',title:'LTM',sub:'GLOBAL LIVE',icon:'★',feats:['Global RTDB mode','Internet required','10 themed rotations'],btn:'SELECT'}
   ];
 
   cards.forEach((c,i)=>{
@@ -2374,13 +2480,30 @@ function drawModeSelect(t) {
     ctx.restore();
   });
 
+  if (navigator.onLine && (Date.now()-ltmConfigFetchAt>16000)) loadGlobalLtmConfig(false);
   const daily=getActiveLtm();
-  const soonW=cardW*4+gap*3, soonH=50, soonX=startX, soonY=cardY+cardH+12;
+  const dailyIdx=clamp(ltmSelectedIndex>=0?ltmSelectedIndex:getDailyLtmIndex(),0,Math.max(0,LTM_MODES.length-1));
+  const themeA=daily.cardCol||'#ffd700';
+  const nextCol=(LTM_MODES[(dailyIdx+1)%LTM_MODES.length]&&LTM_MODES[(dailyIdx+1)%LTM_MODES.length].cardCol)||'#ffe45a';
+  const soonW=cardW*4+gap*3, soonH=62, soonX=startX, soonY=cardY+cardH+12;
   ctx.save();
-  ctx.fillStyle='rgba(255,230,0,0.2)'; ctx.fillRect(soonX,soonY,soonW,soonH);
-  glow('#ffe45a',12); ctx.strokeStyle='#e8d24d'; ctx.lineWidth=2; ctx.strokeRect(soonX,soonY,soonW,soonH);
-  setFont(9,'900',"'Share Tech Mono',monospace"); noGlow(); txt(`FEATURED TODAY: ${daily.name}`,soonX+10,soonY+18,'#000','left');
-  txt(`ALL 10 LTMS LIVE • DAILY BONUS ROTATES IN ${getDailyCountdown()}`,soonX+10,soonY+36,'#000','left');
+  const bg=ctx.createLinearGradient(soonX,0,soonX+soonW,0);
+  bg.addColorStop(0,hexToRgba(themeA,0.18));
+  bg.addColorStop(1,hexToRgba(nextCol,0.18));
+  ctx.fillStyle=bg; ctx.fillRect(soonX,soonY,soonW,soonH);
+  glow(themeA,12); ctx.strokeStyle=hexToRgba(themeA,0.92); ctx.lineWidth=2; ctx.strokeRect(soonX,soonY,soonW,soonH);
+  const shineX=soonX + ((Math.sin(t*1.6)+1)/2)*(soonW+120)-120;
+  const shine=ctx.createLinearGradient(shineX,0,shineX+120,0);
+  shine.addColorStop(0,'transparent');
+  shine.addColorStop(0.5,'rgba(255,255,255,0.2)');
+  shine.addColorStop(1,'transparent');
+  ctx.fillStyle=shine; ctx.fillRect(soonX,soonY,soonW,soonH);
+  setFont(9,'900',"'Share Tech Mono',monospace"); noGlow();
+  txt(`LTM ${dailyIdx+1}/10 • ${daily.name}`,soonX+10,soonY+18,'#0d0d0d','left');
+  setFont(8,'700',"'Share Tech Mono',monospace");
+  txt(`${daily.desc||'Live special mode'} • ${(daily.specialName||'Mode bonus').slice(0,26)}`,soonX+10,soonY+34,'#0d0d0d','left');
+  const netTxt=navigator.onLine?`GLOBAL ROTATION • NEXT UPDATE IN ${getDailyCountdown()}`:'OFFLINE • LTM PLAY DISABLED';
+  txt(netTxt,soonX+10,soonY+50,'#0d0d0d','left');
   ctx.restore();
 
   const bW=130,bH=34,bX=(LW-bW)/2,bY=LH-46;
@@ -2618,8 +2741,6 @@ function drawLeaderboardScreen(t) {
   const backLbl=leaderboardReturnState==='PAUSE'?'← PAUSE':(leaderboardReturnState==='OVER'?'← WIPEOUT':'← BACK');
   drawNeonBtn((LW-140)/2,LH-48,140,34,CFG.PK,backLbl,11,1,Math.sin(t*2.5));
   ctx.restore();
-  BTNS.adminLtmBack={x:(LW-150)/2,y:LH-42,w:150,h:30};
-  drawNeonBtn(BTNS.adminLtmBack.x,BTNS.adminLtmBack.y,150,30,CFG.PK,'← BACK',11,1,Math.sin(t*2));
 }
 
 
@@ -2867,11 +2988,12 @@ function drawOptionsScreen(t){
     ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(x,o.y,w,h);
     ctx.strokeStyle=o.col; ctx.lineWidth=1.3; ctx.strokeRect(x,o.y,w,h);
     setFont(10,'900'); glow(o.col,8); txt(o.lbl,x+14,o.y+22,o.col,'left');
-    BTNS[o.l]={x:LW-156,y:o.y+18,w:34,h:28};
-    BTNS[o.r]={x:LW-56,y:o.y+18,w:34,h:28};
+    const midX=LW/2, btnY=o.y+18;
+    BTNS[o.l]={x:midX-58,y:btnY,w:34,h:28};
+    BTNS[o.r]={x:midX+24,y:btnY,w:34,h:28};
     drawNeonBtn(BTNS[o.l].x,BTNS[o.l].y,34,28,o.col,'◀',10,1,0);
     drawNeonBtn(BTNS[o.r].x,BTNS[o.r].y,34,28,o.col,'▶',10,1,0);
-    setFont(10,'900'); glow(o.col,8); txt(`${o.v.toFixed(1)}x`,LW-96,o.y+38,o.col);
+    setFont(10,'900'); glow(o.col,8); txt(`${o.v.toFixed(1)}x`,midX,o.y+38,o.col);
   });
 
   ctx.restore();
@@ -3133,50 +3255,50 @@ function drawSettingsScreen(t) {
   const slY1=84+SETTING_DEFS.length*66+8;
   ctx.save(); ctx.globalAlpha=0.06; ctx.fillStyle=CFG.YL; ctx.fillRect(16,slY1,LW-32,50); ctx.restore();
   setFont(10,'700'); glow(CFG.YL,10); txt('GRAPHICS QUALITY',LW/2,slY1+16,CFG.YL);
-  const gArW=28,gArH=24,gSlY=slY1+24;
+  const gArW=30,gArH=24,gSlY=slY1+22;
   BTNS._gfxLeft={x:LW/2-70,y:gSlY,w:gArW,h:gArH};
   BTNS._gfxRight={x:LW/2+42,y:gSlY,w:gArW,h:gArH};
   drawNeonBtn(LW/2-70,gSlY,gArW,gArH,CFG.YL,'◀',10,0.8,0);
-  setFont(11,'900'); glow(CFG.YL,12); txt(GFX_LABELS[SETTINGS.gfxQuality],LW/2,gSlY+17,CFG.YL);
+  setFont(11,'900'); glow(CFG.YL,12); txt(GFX_LABELS[SETTINGS.gfxQuality],LW/2,gSlY+16,CFG.YL);
   drawNeonBtn(LW/2+42,gSlY,gArW,gArH,CFG.YL,'▶',10,0.8,0);
 
   // FPS limit slider
   const slY2=slY1+58;
   ctx.save(); ctx.globalAlpha=0.06; ctx.fillStyle=CFG.CY; ctx.fillRect(16,slY2,LW-32,50); ctx.restore();
   setFont(10,'700'); glow(CFG.CY,10); txt('FPS LIMIT',LW/2,slY2+16,CFG.CY);
-  const fArY=slY2+24;
+  const fArY=slY2+22;
   BTNS._fpsLeft={x:LW/2-70,y:fArY,w:gArW,h:gArH};
   BTNS._fpsRight={x:LW/2+42,y:fArY,w:gArW,h:gArH};
   drawNeonBtn(LW/2-70,fArY,gArW,gArH,CFG.CY,'◀',10,0.8,0);
-  setFont(11,'900'); glow(CFG.CY,12); txt(FPS_LABELS[SETTINGS.fpsLimit],LW/2,fArY+17,CFG.CY);
+  setFont(11,'900'); glow(CFG.CY,12); txt(FPS_LABELS[SETTINGS.fpsLimit],LW/2,fArY+16,CFG.CY);
   drawNeonBtn(LW/2+42,fArY,gArW,gArH,CFG.CY,'▶',10,0.8,0);
 
   // Input sensitivity sliders
   const sensY1=slY2+58;
   ctx.save(); ctx.globalAlpha=0.06; ctx.fillStyle=CFG.PU; ctx.fillRect(16,sensY1,LW-32,50); ctx.restore();
   setFont(10,'700'); glow(CFG.PU,10); txt('TOUCH SENSITIVITY',LW/2,sensY1+16,CFG.PU);
-  BTNS._touchSensLeft={x:LW/2-70,y:sensY1+24,w:gArW,h:gArH};
-  BTNS._touchSensRight={x:LW/2+42,y:sensY1+24,w:gArW,h:gArH};
+  BTNS._touchSensLeft={x:LW/2-70,y:sensY1+22,w:gArW,h:gArH};
+  BTNS._touchSensRight={x:LW/2+42,y:sensY1+22,w:gArW,h:gArH};
   drawNeonBtn(BTNS._touchSensLeft.x,BTNS._touchSensLeft.y,gArW,gArH,CFG.PU,'◀',10,0.8,0);
-  setFont(11,'900'); glow(CFG.PU,12); txt(`${SETTINGS.touchSensitivity.toFixed(1)}x`,LW/2,sensY1+41,CFG.PU);
+  setFont(11,'900'); glow(CFG.PU,12); txt(`${SETTINGS.touchSensitivity.toFixed(1)}x`,LW/2,sensY1+39,CFG.PU);
   drawNeonBtn(BTNS._touchSensRight.x,BTNS._touchSensRight.y,gArW,gArH,CFG.PU,'▶',10,0.8,0);
 
   const sensY2=sensY1+58;
   ctx.save(); ctx.globalAlpha=0.06; ctx.fillStyle=CFG.GR; ctx.fillRect(16,sensY2,LW-32,50); ctx.restore();
   setFont(10,'700'); glow(CFG.GR,10); txt('KEYBOARD SENSITIVITY',LW/2,sensY2+16,CFG.GR);
-  BTNS._kbSensLeft={x:LW/2-70,y:sensY2+24,w:gArW,h:gArH};
-  BTNS._kbSensRight={x:LW/2+42,y:sensY2+24,w:gArW,h:gArH};
+  BTNS._kbSensLeft={x:LW/2-70,y:sensY2+22,w:gArW,h:gArH};
+  BTNS._kbSensRight={x:LW/2+42,y:sensY2+22,w:gArW,h:gArH};
   drawNeonBtn(BTNS._kbSensLeft.x,BTNS._kbSensLeft.y,gArW,gArH,CFG.GR,'◀',10,0.8,0);
-  setFont(11,'900'); glow(CFG.GR,12); txt(`${SETTINGS.keyboardSensitivity.toFixed(1)}x`,LW/2,sensY2+41,CFG.GR);
+  setFont(11,'900'); glow(CFG.GR,12); txt(`${SETTINGS.keyboardSensitivity.toFixed(1)}x`,LW/2,sensY2+39,CFG.GR);
   drawNeonBtn(BTNS._kbSensRight.x,BTNS._kbSensRight.y,gArW,gArH,CFG.GR,'▶',10,0.8,0);
 
   const sensY3=sensY2+58;
   ctx.save(); ctx.globalAlpha=0.06; ctx.fillStyle=CFG.CY; ctx.fillRect(16,sensY3,LW-32,50); ctx.restore();
   setFont(10,'700'); glow(CFG.CY,10); txt('CONTROLLER SENSITIVITY',LW/2,sensY3+16,CFG.CY);
-  BTNS._padSensLeft={x:LW/2-70,y:sensY3+24,w:gArW,h:gArH};
-  BTNS._padSensRight={x:LW/2+42,y:sensY3+24,w:gArW,h:gArH};
+  BTNS._padSensLeft={x:LW/2-70,y:sensY3+22,w:gArW,h:gArH};
+  BTNS._padSensRight={x:LW/2+42,y:sensY3+22,w:gArW,h:gArH};
   drawNeonBtn(BTNS._padSensLeft.x,BTNS._padSensLeft.y,gArW,gArH,CFG.CY,'◀',10,0.8,0);
-  setFont(11,'900'); glow(CFG.CY,12); txt(`${SETTINGS.controllerSensitivity.toFixed(1)}x`,LW/2,sensY3+41,CFG.CY);
+  setFont(11,'900'); glow(CFG.CY,12); txt(`${SETTINGS.controllerSensitivity.toFixed(1)}x`,LW/2,sensY3+39,CFG.CY);
   drawNeonBtn(BTNS._padSensRight.x,BTNS._padSensRight.y,gArW,gArH,CFG.CY,'▶',10,0.8,0);
 
   // Optimize button
@@ -3665,7 +3787,7 @@ function drawUpgradesScreen(t){
 
 
 const AUTH_KEY='slope_auth';
-const AUTH_GUEST={signedIn:false,name:'Guest Runner',email:'',uid:'',verified:false,bio:'',avatar:''};
+const AUTH_GUEST={signedIn:false,name:'Guest Runner',email:'',uid:'',verified:false,bio:'',avatar:'',status:'offline',lastSeen:0};
 const FIREBASE_CONFIG={
   apiKey:"AIzaSyA375t6p_Zc9Ztfi-RUniqAmjttsjPyy1k",
   authDomain:"thegeneric-685b0.firebaseapp.com",
@@ -3887,6 +4009,7 @@ async function ensureSupportedVersions(){
   if (!fbReady || !fbDb) return;
   try {
     await fbDb.ref('SLOPE/config/currentVersion').get();
+    await loadGlobalLtmConfig(true);
   } catch (e) {}
 }
 
@@ -4219,7 +4342,7 @@ function drawLoadingDots(x,y,t,col='#888') {
 function drawAuthField(x,y,w,label,val) {
   setFont(8,'700','Arial'); noGlow(); txt(label,x,y-4,'#7a7a7a','left');
   ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=1; ctx.strokeRect(x,y,w,24);
-  setFont(10,'700','Arial'); txt(val||'Tap to enter',x+8,y+16,'#222','left');
+  setFont(10,'700','Arial'); txt(val||'Not set',x+8,y+16,'#222','left');
 }
 
 function drawAuthOverlay(t) {
@@ -4271,13 +4394,11 @@ function drawSignInScreen(t){
 
   BTNS.authSubmit={x:x+24,y:y+148,w:w-48,h:34};
   drawNeonBtn(BTNS.authSubmit.x,BTNS.authSubmit.y,BTNS.authSubmit.w,BTNS.authSubmit.h,CFG.CY,'LOGIN',12,1,Math.sin(t*2));
-  setFont(9,'700','Arial'); noGlow(); txt('Tap fields to type',LW/2,y+206,'#8a8a8a');
-
   BTNS.signinGoogle={x:x+24,y:y+196,w:w-48,h:34};
   drawNeonBtn(BTNS.signinGoogle.x,BTNS.signinGoogle.y,BTNS.signinGoogle.w,BTNS.signinGoogle.h,'#db4437','▣ G SIGN IN WITH GOOGLE',10,1,Math.sin(t*2.6));
 
   BTNS.signinSwitch={x:x+24,y:y+244,w:w-48,h:30};
-  drawNeonBtn(BTNS.signinSwitch.x,BTNS.signinSwitch.y,BTNS.signinSwitch.w,BTNS.signinSwitch.h,'#444','GO TO SIGN UP',10,1,0);
+  drawNeonBtn(BTNS.signinSwitch.x,BTNS.signinSwitch.y,BTNS.signinSwitch.w,BTNS.signinSwitch.h,'#a8a8a8','GO TO SIGN UP',10,1,0);
 
   BTNS.authBack={x:(LW-130)/2,y:LH-44,w:130,h:30};
   drawNeonBtn(BTNS.authBack.x,BTNS.authBack.y,130,30,CFG.PK,'← BACK',11,0.9,Math.sin(t*2));
@@ -4306,7 +4427,7 @@ function drawSignUpScreen(t){
   BTNS.signupGoogle={x:x+24,y:y+272,w:w-48,h:34};
   drawNeonBtn(BTNS.signupGoogle.x,BTNS.signupGoogle.y,BTNS.signupGoogle.w,BTNS.signupGoogle.h,'#db4437','▣ G SIGN UP WITH GOOGLE',10,1,Math.sin(t*2.5));
   BTNS.signupSwitch={x:x+24,y:y+316,w:w-48,h:30};
-  drawNeonBtn(BTNS.signupSwitch.x,BTNS.signupSwitch.y,BTNS.signupSwitch.w,BTNS.signupSwitch.h,'#444','ALREADY HAVE ACCOUNT? SIGN IN',9,1,0);
+  drawNeonBtn(BTNS.signupSwitch.x,BTNS.signupSwitch.y,BTNS.signupSwitch.w,BTNS.signupSwitch.h,'#a8a8a8','ALREADY HAVE ACCOUNT? SIGN IN',9,1,0);
 
   BTNS.authBack={x:(LW-130)/2,y:LH-44,w:130,h:30};
   drawNeonBtn(BTNS.authBack.x,BTNS.authBack.y,130,30,CFG.PK,'← BACK',11,0.9,Math.sin(t*2));
@@ -4325,6 +4446,8 @@ async function writeCloudUserInfo(extra={}) {
     avatar:profileAvatar||'',
     pfpLink:profileAvatar||'',
     pfpLinkId:getAvatarLinkId(profileAvatar)||'none',
+    status:String((auth&&auth.status)||'offline'),
+    lastSeen:Number((auth&&auth.lastSeen)||Date.now()),
     gems:loadBank(),
     bestScore:Math.floor(bestScore||0),
     selectedSkin:selectedChar||'default',
@@ -4399,6 +4522,8 @@ async function loadCloudProfileAndProgress() {
 
     profileBio=val.bio||((slopeMirror&&slopeMirror.bio)||'');
     profileAvatar=val.avatar||((slopeMirror&&slopeMirror.pfpLink)||'');
+    const dbStatus=String(val.status??(slopeMirror&&slopeMirror.status)??'online').toLowerCase();
+    const dbLastSeen=Number(val.lastSeen??(slopeMirror&&slopeMirror.lastSeen)??Date.now())||Date.now();
     if (val.progress) {
       const p=val.progress;
       if (typeof p.gems==='number') saveBank(p.gems);
@@ -4421,7 +4546,7 @@ async function loadCloudProfileAndProgress() {
     const isAdminDb=(String(val.admin??(slopeMirror&&slopeMirror.admin)??'false')==='true') || val.admin===true || (slopeMirror&&slopeMirror.admin===true);
     const dbVerifiedRaw=(val.verified??(slopeMirror&&slopeMirror.verified));
     const dbVerified=(dbVerifiedRaw===true||String(dbVerifiedRaw)==='true');
-    auth={...auth,signedIn:true,name:val.name||auth.name,email:val.email||auth.email,uid:fbUser.uid,verified:dbVerified,bio:profileBio,avatar:profileAvatar,admin:isAdminDb};
+    auth={...auth,signedIn:true,name:val.name||auth.name,email:val.email||auth.email,uid:fbUser.uid,verified:dbVerified,bio:profileBio,avatar:profileAvatar,admin:isAdminDb,status:STATUS_COLORS[dbStatus]?dbStatus:'online',lastSeen:dbLastSeen};
     saveAuth(auth);
     refreshAdminFlag();
   } catch (e) {}
@@ -4770,7 +4895,7 @@ function drawProfileScreen(t){
   const uploadY=bioBtnY-(btnH+btnGap);
   const usernameBtnY=uploadY-(btnH+btnGap);
   const usernameInfoY=usernameBtnY-8;
-  const infoX=x+110, infoY=y+74, infoW=w-148, infoH=Math.max(120, usernameInfoY-infoY-10);
+  const infoX=x+110, infoY=y+74, infoW=w-148, infoH=Math.max(120, usernameInfoY-infoY-12);
   const totalTimeSec=Math.max(0, Number(localStorage.getItem('slope_totalTime')||0));
   const lines=isSignedIn ? [
     ['Display Name',auth.name||'Player'],
@@ -4800,6 +4925,7 @@ function drawProfileScreen(t){
   profileContentH=10+lines.length*34 + (isSignedIn?84:0);
   profileScroll=clamp(profileScroll,minProfileScroll(),0);
 
+  BTNS.profileInfoBox={x:infoX,y:infoY,w:infoW,h:infoH};
   ctx.save();
   ctx.beginPath(); ctx.rect(infoX,infoY,infoW,infoH); ctx.clip();
   ctx.translate(0,profileScroll);
@@ -4821,12 +4947,13 @@ function drawProfileScreen(t){
     }
   });
   if (isSignedIn) {
-    const bioY=infoY+10+lines.length*34+10;
+    const bioY=infoY+10+lines.length*34+6;
     ctx.fillStyle='rgba(0,245,255,0.06)'; ctx.fillRect(x+14,bioY,w-28,74);
     ctx.strokeStyle='rgba(0,245,255,0.25)'; ctx.lineWidth=1; ctx.strokeRect(x+14,bioY,w-28,74);
-    setFont(9,'700',"'Share Tech Mono',monospace"); noGlow(); txt('BIO',x+24,bioY+14,CFG.CY,'left');
-    const bioTxt=(profileBio||'Tap UPDATE BIO to set one.').slice(0,100);
-    setFont(9,'400',"'Share Tech Mono',monospace"); txt(bioTxt,x+24,bioY+32,'rgba(220,245,255,0.9)','left');
+    setFont(9,'700',"'Share Tech Mono',monospace"); noGlow(); txt('BIO',x+24,bioY+12,CFG.CY,'left');
+    const bioTxt=(profileBio||'Tap UPDATE BIO to set one.').slice(0,96);
+    const b1=bioTxt.slice(0,48), b2=bioTxt.length>48?bioTxt.slice(48,96):'';
+    setFont(8,'400',"'Share Tech Mono',monospace"); txt(b1,x+24,bioY+28,'rgba(220,245,255,0.9)','left'); if (b2) txt(b2,x+24,bioY+42,'rgba(220,245,255,0.8)','left');
   } else {
     setFont(8,'700',"'Share Tech Mono',monospace"); noGlow();
     txt('Sign in to view full cloud profile details.',left,infoY+10+lines.length*34+8,'rgba(0,245,255,0.55)','left');
@@ -4851,6 +4978,24 @@ function drawProfileScreen(t){
   txt(triesTxt.slice(0,56),x+14,usernameInfoY,'rgba(190,230,255,0.75)','left');
   BTNS.profileChangeUsername={x:x+14,y:usernameBtnY,w:w-28,h:btnH};
   drawNeonBtn(BTNS.profileChangeUsername.x,BTNS.profileChangeUsername.y,BTNS.profileChangeUsername.w,BTNS.profileChangeUsername.h,canEditProfile&&usernameChangeState.triesLeft>0?CFG.CY:'#3a5661',canEditProfile?(usernameChangeState.triesLeft>0?'CHANGE USERNAME':'USERNAME LOCKED (WAIT)'):'USERNAME LOCKED',10,1,0);
+  const uidLabelY=usernameInfoY-14;
+  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt('Player UID',x+14,uidLabelY,'rgba(120,220,255,0.72)','left');
+  const rawUid=String((auth&&auth.uid)||'');
+  const uidShow=uidVisible?rawUid:('*'.repeat(Math.min(14,Math.max(6,rawUid.length||6))));
+  setFont(9,'700',"'Share Tech Mono',monospace"); txt(uidShow||'******',x+78,uidLabelY,'#d8f6ff','left');
+  BTNS.profileUidToggle={x:x+w-112,y:uidLabelY-10,w:48,h:22};
+  BTNS.profileUidCopy={x:x+w-58,y:uidLabelY-10,w:44,h:22};
+  drawNeonBtn(BTNS.profileUidToggle.x,BTNS.profileUidToggle.y,BTNS.profileUidToggle.w,BTNS.profileUidToggle.h,CFG.CY,uidVisible?'HIDE':'SHOW',8,1,0);
+  drawNeonBtn(BTNS.profileUidCopy.x,BTNS.profileUidCopy.y,BTNS.profileUidCopy.w,BTNS.profileUidCopy.h,CFG.YL,'COPY',8,1,0);
+  const statusY=signOutY+btnH+6;
+  BTNS.profileStatusDefault={x:x+14,y:statusY,w:74,h:22};
+  BTNS.profileStatusIdle={x:x+92,y:statusY,w:74,h:22};
+  BTNS.profileStatusDnd={x:x+170,y:statusY,w:118,h:22};
+  BTNS.profileStatusOffline={x:x+292,y:statusY,w:88,h:22};
+  drawNeonBtn(BTNS.profileStatusDefault.x,BTNS.profileStatusDefault.y,BTNS.profileStatusDefault.w,BTNS.profileStatusDefault.h,getStatusValue()==='online'?CFG.GR:'#2d4f2f','SET DEFAULT',8,1,0);
+  drawNeonBtn(BTNS.profileStatusIdle.x,BTNS.profileStatusIdle.y,BTNS.profileStatusIdle.w,BTNS.profileStatusIdle.h,getStatusValue()==='idle'?CFG.YL:'#5a5522','SET IDLE',8,1,0);
+  drawNeonBtn(BTNS.profileStatusDnd.x,BTNS.profileStatusDnd.y,BTNS.profileStatusDnd.w,BTNS.profileStatusDnd.h,getStatusValue()==='dnd'?CFG.PK:'#5a2230','SET DO NOT DISTURB',7,1,0);
+  drawNeonBtn(BTNS.profileStatusOffline.x,BTNS.profileStatusOffline.y,BTNS.profileStatusOffline.w,BTNS.profileStatusOffline.h,getStatusValue()==='offline'?'#8a95a5':'#3f4650','SET OFFLINE',8,1,0);
   BTNS.profileBio={x:x+14,y:bioBtnY,w:w-28,h:btnH};
   drawNeonBtn(BTNS.profileBio.x,BTNS.profileBio.y,BTNS.profileBio.w,BTNS.profileBio.h,canEditProfile?CFG.GR:'#2f5f2f',canEditProfile?'UPDATE BIO':'BIO LOCKED (SIGN IN)',10,1,0);
   BTNS.profileChangePassword={x:x+14,y:passY,w:w-28,h:btnH};
@@ -4859,18 +5004,18 @@ function drawProfileScreen(t){
   drawNeonBtn(BTNS.profileSignOut.x,BTNS.profileSignOut.y,BTNS.profileSignOut.w,BTNS.profileSignOut.h,isSignedIn?CFG.PK:CFG.CY,isSignedIn?'SIGN OUT':'GO TO SIGN IN',10,1,0);
 
   const minP=minProfileScroll();
-  const sbX=infoX+infoW+6, sbY=infoY, sbH=uploadY-infoY-6;
+  const sbX=infoX+infoW+4, sbY=infoY-2, sbH=uploadY-infoY-8;
   if (sbH>20) {
     ctx.save();
-    ctx.fillStyle='rgba(0,245,255,0.10)'; ctx.fillRect(sbX,sbY,6,sbH);
-    ctx.strokeStyle='rgba(0,245,255,0.25)'; ctx.strokeRect(sbX,sbY,6,sbH);
+    ctx.fillStyle='rgba(0,245,255,0.10)'; ctx.fillRect(sbX,sbY,4,sbH);
+    ctx.strokeStyle='rgba(0,245,255,0.25)'; ctx.strokeRect(sbX,sbY,4,sbH);
     if (minP<0) {
       const thumbH=Math.max(24,(infoH/(infoH+Math.abs(minP)))*sbH);
       const track=sbH-thumbH;
       const thumbY=sbY + ((-profileScroll)/Math.abs(minP))*track;
-      ctx.fillStyle='rgba(0,245,255,0.75)'; ctx.fillRect(sbX+1,thumbY,4,thumbH);
+      ctx.fillStyle='rgba(0,245,255,0.75)'; ctx.fillRect(sbX+1,thumbY,2,thumbH);
     } else {
-      ctx.fillStyle='rgba(0,245,255,0.45)'; ctx.fillRect(sbX+1,sbY+1,4,sbH-2);
+      ctx.fillStyle='rgba(0,245,255,0.45)'; ctx.fillRect(sbX+1,sbY+1,2,sbH-2);
     }
     ctx.restore();
   }
@@ -4987,6 +5132,13 @@ function handleProfileTap(p){
     return;
   }
   if (hitBtn(p,BTNS.authBack)) { SFX.click(); doTransition('MENU'); return; }
+  if (hitBtn(p,BTNS.profileInfoBox)) { SFX.click(); playerCardPopup.active=true; playerCardPopup.isSelf=isSignedIn; return; }
+  if (hitBtn(p,BTNS.profileUidToggle)) { SFX.click(); uidVisible=!uidVisible; return; }
+  if (hitBtn(p,BTNS.profileUidCopy)) { SFX.click(); const uid=String((auth&&auth.uid)||''); try { if (navigator.clipboard&&uid) navigator.clipboard.writeText(uid); addNotif(uid?'UID copied.':'No UID to copy.',uid?CFG.GR:CFG.PK); } catch(e) { addNotif('Copy failed.',CFG.PK); } return; }
+  if (hitBtn(p,BTNS.profileStatusDefault)) { SFX.click(); setPlayerStatus('online'); return; }
+  if (hitBtn(p,BTNS.profileStatusIdle)) { SFX.click(); setPlayerStatus('idle'); return; }
+  if (hitBtn(p,BTNS.profileStatusDnd)) { SFX.click(); setPlayerStatus('dnd'); return; }
+  if (hitBtn(p,BTNS.profileStatusOffline)) { SFX.click(); setPlayerStatus('offline'); return; }
   if (hitBtn(p,BTNS.profileAvatar) || hitBtn(p,BTNS.profileUpload)) {
     SFX.click();
     if (!navigator.onLine) { addNotif('PLAYER OFFLINE',CFG.PK); return; }
@@ -5133,6 +5285,9 @@ let noAdsPopup=false;
 let adminLtmTestButtons=[];
 let ltmForcedIndex=-1;
 let ltmSelectedIndex=-1;
+let ltmGlobalUpdatedAt=0;
+let ltmConfigFetchAt=0;
+const CLOUD_LTM_CONFIG='SLOPE/config/ltm';
 function minAdminLtmScroll(){ return Math.min(0, adminLtmViewH-adminLtmContentH); }
 function getDailyLtmIndex(){
   const now=new Date();
@@ -5151,6 +5306,37 @@ function getDailyCountdown(){
 }
 ltmSelectedIndex=getDailyLtmIndex();
 function getActiveLtm(){ return LTM_MODES[clamp(ltmRotationIndex,0,LTM_MODES.length-1)]||LTM_MODES[0]; }
+
+async function loadGlobalLtmConfig(force=false){
+  if (!fbReady || !fbDb) return;
+  const now=Date.now();
+  if (!force && now-ltmConfigFetchAt<15000) return;
+  ltmConfigFetchAt=now;
+  try {
+    const snap=await fbDb.ref(CLOUD_LTM_CONFIG).get();
+    const val=(snap&&snap.val)?(snap.val()||{}):{};
+    const idxRaw=Number(val.index);
+    if (Number.isFinite(idxRaw)) {
+      const idx=clamp(Math.floor(idxRaw),0,Math.max(0,LTM_MODES.length-1));
+      ltmSelectedIndex=idx;
+      ltmGlobalUpdatedAt=Number(val.updatedAt)||0;
+      if (gameMode!=='LTM') ltmRotationIndex=idx;
+    }
+  } catch (e) {}
+}
+
+async function setGlobalLtmConfig(idx){
+  if (!fbReady || !fbDb) return;
+  const safe=clamp(Math.floor(Number(idx)||0),0,Math.max(0,LTM_MODES.length-1));
+  const ts=Date.now();
+  const mode=LTM_MODES[safe]||LTM_MODES[0];
+  const payload={index:String(safe),name:String(mode.name||`LTM ${safe+1}`),updatedAt:String(ts),updatedBy:String((auth&&auth.uid)||'system')};
+  try {
+    await fbDb.ref(CLOUD_LTM_CONFIG).update(payload);
+    ltmSelectedIndex=safe;
+    ltmGlobalUpdatedAt=ts;
+  } catch (e) {}
+}
 
 function minLeaderboardScroll(){ return Math.min(0,leaderboardViewH-leaderboardContentH); }
 
@@ -5294,7 +5480,8 @@ function startGame(starterPwr=null, forceNoStarter=false) {
   // Adventure setup
   adventureStage=0; adventureStageTimer=0; impossibleStage=0; ltmStage=0; ltmStageTimer=0;
   if (gameMode==='LTM') {
-    const picked=(ltmForcedIndex>=0?ltmForcedIndex:(ltmSelectedIndex>=0?ltmSelectedIndex:getDailyLtmIndex()));
+    if (!navigator.onLine) { addNotif('LTM REQUIRES INTERNET',CFG.PK); gameMode='ENDLESS'; }
+    const picked=(ltmSelectedIndex>=0?ltmSelectedIndex:getDailyLtmIndex());
     ltmRotationIndex=clamp(picked,0,Math.max(0,LTM_MODES.length-1));
     ltmSelectedIndex=ltmRotationIndex;
   } else {
