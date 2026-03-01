@@ -1117,6 +1117,20 @@ function drawGlobalFps(){
   }
   ctx.restore();
 }
+
+function drawGlobalFps(){
+  if (!(SETTINGS.showFPS && OPTION_PREFS.showFPS)) return;
+  ctx.save();
+  const fpsCol=fps>=55?'rgba(57,255,20,0.78)':fps>=30?'rgba(255,230,0,0.78)':'rgba(255,0,110,0.82)';
+  setFont(8,'700',"'Share Tech Mono',monospace");
+  noGlow();
+  if (gs==='MENU') {
+    txt(`FPS ${fps}`,LW-90,38,fpsCol,'left');
+  } else {
+    txt(`FPS ${fps}`,LW-12,14,fpsCol,'right');
+  }
+  ctx.restore();
+}
 </script>
 
 <!-- ============================================================ -->
