@@ -431,7 +431,20 @@ function handleTap(e) {
     if (hitBtn(p,BTNS.overLeaderboard)) { SFX.click(); leaderboardReturnState='OVER'; leaderboardCategory=(gameMode==='ADVENTURE'?'ADVENTURE':(gameMode==='IMPOSSIBLE'?'IMPOSSIBLE':(gameMode==='LTM'?'LTM':'ENDLESS'))); doTransition('LEADERBOARD'); triggerLeaderboardFetch(true); return; }
     if (hitBtn(p, BTNS.retry)) {
       SFX.click();
-      if (gameMode==='IMPOSSIBLE') { openConfirm('IMPOSSIBLE_RETRY','RETRY IMPOSSIBLE?','Restart with intro screen and one life only.'); return; }
+    
+  if (gameMode==='LTM') {
+    const mode=getActiveLtm();
+    const forced=(mode&&mode.forcedPowerups)||[];
+    if (Math.random()<0.10) return 'SICK';
+    if (Math.random()<0.12) return 'LTM_SPECIAL';
+    if (forced.length) {
+      const map={X2_SCORE:'BOOST',JETPACK:'JETPACK',MINI_JETPACK:'MINI_JETPACK',SHIELD:'SHIELD',MAGNET:'MAGNET',REGEN:'REGEN',HEALTH_BOOST:'HEALTH_BOOST',IMMUNITY:'SHIELD',X2_GEMS:'X2_GEMS',X4_GEMS:'X4_GEMS',GEM_DROP:'GEM_DROP'};
+      const key=forced[rndI(0,forced.length-1)];
+      return map[key]||'BOOST';
+    }
+    return ['BOOST','MAGNET','SHIELD','X2_GEMS'][rndI(0,3)];
+  }
+  if (gameMode==='IMPOSSIBLE') { openConfirm('IMPOSSIBLE_RETRY','RETRY IMPOSSIBLE?','Restart with intro screen and one life only.'); return; }
       doTransition('SHOP');
       return;
     }
@@ -2558,6 +2571,8 @@ function drawLeaderboardScreen(t) {
   const backLbl=leaderboardReturnState==='PAUSE'?'← PAUSE':(leaderboardReturnState==='OVER'?'← WIPEOUT':'← BACK');
   drawNeonBtn((LW-140)/2,LH-48,140,34,CFG.PK,backLbl,11,1,Math.sin(t*2.5));
   ctx.restore();
+  BTNS.adminLtmBack={x:(LW-150)/2,y:LH-42,w:150,h:30};
+  drawNeonBtn(BTNS.adminLtmBack.x,BTNS.adminLtmBack.y,150,30,CFG.PK,'← BACK',11,1,Math.sin(t*2));
 }
 
 
