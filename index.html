@@ -263,6 +263,12 @@ function handleTap(e) {
     return;
   }
 
+  if (showOptimizeConfirm) {
+    if (hitBtn(p, BTNS.confirmYes)) { SFX.click(); applyOptimize(); showOptimizeConfirm=false; return; }
+    if (hitBtn(p, BTNS.confirmNo))  { SFX.click(); showOptimizeConfirm=false; return; }
+    return;
+  }
+
   if (gs === 'PLAY') {
     if (hitBtn(p, BTNS.pause)) { SFX.click(); togglePause(); return; }
     if (hitBtn(p, BTNS.hudOptions)) { SFX.click(); optionsReturnState='PLAY'; doTransition('OPTIONS'); return; }
@@ -296,13 +302,9 @@ function handleTap(e) {
   }
   if (gs === 'SETTINGS') {
     if (hitBtn(p, BTNS.resetBtn)) { SFX.click(); openConfirm('RESET_EVERYTHING','RESET EVERYTHING?','This will erase all progress and purchases.'); return; }
-    if (showOptimizeConfirm) {
-      if (hitBtn(p, BTNS.confirmYes)) { SFX.click(); applyOptimize(); showOptimizeConfirm=false; return; }
-      if (hitBtn(p, BTNS.confirmNo))  { SFX.click(); showOptimizeConfirm=false; return; }
-      return;
-    }
     if (hitBtn(p, BTNS.back)) { SFX.click(); doTransition('MENU'); return; }
-    if (hitBtn(p, BTNS.optimizeBtn)) { SFX.click(); showOptimizeConfirm=true; return; }
+    const pSet={x:p.x,y:p.y-settingsScroll};
+    if (hitBtn(pSet, BTNS.optimizeBtn)) { SFX.click(); showOptimizeConfirm=true; return; }
     handleSettingsTap(p); return;
   }
   if (gs === 'QUESTS') {
@@ -1747,7 +1749,8 @@ function drawHUD() {
   if (multi>1||gemStreak>0) {
     ctx.save(); const mx=pdX,my=LH-pdY-22;
     const sm=scoreMultiplier();
-    setFont(9,'700'); glow(CFG.YL,10); txt(`COMBO ×${multi}  ·  SCORE ×${sm}`,mx+30,my,CFG.YL,'left');
+    const comboShown=Math.max(0,multi-1);
+    setFont(9,'700'); glow(CFG.YL,10); txt(`COMBO ×${comboShown}  ·  SCORE ×${sm}`,mx+30,my,CFG.YL,'left');
     if (multi<4) {
       const bwm=60,bhm=2,pct=(gemStreak%5)/5;
       ctx.fillStyle='rgba(255,230,0,0.1)'; ctx.fillRect(mx,my+4,bwm,bhm);
@@ -2699,10 +2702,48 @@ function drawShopScreen(t) {
 
 // ── SETTINGS SCREEN ───────────────────────────────────────────────
 let showOptimizeConfirm=false;
-function applyOptimize() {
-  SETTINGS.gfxQuality=0; SETTINGS.fpsLimit=0;
-  SETTINGS.particles=false; SETTINGS.scanlines=false; SETTINGS.screenShake=false; OPTION_PREFS.showFPS=true; saveOptionPrefs(); saveSettingsPrefs();
-  addNotif('GAME OPTIMIZED!',CFG.GR);
+async function detectDisplayHz(sampleCount=40){
+  return await new Promise(resolve=>{
+    const ts=[];
+    function step(t){
+      ts.push(t);
+      if (ts.length>=sampleCount){
+        const ds=[]; for (let i=1;i<ts.length;i++) ds.push(ts[i]-ts[i-1]);
+        const avg=ds.reduce((a,b)=>a+b,0)/Math.max(1,ds.length);
+        const hz=avg>0?1000/avg:60;
+        resolve(clamp(hz,30,240));
+        return;
+      }
+      requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  });
+}
+
+async function applyOptimize() {
+  const hc=Number(navigator.hardwareConcurrency||4);
+  const mem=Number(navigator.deviceMemory||4);
+  let hz=60;
+  try { hz=await detectDisplayHz(28); } catch(e) { hz=60; }
+
+  const lowTier=(hc<=4)||(mem&&mem<=4);
+  const midTier=(hc<=8)||(mem&&mem<=8);
+
+  if (lowTier) {
+    SETTINGS.gfxQuality=0;
+    SETTINGS.particles=false; SETTINGS.scanlines=false; SETTINGS.screenShake=false;
+  } else if (midTier) {
+    SETTINGS.gfxQuality=1;
+    SETTINGS.particles=true; SETTINGS.scanlines=false; SETTINGS.screenShake=true;
+  } else {
+    SETTINGS.gfxQuality=2;
+    SETTINGS.particles=true; SETTINGS.scanlines=true; SETTINGS.screenShake=true;
+  }
+
+  SETTINGS.fpsLimit=(hz>=60)?1:0;
+  OPTION_PREFS.showFPS=true;
+  saveOptionPrefs(); saveSettingsPrefs();
+  addNotif(`AUTO OPTIMIZED (${Math.round(hz)}Hz · ${hc}C/${mem||'?' }GB)`,CFG.GR);
 }
 
 const SETTING_DEFS=[
@@ -3507,6 +3548,7 @@ function buildSlopeUserPayload(extra={}){
     selectedTheme:String(selectedTheme||'classic'),
     cloudRoot:String(cloudProfileRoot||CLOUD_INFO_ROOT),
     updatedAt:String(now),
+    admin:String(!!(auth&&auth.admin)),
     ...extra,
   };
   return payload;
@@ -3546,7 +3588,6 @@ let signinForm={email:'',password:''};
 let signupForm={username:'Neon Runner',email:'',password:'',confirm:''};
 
 const ADMIN_SECRET_ENABLED=true;
-const ADMIN_ALLOWED_EMAILS=['admin@slope.game'];
 const ADMIN_PASS_HASH='95f07e36f8f80f01f4b67f09d6f19e6f2134de9f0f06fe9f4657af4cae6f3f88';
 let isAdminUser=false;
 let adminSessionUnlocked=false;
@@ -3560,8 +3601,7 @@ let adminFlags={syncCloud:true, grantSkin:true, grantAura:true, grantTheme:true,
 refreshAdminFlag();
 
 function refreshAdminFlag(){
-  const email=String((auth&&auth.email)||'').trim().toLowerCase();
-  isAdminUser=!!(ADMIN_SECRET_ENABLED && isSignedIn && email && ADMIN_ALLOWED_EMAILS.includes(email));
+  isAdminUser=!!(ADMIN_SECRET_ENABLED && isSignedIn && auth && auth.admin===true);
   if (!isAdminUser) adminSessionUnlocked=false;
 }
 
@@ -3688,7 +3728,7 @@ function initFirebase(){
       fbUser=u||null;
       if (u) {
         isSignedIn=true;
-        auth={signedIn:true,name:u.displayName||auth.name||'Runner',email:u.email||'',uid:u.uid||'',verified:!!u.emailVerified,bio:profileBio||'',avatar:profileAvatar||''};
+        auth={signedIn:true,name:u.displayName||auth.name||'Runner',email:u.email||'',uid:u.uid||'',verified:!!u.emailVerified,bio:profileBio||'',avatar:profileAvatar||'',admin:!!(auth&&auth.admin)};
         saveAuth(auth);
         refreshAdminFlag();
         await loadCloudProfileAndProgress();
@@ -3829,6 +3869,7 @@ async function writeCloudUserInfo(extra={}) {
     selectedTheme:selectedTheme||'classic',
     cloudRoot:cloudProfileRoot||CLOUD_INFO_ROOT,
     updatedAt:Date.now(),
+    admin:!!(auth&&auth.admin),
     ...extra,
   };
   await fbDb.ref(`${cloudProfileRoot}/${fbUser.uid}`).update(payload);
@@ -3851,6 +3892,7 @@ function buildLocalProgressPayload(){
     runs:parseInt(localStorage.getItem('slope_runs')||'0',10),
     totalTime:parseFloat(localStorage.getItem('slope_totalTime')||'0'),
     updatedAt:Date.now(),
+    admin:!!(auth&&auth.admin),
   };
 }
 
@@ -3877,7 +3919,7 @@ async function loadCloudProfileAndProgress() {
     const snap=await fbDb.ref(`${cloudProfileRoot}/${fbUser.uid}`).get();
     const val=snap&&snap.val?snap.val():null;
     if (!val) {
-      await writeCloudUserInfo({createdAt:Date.now()});
+      await writeCloudUserInfo({createdAt:Date.now(),admin:false});
       await syncProgressToCloud('init');
       cloudGemCount=loadBank();
       cloudUpdatedAt=Date.now();
@@ -3911,7 +3953,8 @@ async function loadCloudProfileAndProgress() {
     if (!Number.isFinite(cloudGemCount)) cloudGemCount=loadBank();
     cloudUpdatedAt=Number((val.progress&&val.progress.updatedAt)||val.updatedAt||(slopeMirror&&slopeMirror.updatedAt)||0)||0;
     cloudJoinedAt=parseCloudTs(val.createdAt||(slopeMirror&&slopeMirror.createdAt)||(fbUser&&fbUser.metadata&&fbUser.metadata.creationTime)||0);
-    auth={...auth,signedIn:true,name:val.name||auth.name,email:val.email||auth.email,uid:fbUser.uid,verified:!!fbUser.emailVerified,bio:profileBio,avatar:profileAvatar};
+    const isAdminDb=(String(val.admin??(slopeMirror&&slopeMirror.admin)??'false')==='true') || val.admin===true || (slopeMirror&&slopeMirror.admin===true);
+    auth={...auth,signedIn:true,name:val.name||auth.name,email:val.email||auth.email,uid:fbUser.uid,verified:!!fbUser.emailVerified,bio:profileBio,avatar:profileAvatar,admin:isAdminDb};
     saveAuth(auth);
     refreshAdminFlag();
   } catch (e) {}
@@ -3960,7 +4003,7 @@ async function handleAuthSignUp(){
       fbUser=cred.user;
       auth={signedIn:true,name:cred.user.displayName||signupForm.username,email:cred.user.email||signupForm.email,uid:cred.user.uid,verified:false,bio:'',avatar:''};
       isSignedIn=true; saveAuth(auth);
-      await writeCloudUserInfo({name:auth.name,email:auth.email,verified:false,createdAt:Date.now()});
+      await writeCloudUserInfo({name:auth.name,email:auth.email,verified:false,createdAt:Date.now(),admin:false});
       await syncProgressToCloud('signup');
       authFlowState='success';
       authFlowMsg='Verification email sent. Verify, then tap REFRESH GAME.';
@@ -4478,6 +4521,7 @@ let camZoom=1;
 let immunityActive=false, immunityTimer=0;
 let obstacleClearTimer=0;
 let pauseToggleLock=0;
+let pauseStartedAt=0;
 
 let leaderboardState='idle';
 let leaderboardTimer=0;
@@ -4490,7 +4534,7 @@ let leaderboardContentH=0;
 function minLeaderboardScroll(){ return Math.min(0,leaderboardViewH-leaderboardContentH); }
 
 // Score multiplier (includes mini jetpack bonus).
-const scoreMultiplier = () => { const base=multi + (player.jetpackActive ? 10 : 0) + (miniJetpackActive ? 5 : 0); return Math.max(1,Math.floor(base*(gemDoubleActive?2:1))); }; 
+const scoreMultiplier = () => { const comboBonus=Math.max(0,multi-1); const base=1 + comboBonus + (player.jetpackActive ? 10 : 0) + (miniJetpackActive ? 5 : 0); return Math.max(1,Math.floor(base*(gemDoubleActive?2:1))); }; 
 
 async function triggerLeaderboardFetch(force=false) {
   if (!force && leaderboardState==='loading') return;
@@ -4696,8 +4740,11 @@ function togglePause() {
   const now=performance.now();
   if (now<pauseToggleLock) return;
   pauseToggleLock=now+110;
-  if (gs==='PLAY') { gs='PAUSE'; SFX.pause(); }
+  if (gs==='PLAY') { gs='PAUSE'; pauseStartedAt=performance.now(); SFX.pause(); }
   else if (gs==='PAUSE') {
+    const nowPerf=performance.now();
+    lastTime=nowPerf;
+    touchSwipe=0; touchSwipeTarget=0;
     gs='PLAY'; SFX.resume();
     touchSwipe=0; touchActive=false; K.left=false; K.right=false;
   }
@@ -4798,7 +4845,8 @@ function collectNearbyDrops(cx,cy,radius=120) {
 function collectGem(gem) {
   gem.collected=true; gem.active=false;
   gemsCollected++; gemStreak++;
-  if (gemStreak>=15) multi=4;
+  if (gemStreak>=20) multi=5;
+  else if (gemStreak>=15) multi=4;
   else if (gemStreak>=10) multi=3;
   else if (gemStreak>=5)  multi=2;
   else                     multi=1;
