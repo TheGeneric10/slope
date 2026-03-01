@@ -220,7 +220,7 @@ const BTNS = {
   continueBuy:null, continueGiveUp:null,
   questsFilter:null, questsFilterOpt0:null, questsFilterOpt1:null, questsFilterOpt2:null, questsFilterOpt3:null,
   resetBtn:null,
-  dialogYes:null, dialogNo:null,
+  dialogYes:null, dialogNo:null, actionPopupBtn:null,
   optimizeBtn:null, confirmYes:null, confirmNo:null,
   modeSoon:null, modeWideSoon:null,
   authAction:null, authBack:null, authSubmit:null, authRestart:null,
@@ -243,8 +243,12 @@ function stopProfileCropInteraction(){
 }
 
 let confirmDialog={active:false,title:'',msg:'',action:''};
+let actionPopup={active:false,title:'',msg:'',ok:true};
 function openConfirm(action,title,msg) {
   confirmDialog={active:true,action,title,msg};
+}
+function openActionPopup(title,msg,ok=true){
+  actionPopup={active:true,title:String(title||'STATUS'),msg:String(msg||''),ok:!!ok};
 }
 function runConfirmAction() {
   const a=confirmDialog.action;
@@ -278,9 +282,32 @@ function drawConfirmDialog() {
   drawNeonBtn(BTNS.dialogNo.x,BTNS.dialogNo.y,BTNS.dialogNo.w,BTNS.dialogNo.h,CFG.PK,'NO',11,1,Math.sin(menuT*2));
   ctx.restore();
 }
+function drawActionPopup(t){
+  if (!actionPopup.active) return;
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.72)'; ctx.fillRect(0,0,LW,LH);
+  const w=304,h=176,x=(LW-w)/2,y=(LH-h)/2;
+  const col=actionPopup.ok?CFG.GR:CFG.PK;
+  ctx.fillStyle='#000'; ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle=col; ctx.lineWidth=2; glow(col,14); ctx.strokeRect(x,y,w,h);
+  setFont(15,'900'); glow(col,10); txt(actionPopup.title.slice(0,34),LW/2,y+30,col);
+  setFont(9,'400',"'Share Tech Mono',monospace"); noGlow();
+  const line1=actionPopup.msg.slice(0,68);
+  const line2=actionPopup.msg.length>68?actionPopup.msg.slice(68,136):'';
+  txt(line1,LW/2,y+62,'rgba(225,240,255,0.88)');
+  if (line2) txt(line2,LW/2,y+80,'rgba(225,240,255,0.78)');
+  BTNS.actionPopupBtn={x:(LW-160)/2,y:y+h-44,w:160,h:30};
+  drawNeonBtn(BTNS.actionPopupBtn.x,BTNS.actionPopupBtn.y,160,30,col,actionPopup.ok?'CONTINUE':'CLOSE',11,1,Math.sin(t*2));
+  ctx.restore();
+}
 
 function handleTap(e) {
   const p = getCanvasXY(e);
+
+  if (actionPopup.active) {
+    if (hitBtn(p,BTNS.actionPopupBtn)) { SFX.click(); actionPopup.active=false; return; }
+    return;
+  }
 
   if (confirmDialog.active) {
     if (hitBtn(p,BTNS.dialogYes)) { SFX.click(); runConfirmAction(); return; }
@@ -414,6 +441,7 @@ function handleTap(e) {
       if (hitBtn(p,b)) {
         SFX.click();
         ltmForcedIndex=i;
+        ltmSelectedIndex=i;
         ltmRotationIndex=i;
         gameMode='LTM';
         doTransition('SHOP');
@@ -887,6 +915,7 @@ function drawTransition() {
 }
 
 function drawTopOverlays(t){
+  drawActionPopup(t);
   drawAuthOverlay(t);
   drawOptimizeConfirmPopup(t);
   drawConfirmDialog();
@@ -1387,6 +1416,7 @@ function randPwrKey() {
   if (gameMode==='ADVENTURE') {
     let pool=[...PWR_WEIGHTED];
     if (!allowRegen) pool=pool.filter(k=>k!=='REGEN');
+    if (!canAdvanceStage()) pool=pool.filter(k=>k!=='NEW_STAGE');
     if (adventureStage>=5 && Math.random()<0.28) return 'MINI_JETPACK';
     pool=pool.filter(k=>k!=='BAD_LUCK');
     return pool[rndI(0,pool.length-1)];
@@ -1411,7 +1441,7 @@ function randPwrKey() {
     if (impossibleStage<=1 && Math.random()<0.22) return 'BAD_LUCK';
     return pool[rndI(0,pool.length-1)];
   }
-  const pool=(allowRegen?PWR_WEIGHTED:PWR_WEIGHTED.filter(k=>k!=='REGEN')).filter(k=>k!=='BAD_LUCK');
+  const pool=(allowRegen?PWR_WEIGHTED:PWR_WEIGHTED.filter(k=>k!=='REGEN')).filter(k=>k!=='BAD_LUCK'&&k!=='NEW_STAGE');
   return pool[rndI(0,pool.length-1)];
 }
 
@@ -1833,7 +1863,7 @@ function drawHUD() {
   // Speed bar + next-stage meter
   ctx.save();
   const bw=120,bh=3,bx=(LW-bw)/2,by=LH-pdY-bh;
-  if (gameMode!=='ENDLESS') {
+  if (hasStageProgression() && canAdvanceStage()) {
     const nby=by-12;
     const stageFrac=clamp(stagePowerupElapsed/Math.max(0.001,stagePowerupNext),0,1);
     setFont(7,'400',"'Share Tech Mono',monospace"); txt('NEXT STAGE',LW/2,nby-4,'rgba(140,255,220,0.55)');
@@ -2275,7 +2305,7 @@ function drawModeSelect(t) {
 
   setFont(30,'900'); glow(CFG.CY,20); txt('SELECT MODE',LW/2,62,CFG.CY);
   setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.55;
-  txt('Pick a lane',LW/2,82,'rgba(0,245,255,0.55)'); ctx.globalAlpha=1;
+  txt('Pick a lane • each mode has unique pacing + rewards',LW/2,82,'rgba(0,245,255,0.55)'); ctx.globalAlpha=1;
 
   const cardY=102, cardH=382, cardW=88, gap=8;
   const startX=(LW-(cardW*4+gap*3))/2;
@@ -2576,10 +2606,10 @@ function drawAdminLtmScreen(t){
     ctx.fillStyle='rgba(255,255,255,0.04)'; ctx.fillRect(x+12,yy,w-24,102);
     ctx.strokeStyle=m.cardCol||CFG.YL; glow(m.cardCol||CFG.YL,8); ctx.strokeRect(x+12,yy,w-24,102);
     setFont(14,'900'); txt(`${i+1}. ${m.name}`,x+24,yy+22,m.cardCol||CFG.YL,'left');
-    setFont(8,'400',"'Share Tech Mono',monospace"); noGlow(); txt((m.desc||'').slice(0,44),x+24,yy+38,'rgba(220,235,240,0.9)','left');
+    setFont(8,'400',"'Share Tech Mono',monospace"); noGlow(); txt((m.desc||'').slice(0,44),x+24,yy+38,'rgba(245,248,255,0.96)','left');
     const st=(m.stages||[]).map(s=>`${s.name.split(' ')[1]||''}:${s.label}`).join(' | ').slice(0,60);
-    txt(st,x+24,yy+54,'rgba(180,210,230,0.8)','left');
-    txt(`Starter PWR: ${(m.forcedPowerups||[]).slice(0,5).join(', ')}`,x+24,yy+70,'rgba(160,255,180,0.8)','left');
+    txt(st,x+24,yy+54,'rgba(240,245,255,0.88)','left');
+    txt(`Starter PWR: ${(m.forcedPowerups||[]).slice(0,5).join(', ')}`,x+24,yy+70,'rgba(232,242,255,0.9)','left');
     const tb={x:x+w-138,y:yy+62,w:110,h:26};
     adminLtmTestButtons[i]=tb;
     drawNeonBtn(tb.x,tb.y,tb.w,tb.h,m.cardCol||CFG.CY,'PLAY',9,1,Math.sin(t*2+i));
@@ -2869,6 +2899,9 @@ function drawShopScreen(t) {
   shopViewH=viewBottom-viewTop;
   shopContentH=330;
   shopScroll=clamp(shopScroll,minShopScroll(),0);
+  setFont(8,'400',"'Share Tech Mono',monospace"); noGlow();
+  const modeHint=gameMode==='ENDLESS'?'Classic score chase with balanced spawn rates':(gameMode==='ADVENTURE'?'Stage ramp mode with progression pacing':(gameMode==='IMPOSSIBLE'?'One life only. No starter safety net.':`Special rules: ${(getActiveLtm().desc||'LTM active').slice(0,42)}`));
+  txt(modeHint,LW/2,92,'rgba(220,235,255,0.8)');
   ctx.save();
   if (typeof clipRect==='function') clipRect(0,viewTop,LW,shopViewH);
   else { ctx.beginPath(); ctx.rect(0,viewTop,LW,shopViewH); ctx.clip(); }
@@ -3686,9 +3719,11 @@ async function applyProfileCropAndSave(){
     auth={...auth,avatar:profileAvatar}; saveAuth(auth);
     await writeCloudUserInfo({avatar:profileAvatar,pfpLink:profileAvatar,pfpLinkId:getAvatarLinkId(profileAvatar)||'none'});
     addNotif('Profile icon updated.',CFG.GR);
+    openActionPopup('ICON UPDATED','Profile icon uploaded successfully.',true);
     resetProfileUploadState();
   } catch (e) {
     openProfileUploadError('Upload failed while applying crop.');
+    openActionPopup('ICON UPLOAD FAILED','Could not upload profile icon.',false);
   }
 }
 
@@ -3697,6 +3732,7 @@ async function clearProfileAvatar(){
   auth={...auth,avatar:''}; saveAuth(auth);
   try { await writeCloudUserInfo({avatar:'',pfpLink:'',pfpLinkId:'none'}); } catch(e){}
   addNotif('Profile icon removed.',CFG.YL);
+  openActionPopup('ICON REMOVED','Profile icon reset to default.',true);
 }
 
 function fmtCloudTs(ts){
@@ -4723,10 +4759,16 @@ async function handleChangePassword(){
       }
       await fbUser.updatePassword(pwd);
       addNotif('Password changed.',CFG.GR);
+      openActionPopup('PASSWORD UPDATED','Your password has been updated successfully.',true);
     } catch (e) {
       const code=String((e&&e.code)||'');
-      if (code.includes('requires-recent-login')) addNotif('Re-auth required. Sign out/in and retry.',CFG.PK);
-      else addNotif('Password change failed. Re-sign in and retry.',CFG.PK);
+      if (code.includes('requires-recent-login')) {
+        addNotif('Re-auth required. Sign out/in and retry.',CFG.PK);
+        openActionPopup('PASSWORD UPDATE FAILED','Re-auth required. Sign out and sign back in, then retry.',false);
+      } else {
+        addNotif('Password change failed. Re-sign in and retry.',CFG.PK);
+        openActionPopup('PASSWORD UPDATE FAILED','Could not update password. Please retry.',false);
+      }
     }
   }});
 }
@@ -4767,7 +4809,7 @@ function handleProfileTap(p){
     SFX.click();
     if (!navigator.onLine) { addNotif('PLAYER OFFLINE',CFG.PK); return; }
     if (!isSignedIn) { addNotif('Bio is locked for guests. Sign in first.',CFG.YL); return; }
-    openInputDialog({title:'UPDATE BIO',label:'Bio (max 100 chars)',value:profileBio||'',maxLen:100,multiline:true,onSubmit:(val)=>{ profileBio=(val||'').slice(0,100); auth={...auth,bio:profileBio}; saveAuth(auth); writeCloudUserInfo({bio:profileBio}); addNotif('BIO UPDATED',CFG.GR);} });
+    openInputDialog({title:'UPDATE BIO',label:'Bio (max 100 chars)',value:profileBio||'',maxLen:100,multiline:true,onSubmit:async (val)=>{ profileBio=(val||'').slice(0,100); auth={...auth,bio:profileBio}; saveAuth(auth); try { await writeCloudUserInfo({bio:profileBio}); addNotif('BIO UPDATED',CFG.GR); openActionPopup('BIO UPDATED','Your profile bio was saved.',true); } catch (e) { addNotif('BIO UPDATE FAILED',CFG.PK); openActionPopup('BIO UPDATE FAILED','Could not save bio to cloud right now.',false); } } });
     return;
   }
   if (hitBtn(p,BTNS.profileChangePassword)) {
@@ -4884,6 +4926,7 @@ let adminLtmScroll=0, adminLtmViewH=0, adminLtmContentH=0;
 let noAdsPopup=false;
 let adminLtmTestButtons=[];
 let ltmForcedIndex=-1;
+let ltmSelectedIndex=-1;
 function minAdminLtmScroll(){ return Math.min(0, adminLtmViewH-adminLtmContentH); }
 function getDailyLtmIndex(){
   const now=new Date();
@@ -4900,6 +4943,7 @@ function getDailyCountdown(){
   const s=Math.floor(ms/1000);
   return `${String(h).padStart(2,'0')}h:${String(m).padStart(2,'0')}m:${String(s).padStart(2,'0')}s`;
 }
+ltmSelectedIndex=getDailyLtmIndex();
 function getActiveLtm(){ return LTM_MODES[clamp(ltmRotationIndex,0,LTM_MODES.length-1)]||LTM_MODES[0]; }
 
 function minLeaderboardScroll(){ return Math.min(0,leaderboardViewH-leaderboardContentH); }
@@ -4960,6 +5004,27 @@ function currentStageConfig(){
   return ADV_STAGES[0];
 }
 function isStageMode(){ return gameMode==='ADVENTURE'||gameMode==='IMPOSSIBLE'||gameMode==='LTM'; }
+function hasStageProgression(){
+  if (!isStageMode()) return false;
+  if (gameMode==='ADVENTURE') return ADV_STAGES.length>1;
+  if (gameMode==='IMPOSSIBLE') return IMP_STAGES.length>1;
+  if (gameMode==='LTM') {
+    const m=getActiveLtm();
+    return !!(m&&Array.isArray(m.stages)&&m.stages.length>1);
+  }
+  return false;
+}
+function canAdvanceStage(){
+  if (!hasStageProgression()) return false;
+  if (gameMode==='ADVENTURE') return adventureStage<ADV_STAGES.length-1;
+  if (gameMode==='IMPOSSIBLE') return impossibleStage<IMP_STAGES.length-1;
+  if (gameMode==='LTM') {
+    const m=getActiveLtm();
+    const len=(m&&Array.isArray(m.stages))?m.stages.length:0;
+    return len>1 && ltmStage<len-1;
+  }
+  return false;
+}
 
 function activateImmunity(sec=immunityDuration()) {
   if (gameMode==='IMPOSSIBLE') sec=Math.min(sec,1.5);
@@ -5022,7 +5087,13 @@ function startGame(starterPwr=null, forceNoStarter=false) {
   pwrCounts={JETPACK:0,MAGNET:0,BOOST:0,SHIELD:0,SLOW:0,HEALTH_BOOST:0,MINI_JETPACK:0,NEW_STAGE:0,REGEN:0,X2_GEMS:0,X4_GEMS:0,GEM_DROP:0,BAD_LUCK:0,SICK:0,LTM_SPECIAL:0};
   // Adventure setup
   adventureStage=0; adventureStageTimer=0; impossibleStage=0; ltmStage=0; ltmStageTimer=0;
-  ltmRotationIndex=(ltmForcedIndex>=0?ltmForcedIndex:getDailyLtmIndex());
+  if (gameMode==='LTM') {
+    const picked=(ltmForcedIndex>=0?ltmForcedIndex:(ltmSelectedIndex>=0?ltmSelectedIndex:getDailyLtmIndex()));
+    ltmRotationIndex=clamp(picked,0,Math.max(0,LTM_MODES.length-1));
+    ltmSelectedIndex=ltmRotationIndex;
+  } else {
+    ltmRotationIndex=getDailyLtmIndex();
+  }
   miniJetpackActive=false; miniJetpackTimer=0;
   newStageActive=false; newStageTimer=0;
   stagePowerupNext=rnd(20,30); stagePowerupElapsed=0;
@@ -5162,7 +5233,8 @@ function togglePause() {
     const nowPerf=performance.now();
     lastTime=nowPerf;
     touchSwipe=0; touchSwipeTarget=0;
-    gs='PLAY'; SFX.resume();
+    gs='PLAY';
+    setTimeout(()=>{ try { SFX.resume(); } catch(e){} },0);
     touchSwipe=0; touchActive=false; K.left=false; K.right=false;
   }
 }
@@ -5342,6 +5414,7 @@ function activateMiniJetpack() {
 }
 
 function activateNewStagePowerup() {
+  if (!canAdvanceStage()) { addNotif('MAX STAGE REACHED!',CFG.YL); return; }
   newStageActive=true; newStageTimer=6.0;
   miniJetpackActive=false; miniJetpackTimer=0;
   player.activateJetpack(6.0);
@@ -5533,7 +5606,7 @@ function spawnObjects(dt) {
   if (pwrTimer2>=pwrNext) { pwrTimer2=0; pwrNext=rnd(...CFG.PWR_INT); powerups.push(new PowerUp(terrain)); }
 
   // Adventure / Impossible stage powerup timing
-  if (isStageMode() && !newStageActive) {
+  if (isStageMode() && canAdvanceStage() && !newStageActive) {
     stagePowerupElapsed+=dt;
     if (stagePowerupElapsed>=stagePowerupNext) {
       stagePowerupElapsed=0; stagePowerupNext=rnd(18,26);
@@ -5879,12 +5952,6 @@ function loop(ts) {
   // ── PLAY ────────────────────────────────────────────────────
   const wdt=dt*worldSpeedMult;
   gameTime+=dt;
-  if (gameMode==='LTM') {
-    const mode=getActiveLtm();
-    ltmStageTimer+=dt;
-    if (ltmStageTimer>=((mode&&mode.stageDuration)||35)) { ltmStageTimer=0; advanceLtmStage(); }
-  }
-
   if (gameMode==='IMPOSSIBLE' && impossibleStage>=2) { gemDoubleActive=true; gemBoostMult=2; gemDoubleTimer=999; }
 
   // Active powerup countdown
@@ -6122,9 +6189,8 @@ function loop(ts) {
   drawNotifs();
   drawFloats();
   drawScanlines();
-  drawInputDialog(menuT);
   drawTransition();
-    drawTopOverlays(menuT);
+  drawTopOverlays(menuT);
 
   requestAnimationFrame(loop);
 }
