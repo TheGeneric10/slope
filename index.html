@@ -247,12 +247,12 @@ function stopProfileCropInteraction(){
 }
 
 let confirmDialog={active:false,title:'',msg:'',action:''};
-let actionPopup={active:false,title:'',msg:'',ok:true};
+let actionPopup={active:false,title:'',msg:'',ok:true,loading:false};
 function openConfirm(action,title,msg) {
   confirmDialog={active:true,action,title,msg};
 }
-function openActionPopup(title,msg,ok=true){
-  actionPopup={active:true,title:String(title||'STATUS'),msg:String(msg||''),ok:!!ok};
+function openActionPopup(title,msg,ok=true,loading=false){
+  actionPopup={active:true,title:String(title||'STATUS'),msg:String(msg||''),ok:!!ok,loading:!!loading};
 }
 
 let uidVisible=false;
@@ -481,8 +481,12 @@ function drawActionPopup(t){
   const line2=actionPopup.msg.length>68?actionPopup.msg.slice(68,136):'';
   txt(line1,LW/2,y+62,'rgba(225,240,255,0.88)');
   if (line2) txt(line2,LW/2,y+80,'rgba(225,240,255,0.78)');
-  BTNS.actionPopupBtn={x:(LW-160)/2,y:y+h-44,w:160,h:30};
-  drawNeonBtn(BTNS.actionPopupBtn.x,BTNS.actionPopupBtn.y,160,30,col,actionPopup.ok?'CONTINUE':'CLOSE',11,1,Math.sin(t*2));
+  if (actionPopup.loading) {
+    drawLoadingDots(LW/2-14,y+104,t,col);
+    drawLoadingSquares(LW/2,y+116,t,col);
+  }
+  BTNS.actionPopupBtn=actionPopup.loading?null:{x:(LW-160)/2,y:y+h-44,w:160,h:30};
+  if (!actionPopup.loading) drawNeonBtn(BTNS.actionPopupBtn.x,BTNS.actionPopupBtn.y,160,30,col,actionPopup.ok?'CONTINUE':'CLOSE',11,1,Math.sin(t*2));
   ctx.restore();
 }
 
@@ -518,7 +522,7 @@ function handleTap(e) {
   }
 
   if (actionPopup.active) {
-    if (hitBtn(p,BTNS.actionPopupBtn)) { SFX.click(); actionPopup.active=false; return; }
+    if (!actionPopup.loading && hitBtn(p,BTNS.actionPopupBtn)) { SFX.click(); actionPopup.active=false; return; }
     return;
   }
 
@@ -4905,24 +4909,11 @@ async function handleAuthGoogleSignIn(){
     authFlowState='loading'; authFlowError='';
     const provider=new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({prompt:'select_account'});
-    let cred=null;
-    try {
-      cred=await fbAuth.signInWithPopup(provider);
-    } catch (popupErr) {
-      const code=String((popupErr&&popupErr.code)||'');
-      const popupBlocked=code.includes('popup')||code.includes('cancelled')||code.includes('blocked');
-      if (!popupBlocked) throw popupErr;
-      await fbAuth.signInWithRedirect(provider);
-      return;
-    }
-    fbUser=cred&&cred.user?cred.user:fbAuth.currentUser;
-    await loadCloudProfileAndProgress();
-    authFlowState='success';
-    authFlowMsg='Signed in with Google. Tap MAIN MENU.';
+    await fbAuth.signInWithRedirect(provider);
+    authFlowMsg='Redirecting to Google sign-in...';
   } catch (e) {
-    const code=String((e&&e.code)||'');
     authFlowState='error';
-    authFlowError=code.includes('popup')?'Google sign-in popup was blocked. Retry or allow popups.':'Google sign in failed. Please try again.';
+    authFlowError='Google sign in failed. Please try again.';
   }
 }
 
@@ -5547,7 +5538,7 @@ async function beginDeleteAccountFlow(){
     openInputDialog({title:'DELETE ACCOUNT',label:'Type your password',value:'',maxLen:32,secret:true,onSubmit:async p=>{
       const pwd=String(p||'');
       if (!pwd) { addNotif('Password required.',CFG.PK); return; }
-      actionPopup={active:true,title:'REMOVING ACCOUNT',msg:'Please wait...',ok:true};
+      openActionPopup('DELETE ACCOUNT','Removing account... Please wait.',true,true);
       try {
         const email=String((fbUser&&fbUser.email)||(auth&&auth.email)||'').trim();
         if (!email) throw new Error('No email');
@@ -5568,10 +5559,10 @@ async function beginDeleteAccountFlow(){
           fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${uid}`).remove(),
         ]);
         await fbUser.delete();
-        actionPopup={active:true,title:'SUCCESS',msg:'Your account has been officially removed.',ok:true};
+        openActionPopup('DELETE ACCOUNT','Success. Your account has been officially removed.',true,false);
         isSignedIn=false; auth={...AUTH_GUEST}; saveAuth(auth);
         setTimeout(()=>{ actionPopup.active=false; goMenu(); doTransition('MENU'); },1200);
-      } catch(e) { actionPopup={active:true,title:'DELETE FAILED',msg:'Re-auth failed or cloud delete failed.',ok:false}; }
+      } catch(e) { openActionPopup('DELETE ACCOUNT','Failed. Re-auth failed or cloud delete failed.',false,false); }
     }});
   }});
 }
@@ -5736,18 +5727,19 @@ async function openMiniProfileByUsername(raw){
   if (!q) { openActionPopup('FIND USER','Cannot find user.',false); return false; }
   if (!fbReady || !fbDb) { openActionPopup('FIND USER','Cloud unavailable.',false); return false; }
   socialView.loading=true;
+  openActionPopup('FIND USER','Searching user...',true,true);
   try {
     const snap=await fbDb.ref(CLOUD_SLOPE_ROOT).get();
     const all=snap&&snap.val?snap.val():{};
     let foundUid='';
     Object.keys(all||{}).some(uid=>{ const u=all[uid]||{}; const nm=String(u.displayName||u.name||u.email||'').toLowerCase(); if (nm===q) { foundUid=uid; return true; } return false; });
-    if (!foundUid) { openActionPopup('FIND USER','Cannot find user.',false); return false; }
+    if (!foundUid) { openActionPopup('FIND USER','Cannot find user.',false,false); return false; }
     const u=all[foundUid]||{};
     playerCardPopup.active=true; playerCardPopup.isSelf=!!(isSignedIn&&auth&&auth.uid===foundUid); playerCardPopup.fromMenu=false;
     playerCardPopup.viewed={uid:foundUid,name:String(u.displayName||u.name||'Runner'),avatar:String(u.pfpLink||u.avatar||''),status:String(u.status||'offline'),lastSeen:Number(u.lastSeen||0),bio:String(u.bio||''),bestScore:Number(u.bestScore||0)};
-    openActionPopup('FIND USER',`Found ${playerCardPopup.viewed.name}.`,true);
+    openActionPopup('FIND USER',`Found: ${playerCardPopup.viewed.name} • Best ${Math.floor(playerCardPopup.viewed.bestScore||0)}`,true,false);
     return true;
-  } catch(e) { openActionPopup('FIND USER','Search failed.',false); return false; }
+  } catch(e) { openActionPopup('FIND USER','Search failed.',false,false); return false; }
   finally { socialView.loading=false; }
 }
 async function sendFriendRequestToViewed(){
