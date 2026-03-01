@@ -190,6 +190,8 @@ let _lastTouchEnd = 0;
 let questTouchY = null;
 let profileTouchY = null;
 let leaderboardTouchY = null;
+let adminLtmTouchY = null;
+let shopTouchY = null;
 let joyL=false, joyR=false;
 let usingTouchJoy=false;
 const isTouchDevice=('ontouchstart' in window)||(navigator.maxTouchPoints>0);
@@ -480,6 +482,8 @@ canvas.addEventListener('touchstart', e => {
   questTouchY = t.clientY;
   profileTouchY = t.clientY;
   leaderboardTouchY = t.clientY;
+  adminLtmTouchY = t.clientY;
+  shopTouchY = t.clientY;
   touchSwipe = 0; touchSwipeTarget = 0;
 }, { passive:false });
 
@@ -528,6 +532,16 @@ canvas.addEventListener('touchmove', e => {
     profileTouchY=t.clientY;
     return;
   }
+  if (gs==='SHOP') {
+    const t=e.touches[0];
+    if (shopTouchY!==null) {
+      const dy=t.clientY-shopTouchY;
+      if (Math.abs(dy)>2) touchMoved=true;
+      shopScroll=clamp(shopScroll+dy, minShopScroll(), 0);
+    }
+    shopTouchY=t.clientY;
+    return;
+  }
   if (gs==='ADMIN_MENU') {
     const t=e.touches[0];
     if (profileTouchY!==null) {
@@ -536,6 +550,16 @@ canvas.addEventListener('touchmove', e => {
       adminScroll=clamp(adminScroll+dy, minAdminScroll(), 0);
     }
     profileTouchY=t.clientY;
+    return;
+  }
+  if (gs==='ADMIN_LTM') {
+    const t=e.touches[0];
+    if (adminLtmTouchY!==null) {
+      const dy=t.clientY-adminLtmTouchY;
+      if (Math.abs(dy)>2) touchMoved=true;
+      adminLtmScroll=clamp(adminLtmScroll+dy, minAdminLtmScroll(), 0);
+    }
+    adminLtmTouchY=t.clientY;
     return;
   }
 
@@ -553,11 +577,11 @@ canvas.addEventListener('touchend', e => {
   if (!touchMoved) {
     handleTap(e);
   }
-  touchActive = false; touchSwipe = 0; touchSwipeTarget = 0; touchMoved = false; questTouchY = null; profileTouchY=null; leaderboardTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
+  touchActive = false; touchSwipe = 0; touchSwipeTarget = 0; touchMoved = false; questTouchY = null; profileTouchY=null; leaderboardTouchY=null; adminLtmTouchY=null; shopTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
 }, { passive:false });
 
 canvas.addEventListener('touchcancel', () => {
-  touchActive = false; touchSwipe = 0; touchSwipeTarget = 0; touchMoved = false; questTouchY = null; profileTouchY=null; leaderboardTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
+  touchActive = false; touchSwipe = 0; touchSwipeTarget = 0; touchMoved = false; questTouchY = null; profileTouchY=null; leaderboardTouchY=null; adminLtmTouchY=null; shopTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
 });
 
 // Mouse (desktop)
@@ -638,6 +662,16 @@ document.addEventListener('wheel', e => {
   if (gs==='OPTIONS') {
     e.preventDefault();
     optionsScroll=clamp(optionsScroll - e.deltaY*0.8, minOptionsScroll(), 0);
+    return;
+  }
+  if (gs==='SHOP') {
+    e.preventDefault();
+    shopScroll=clamp(shopScroll - e.deltaY*0.8, minShopScroll(), 0);
+    return;
+  }
+  if (gs==='ADMIN_LTM') {
+    e.preventDefault();
+    adminLtmScroll=clamp(adminLtmScroll - e.deltaY*0.8, minAdminLtmScroll(), 0);
     return;
   }
 }, { passive:false });
@@ -2608,6 +2642,49 @@ function drawAdminLtmScreen(t){
     txt('TEST MODE',x+w-34,yy+22,CFG.PK,'right');
   });
   ctx.restore();
+  if (minAdminLtmScroll()<0) {
+    const sbX=x+w-8, sbY=y+8, sbH=h-16;
+    const thumbH=Math.max(26,(adminLtmViewH/(adminLtmViewH+Math.abs(minAdminLtmScroll())))*sbH);
+    const track=sbH-thumbH;
+    const thumbY=sbY + ((-adminLtmScroll)/Math.abs(minAdminLtmScroll()))*track;
+    ctx.fillStyle='rgba(255,230,0,0.18)'; ctx.fillRect(sbX,sbY,4,sbH);
+    ctx.fillStyle='rgba(255,230,0,0.9)'; ctx.fillRect(sbX,thumbY,4,thumbH);
+  }
+  BTNS.adminLtmBack={x:(LW-150)/2,y:LH-42,w:150,h:30};
+  drawNeonBtn(BTNS.adminLtmBack.x,BTNS.adminLtmBack.y,150,30,CFG.PK,'← BACK',11,1,Math.sin(t*2));
+}
+
+
+function drawAdminLtmScreen(t){
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
+  drawPerspGrid(terrain.scrollY,0.06); drawBgSquares();
+  setFont(28,'900'); glow(CFG.YL,18); txt('ADMIN LTM TEST MODE',LW/2,54,CFG.YL);
+  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt('NOT OFFICIAL RANKED DATA',LW/2,72,'rgba(255,245,140,0.9)');
+  const x=20,y=90,w=LW-40,h=560;
+  ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle='rgba(255,230,0,0.5)'; ctx.strokeRect(x,y,w,h);
+  const rowH=124;
+  adminLtmTestButtons=[];
+  adminLtmViewH=h-10;
+  adminLtmContentH=LTM_MODES.length*rowH+8;
+  adminLtmScroll=clamp(adminLtmScroll,minAdminLtmScroll(),0);
+  ctx.save(); ctx.beginPath(); ctx.rect(x+6,y+6,w-12,h-12); ctx.clip();
+  ctx.translate(0,adminLtmScroll);
+  LTM_MODES.forEach((m,i)=>{
+    const yy=y+12+i*rowH;
+    ctx.fillStyle='rgba(255,255,255,0.04)'; ctx.fillRect(x+12,yy,w-24,102);
+    ctx.strokeStyle=m.cardCol||CFG.YL; glow(m.cardCol||CFG.YL,8); ctx.strokeRect(x+12,yy,w-24,102);
+    setFont(14,'900'); txt(`${i+1}. ${m.name}`,x+24,yy+22,m.cardCol||CFG.YL,'left');
+    setFont(8,'400',"'Share Tech Mono',monospace"); noGlow(); txt((m.desc||'').slice(0,44),x+24,yy+38,'rgba(220,235,240,0.9)','left');
+    const st=(m.stages||[]).map(s=>`${s.name.split(' ')[1]||''}:${s.label}`).join(' | ').slice(0,60);
+    txt(st,x+24,yy+54,'rgba(180,210,230,0.8)','left');
+    txt(`Starter PWR: ${(m.forcedPowerups||[]).slice(0,5).join(', ')}`,x+24,yy+70,'rgba(160,255,180,0.8)','left');
+    const tb={x:x+w-138,y:yy+62,w:110,h:26};
+    adminLtmTestButtons[i]=tb;
+    drawNeonBtn(tb.x,tb.y,tb.w,tb.h,m.cardCol||CFG.CY,'TEST PLAY',9,1,Math.sin(t*2+i));
+    txt('TEST MODE',x+w-34,yy+22,CFG.PK,'right');
+  });
+  ctx.restore();
   BTNS.adminLtmBack={x:(LW-150)/2,y:LH-42,w:150,h:30};
   drawNeonBtn(BTNS.adminLtmBack.x,BTNS.adminLtmBack.y,150,30,CFG.PK,'← BACK',11,1,Math.sin(t*2));
 }
@@ -2844,23 +2921,25 @@ const SHOP_CATALOG=[
   {key:'SHIELD',       label:'SHIELD',          icon:'🛡', cost:150,  desc:'Absorb one hit'},
   {key:'HEALTH_BOOST', label:'HEALTH BOOST',    icon:'❤', cost:300,  desc:'5 lives for 60s!'},
 ];
-let shopOffers=[],shopSelected=-1;
+let shopOffers=[],shopSelected=-1,shopScroll=0,shopViewH=0,shopContentH=0;
 const SHOP_RECTS=[];
+function minShopScroll(){ return Math.min(0, shopViewH-shopContentH); }
 function shuffleShop() {
   const pool=[...SHOP_CATALOG].sort(()=>Math.random()-0.5);
-  shopOffers=pool.slice(0,3); shopSelected=-1; SHOP_RECTS.length=0;
+  shopOffers=pool.slice(0,3); shopSelected=-1; SHOP_RECTS.length=0; shopScroll=0;
 }
 
 function handleShopTap(p) {
-  if (hitBtn(p,BTNS.shopBack)) { SFX.click(); doTransition('MODESELECT'); return; }
-  if (hitBtn(p,BTNS.shopSkip)) { SFX.click(); startGame(null); return; }
-  SHOP_RECTS.forEach((r,i)=>{ if (hitBtn(p,r)) shopSelected=(shopSelected===i)?-1:i; });
-  if (hitBtn(p,BTNS.start)&&shopSelected>=0) { SFX.click();
+  const p2={x:p.x,y:p.y-shopScroll};
+  if (hitBtn(p2,BTNS.shopBack)) { SFX.click(); doTransition('MODESELECT'); return; }
+  if (hitBtn(p2,BTNS.shopSkip)) { SFX.click(); startGame(null); return; }
+  SHOP_RECTS.forEach((r,i)=>{ if (hitBtn(p2,r)) shopSelected=(shopSelected===i)?-1:i; });
+  if (hitBtn(p2,BTNS.start)&&shopSelected>=0) { SFX.click();
     const offer=shopOffers[shopSelected];
     if (totalGems>=offer.cost) {
       totalGems-=offer.cost; saveBank(totalGems); startGame(offer.key);
     } else { addNotif(`Need ${offer.cost}◆ gems!`,CFG.PK); SFX.hit(); }
-  } else if (hitBtn(p,BTNS.start)&&shopSelected<0) { SFX.click(); startGame(null); }
+  } else if (hitBtn(p2,BTNS.start)&&shopSelected<0) { SFX.click(); startGame(null); }
 }
 
 function drawShopScreen(t) {
@@ -2876,6 +2955,13 @@ function drawShopScreen(t) {
   SHOP_RECTS.length=0;
   const cardW=116,cardH=158,gap=7;
   const totalW=cardW*3+gap*2,startX=(LW-totalW)/2;
+  const viewTop=88,viewBottom=LH-10;
+  shopViewH=viewBottom-viewTop;
+  shopContentH=330;
+  shopScroll=clamp(shopScroll,minShopScroll(),0);
+  ctx.save();
+  clipRect(0,viewTop,LW,shopViewH);
+  ctx.translate(0,shopScroll);
 
   shopOffers.forEach((offer,i)=>{
     const cx=startX+i*(cardW+gap),cy=92;
@@ -2938,6 +3024,17 @@ function drawShopScreen(t) {
   const backY=skipY+46,backW=140,backX=(LW-backW)/2;
   BTNS.shopBack={x:backX,y:backY,w:backW,h:30};
   drawNeonBtn(backX,backY,backW,30,CFG.PK,'← BACK',9,0.85,0);
+  shopContentH=backY+30-viewTop+10;
+  ctx.restore();
+
+  if (minShopScroll()<0) {
+    const sbX=LW-10,sbY=viewTop,sbH=shopViewH;
+    const thumbH=Math.max(24,(shopViewH/(shopViewH+Math.abs(minShopScroll())))*sbH);
+    const track=Math.max(1,sbH-thumbH);
+    const thumbY=sbY + ((-shopScroll)/Math.abs(minShopScroll()))*track;
+    ctx.fillStyle='rgba(0,245,255,0.16)'; ctx.fillRect(sbX,sbY,4,sbH);
+    ctx.fillStyle='rgba(0,245,255,0.62)'; ctx.fillRect(sbX,thumbY,4,thumbH);
+  }
   ctx.restore();
 }
 
@@ -4991,7 +5088,7 @@ function startGame(starterPwr=null, forceNoStarter=false) {
   obsTimer=0; obsNext=rnd(...CFG.OBS_INT);
   lastMilestone=0; clusterTimer=0; clusterNext=8;
   jetpackCount=0; regenUsed=0;
-  pwrCounts={JETPACK:0,MAGNET:0,BOOST:0,SHIELD:0,SLOW:0,HEALTH_BOOST:0,MINI_JETPACK:0,NEW_STAGE:0,REGEN:0,X2_GEMS:0,GEM_DROP:0,BAD_LUCK:0};
+  pwrCounts={JETPACK:0,MAGNET:0,BOOST:0,SHIELD:0,SLOW:0,HEALTH_BOOST:0,MINI_JETPACK:0,NEW_STAGE:0,REGEN:0,X2_GEMS:0,X4_GEMS:0,GEM_DROP:0,BAD_LUCK:0,SICK:0,LTM_SPECIAL:0};
   // Adventure setup
   adventureStage=0; adventureStageTimer=0; impossibleStage=0; ltmStage=0; ltmStageTimer=0;
   ltmRotationIndex=(ltmForcedIndex>=0?ltmForcedIndex:getDailyLtmIndex());
@@ -5001,23 +5098,17 @@ function startGame(starterPwr=null, forceNoStarter=false) {
   stageTransT=0;
   immunityActive=false; immunityTimer=0; obstacleClearTimer=0; badLuckActive=false; badLuckTimer=0; badLuckSpawnT=0; gemDoubleActive=false; gemDoubleTimer=0; gemBoostMult=1; gemDropActive=false; gemDropTimer=0; gemDropSpawnTimer=0;
   terrain.reset(); player.reset();
-  // Set adventure starting speed
+  // Set starting speed by mode
+  if (gameMode==='ENDLESS') {
+    terrain.speed=CFG.SPD0;
+  }
   if (gameMode==='ADVENTURE') {
     const st=ADV_STAGES[0];
     terrain.speed=st.spd;
   }
-
   if (gameMode==='LTM') {
-    const mode=getActiveLtm();
-    const forced=(mode&&mode.forcedPowerups)||[];
-    if (Math.random()<0.10) return 'SICK';
-    if (Math.random()<0.12) return 'LTM_SPECIAL';
-    if (forced.length) {
-      const map={X2_SCORE:'BOOST',JETPACK:'JETPACK',MINI_JETPACK:'MINI_JETPACK',SHIELD:'SHIELD',MAGNET:'MAGNET',REGEN:'REGEN',HEALTH_BOOST:'HEALTH_BOOST',IMMUNITY:'SHIELD',X2_GEMS:'X2_GEMS',X4_GEMS:'X4_GEMS',GEM_DROP:'GEM_DROP'};
-      const key=forced[rndI(0,forced.length-1)];
-      return map[key]||'BOOST';
-    }
-    return ['BOOST','MAGNET','SHIELD','X2_GEMS'][rndI(0,3)];
+    const st=currentStageConfig();
+    terrain.speed=st.spd||terrain.speed;
   }
   if (gameMode==='IMPOSSIBLE') {
     const st=IMP_STAGES[0];
