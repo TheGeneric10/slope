@@ -99,7 +99,7 @@ function saveOptionPrefs(){ localStorage.setItem('slope_options',JSON.stringify(
 let OPTION_PREFS=loadOptionPrefs();
 
 // BUG FIX 1: Removed duplicate VERSION constant ('0.9.1' shadowed '0.9.2')
-const VERSION = 'pre-1.0.0';
+const VERSION = 'pre-1.0.0 (patch_03012026)';
 
 // Adventure stage configs
 const ADV_STAGES = [
@@ -116,6 +116,34 @@ const IMP_STAGES=[
   {name:'STAGE 2', label:'VERY HARD', spd:420, spdMax:640, shrink:0.010, theme:'rgba(255,40,40,0.14)'},
   {name:'STAGE 3', label:'INTENSE', spd:500, spdMax:700, shrink:0.012, theme:'rgba(255,30,30,0.18)'},
   {name:'STAGE 4', label:'EXTREME', spd:580, spdMax:760, shrink:0.014, theme:'rgba(255,10,10,0.24)'},
+];
+
+const LTM_MODES=[
+  {id:'gold_rush', name:'GOLD RUSH', desc:'Golden adventure score pop', cardCol:'#ffd700', stageDuration:30, stages:[
+    {name:'STAGE 1',label:'VERY EASY',spd:110,spdMax:230,shrink:0.0015,obsInt:[5.8,8.0]},
+    {name:'STAGE 2',label:'EASY',spd:180,spdMax:320,shrink:0.0035,obsInt:[4.6,6.6]},
+    {name:'STAGE 3',label:'MEDIUM',spd:250,spdMax:430,shrink:0.0048,obsInt:[3.8,5.5]},
+    {name:'STAGE 4',label:'HARD',spd:320,spdMax:520,shrink:0.0065,obsInt:[3.0,4.2]},
+    {name:'STAGE 5',label:'VERY HARD',spd:390,spdMax:620,shrink:0.0072,obsInt:[2.2,3.5]},
+    {name:'STAGE 6',label:'INTENSE',spd:470,spdMax:700,shrink:0.0085,obsInt:[1.5,2.7]},
+  ], forcedPowerups:['X2_SCORE','MINI_JETPACK','SHIELD','MAGNET','REGEN','HEALTH_BOOST','X4_GEMS','GEM_DROP'], stagePowerupStage:5, gemSet:[{col:'#ffd700',score:100,gems:3},{col:'#ff9900',score:250,gems:5},{col:'#ff3344',score:500,gems:10}],specialName:'GOLD FEVER',specialCol:'#ffd700'},
+  {id:'space', specialName:'COSMIC BURST', specialCol:'#7bc9ff', name:'SPACE', desc:'Low gravity star ride', cardCol:'#7bc9ff', stageDuration:50, stages:[
+    {name:'STAGE 1',label:'EASY',spd:95,spdMax:220,shrink:0.002,obsInt:[6.0,8.5]},
+    {name:'STAGE 2',label:'MEDIUM',spd:145,spdMax:290,shrink:0.0035,obsInt:[4.5,7.2]},
+    {name:'STAGE 3',label:'HARD',spd:210,spdMax:380,shrink:0.0055,obsInt:[3.8,6.0]},
+  ], forcedPowerups:['X2_SCORE','MINI_JETPACK','SHIELD','MAGNET','REGEN','HEALTH_BOOST','GEM_DROP'], stagePowerupStage:2, lowGravity:true},
+  {id:'volcano', specialName:'LAVA ARMOR', specialCol:'#ff5a2a', name:'VOLCANO', desc:'Eruptions and red pressure', cardCol:'#ff5a2a', stageDuration:40, stages:[
+    {name:'STAGE 1',label:'MEDIUM',spd:220,spdMax:420,shrink:0.0055,obsInt:[3.5,5.5]},
+    {name:'STAGE 2',label:'HARD',spd:320,spdMax:560,shrink:0.0082,obsInt:[2.4,4.0]},
+    {name:'STAGE 3',label:'VERY HARD',spd:460,spdMax:720,shrink:0.0125,obsInt:[1.4,2.4]},
+  ], forcedPowerups:['X2_SCORE','JETPACK','SHIELD','MAGNET','REGEN','HEALTH_BOOST','IMMUNITY','X2_GEMS','GEM_DROP'], stagePowerupStage:2, volcanoFX:true},
+  {id:'frostbite', specialName:'ICE FIELD', specialCol:'#7af0ff', name:'FROSTBITE', desc:'Frozen lanes and glide control', cardCol:'#7af0ff', stageDuration:35, stages:[{name:'STAGE 1',label:'CHILL',spd:150,spdMax:320,shrink:0.003,obsInt:[4.8,6.8]},{name:'STAGE 2',label:'COLD',spd:220,spdMax:430,shrink:0.005,obsInt:[3.4,5.2]},{name:'STAGE 3',label:'BLIZZARD',spd:320,spdMax:560,shrink:0.007,obsInt:[2.4,4.0]}], forcedPowerups:['X2_SCORE','SHIELD','MAGNET','REGEN','GEM_DROP']},
+  {id:'metro', specialName:'RAIL RUSH', specialCol:'#ff4dd2', name:'NEON METRO', desc:'City rails and fast pickups', cardCol:'#ff4dd2', stageDuration:34, stages:[{name:'STAGE 1',label:'RUSH',spd:180,spdMax:340,shrink:0.004,obsInt:[4.4,6.2]},{name:'STAGE 2',label:'HYPER',spd:260,spdMax:460,shrink:0.0064,obsInt:[3.1,4.8]},{name:'STAGE 3',label:'BLAZE',spd:360,spdMax:620,shrink:0.008,obsInt:[2.0,3.5]}], forcedPowerups:['X2_SCORE','MAGNET','REGEN','X2_GEMS','GEM_DROP']},
+  {id:'storm', specialName:'THUNDER CORE', specialCol:'#d3c4ff', name:'THUNDER RUN', desc:'Electric storms and shake', cardCol:'#d3c4ff', stageDuration:38, stages:[{name:'STAGE 1',label:'STATIC',spd:170,spdMax:320,shrink:0.0035,obsInt:[4.8,6.8]},{name:'STAGE 2',label:'SPARK',spd:240,spdMax:450,shrink:0.006,obsInt:[3.0,4.8]},{name:'STAGE 3',label:'THUNDER',spd:330,spdMax:610,shrink:0.0078,obsInt:[2.1,3.3]}], forcedPowerups:['X2_SCORE','SHIELD','IMMUNITY','REGEN','GEM_DROP']},
+  {id:'hacker', specialName:'GLITCH BREAK', specialCol:'#45ffcc', name:'GLITCH GRID', desc:'Digital chaos and pulse', cardCol:'#45ffcc', stageDuration:32, stages:[{name:'STAGE 1',label:'PATCHED',spd:160,spdMax:330,shrink:0.0036,obsInt:[4.7,6.5]},{name:'STAGE 2',label:'BREACH',spd:250,spdMax:470,shrink:0.0063,obsInt:[3.0,4.7]},{name:'STAGE 3',label:'MELTDOWN',spd:350,spdMax:620,shrink:0.0081,obsInt:[2.0,3.2]}], forcedPowerups:['X2_SCORE','MAGNET','X4_GEMS','REGEN','GEM_DROP']},
+  {id:'void', specialName:'VOID SHELL', specialCol:'#a98bff', name:'VOID TUNNEL', desc:'Ultra dark precision route', cardCol:'#a98bff', stageDuration:42, stages:[{name:'STAGE 1',label:'DUSK',spd:170,spdMax:330,shrink:0.0041,obsInt:[4.8,6.4]},{name:'STAGE 2',label:'NIGHT',spd:260,spdMax:470,shrink:0.0066,obsInt:[2.8,4.6]},{name:'STAGE 3',label:'VOID',spd:360,spdMax:640,shrink:0.0088,obsInt:[1.8,3.0]}], forcedPowerups:['X2_SCORE','SHIELD','MAGNET','REGEN','IMMUNITY']},
+  {id:'jungle', specialName:'WILD GROWTH', specialCol:'#7dff60', name:'JUNGLE DASH', desc:'Roots, rain and gem rain', cardCol:'#7dff60', stageDuration:37, stages:[{name:'STAGE 1',label:'WET',spd:155,spdMax:320,shrink:0.0034,obsInt:[4.9,6.7]},{name:'STAGE 2',label:'VINES',spd:235,spdMax:430,shrink:0.0057,obsInt:[3.2,5.0]},{name:'STAGE 3',label:'CANOPY',spd:330,spdMax:580,shrink:0.0075,obsInt:[2.2,3.6]}], forcedPowerups:['X2_SCORE','MAGNET','REGEN','HEALTH_BOOST','GEM_DROP']},
+  {id:'chrono', specialName:'TIME FRACTURE', specialCol:'#fff37b', name:'TIME WARP', desc:'Temporal speed spikes', cardCol:'#fff37b', stageDuration:36, stages:[{name:'STAGE 1',label:'SLOW',spd:125,spdMax:260,shrink:0.0028,obsInt:[5.0,7.0]},{name:'STAGE 2',label:'RIFT',spd:245,spdMax:440,shrink:0.006,obsInt:[3.0,4.8]},{name:'STAGE 3',label:'WARP',spd:390,spdMax:660,shrink:0.0092,obsInt:[1.7,2.9]}], forcedPowerups:['X2_SCORE','JETPACK','MAGNET','X2_GEMS','X4_GEMS']},
 ];
 </script>
 
@@ -162,6 +190,8 @@ let _lastTouchEnd = 0;
 let questTouchY = null;
 let profileTouchY = null;
 let leaderboardTouchY = null;
+let adminLtmTouchY = null;
+let shopTouchY = null;
 let joyL=false, joyR=false;
 let usingTouchJoy=false;
 const isTouchDevice=('ontouchstart' in window)||(navigator.maxTouchPoints>0);
@@ -182,10 +212,10 @@ const BTNS = {
   pause:null, resume:null, menuFromPause:null,
   shopSkip:null, shopBack:null,
   charBack:null, charPrev:null, charNext:null, charShop:null,
-  modeEndless:null, modeAdventure:null, modeImpossible:null,
+  modeEndless:null, modeAdventure:null, modeImpossible:null, modeLtm:null,
   about:null,
   quests:null, questsBack:null,
-  leaderboard:null, leaderboardPause:null, leaderboardBack:null,
+  leaderboard:null, leaderboardPause:null, leaderboardBack:null, leaderboardTabGlobal:null, leaderboardTabEndless:null, leaderboardTabAdventure:null, leaderboardTabImpossible:null, leaderboardTabLtm:null,
   upgrades:null, upgradesBack:null,
   continueBuy:null, continueGiveUp:null,
   questsFilter:null, questsFilterOpt0:null, questsFilterOpt1:null, questsFilterOpt2:null, questsFilterOpt3:null,
@@ -195,10 +225,10 @@ const BTNS = {
   modeSoon:null, modeWideSoon:null,
   authAction:null, authBack:null, authSubmit:null, authRestart:null,
   pauseOptions:null, optionsBack:null, optionsToggleQuests:null, optionsToggleTutorials:null, hudOptions:null,
-  signinEmail:null, signinPass:null, signupName:null, signupEmail:null, signupPass:null, signupConfirm:null, signupSwitch:null, signinSwitch:null, signinGoogle:null,
+  signinEmail:null, signinPass:null, signupName:null, signupEmail:null, signupPass:null, signupConfirm:null, signupSwitch:null, signinSwitch:null, signinGoogle:null, signupGoogle:null,
   profileChangePassword:null, profileAvatar:null, profileTrash:null, profileUploadOk:null, profileUploadCancel:null, profileUploadZoomIn:null, profileUploadZoomOut:null, profileUploadReset:null, profileUploadErrOk:null,
-  adminBack:null, adminAuthInput:null, adminAuthSubmit:null, adminSetGems:null, adminGrantSelected:null, adminUnlockAll:null, adminLockAll:null, adminLockSelectedSkin:null, adminLockSelectedAura:null, adminLockSelectedTheme:null, adminVerifyUid:null, adminVerifyToggle:null, adminVerifyApply:null,
-  controls:null, controlsBack:null, touchJoyL:null, touchJoyR:null,
+  adminBack:null, adminAuthInput:null, adminAuthSubmit:null, adminSetGems:null, adminGrantSelected:null, adminUnlockAll:null, adminLockAll:null, adminLockSelectedSkin:null, adminLockSelectedAura:null, adminLockSelectedTheme:null, adminVerifyUid:null, adminVerifyToggle:null, adminVerifyApply:null, adminViewLtm:null, adminLtmBack:null,
+  controls:null, controlsBack:null, touchJoyL:null, touchJoyR:null, noAds:null, noAdsBuy:null, noAdsContinue:null, overLeaderboard:null,
 };
 
 function hitBtn(p, rect) {
@@ -276,6 +306,12 @@ function handleTap(e) {
   }
   if (gs === 'LOADING') return;
   if (gs === 'MENU') {
+    if (noAdsPopup) {
+      if (hitBtn(p,BTNS.noAdsBuy)) { SFX.click(); addNotif('Purchase flow coming soon.',CFG.YL); noAdsPopup=false; return; }
+      if (hitBtn(p,BTNS.noAdsContinue)) { SFX.click(); noAdsPopup=false; return; }
+      return;
+    }
+    if (hitBtn(p,BTNS.noAds)) { SFX.click(); noAdsPopup=true; return; }
     if (hitBtn(p, BTNS.start))    { SFX.click(); doTransition('MODESELECT'); return; }
     if (hitBtn(p, BTNS.about))    { SFX.click(); doTransition('ABOUT');      return; }
     if (hitBtn(p, BTNS.controls)) { SFX.click(); doTransition('CONTROLS');   return; }
@@ -291,6 +327,11 @@ function handleTap(e) {
     if (hitBtn(p, BTNS.modeEndless))   { SFX.click(); gameMode='ENDLESS';   doTransition('SHOP'); return; }
     if (hitBtn(p, BTNS.modeAdventure)) { SFX.click(); gameMode='ADVENTURE'; doTransition('SHOP'); return; }
     if (hitBtn(p, BTNS.modeImpossible)) { SFX.click(); openConfirm('IMPOSSIBLE_START','IMPOSSIBLE MODE WARNING','One life only. No starter powerups. Are you sure?'); return; }
+    if (hitBtn(p, BTNS.modeLtm)) {
+      if (!navigator.onLine) { addNotif('PLAYER OFFLINE',CFG.PK); return; }
+      SFX.click(); gameMode='LTM'; ltmForcedIndex=-1; doTransition('SHOP'); return;
+    }
+    if (hitBtn(p, BTNS.adminViewLtm) && isAdminUser) { SFX.click(); doTransition('ADMIN_LTM'); return; }
     if (hitBtn(p, BTNS.back)) { SFX.click(); doTransition('MENU'); return; }
     return;
   }
@@ -317,9 +358,15 @@ function handleTap(e) {
     return;
   }
   if (gs === 'LEADERBOARD') {
+    if (hitBtn(p,BTNS.leaderboardTabGlobal)) { SFX.click(); leaderboardCategory='GLOBAL'; triggerLeaderboardFetch(true); return; }
+    if (hitBtn(p,BTNS.leaderboardTabEndless)) { SFX.click(); leaderboardCategory='ENDLESS'; triggerLeaderboardFetch(true); return; }
+    if (hitBtn(p,BTNS.leaderboardTabAdventure)) { SFX.click(); leaderboardCategory='ADVENTURE'; triggerLeaderboardFetch(true); return; }
+    if (hitBtn(p,BTNS.leaderboardTabImpossible)) { SFX.click(); leaderboardCategory='IMPOSSIBLE'; triggerLeaderboardFetch(true); return; }
+    if (hitBtn(p,BTNS.leaderboardTabLtm)) { SFX.click(); leaderboardCategory='LTM'; triggerLeaderboardFetch(true); return; }
     if (hitBtn(p, BTNS.leaderboardBack)) {
       SFX.click();
       if (leaderboardReturnState==='PAUSE') doTransition('PAUSE');
+      else if (leaderboardReturnState==='OVER') doTransition('OVER');
       else doTransition('MENU');
       return;
     }
@@ -361,12 +408,27 @@ function handleTap(e) {
     handleAdminMenuTap(p);
     return;
   }
+  if (gs === 'ADMIN_LTM') {
+    if (hitBtn(p,BTNS.adminLtmBack)) { SFX.click(); doTransition('MODESELECT'); return; }
+    for (let i=0;i<adminLtmTestButtons.length;i++) {
+      const b=adminLtmTestButtons[i];
+      if (hitBtn(p,b)) {
+        SFX.click();
+        ltmForcedIndex=i;
+        gameMode='LTM';
+        doTransition('SHOP');
+        return;
+      }
+    }
+    return;
+  }
   if (gs === 'CONTINUE') {
     if (hitBtn(p, BTNS.continueBuy)) { SFX.click(); tryContinueRun(); return; }
     if (hitBtn(p, BTNS.continueGiveUp)) { SFX.click(); openConfirm('CONTINUE_GIVEUP','GIVE UP RUN?','You will lose this run progress.'); return; }
     return;
   }
   if (gs === 'OVER') {
+    if (hitBtn(p,BTNS.overLeaderboard)) { SFX.click(); leaderboardReturnState='OVER'; leaderboardCategory=(gameMode==='ADVENTURE'?'ADVENTURE':(gameMode==='IMPOSSIBLE'?'IMPOSSIBLE':(gameMode==='LTM'?'LTM':'ENDLESS'))); doTransition('LEADERBOARD'); triggerLeaderboardFetch(true); return; }
     if (hitBtn(p, BTNS.retry)) {
       SFX.click();
       if (gameMode==='IMPOSSIBLE') { openConfirm('IMPOSSIBLE_RETRY','RETRY IMPOSSIBLE?','Restart with intro screen and one life only.'); return; }
@@ -407,6 +469,8 @@ canvas.addEventListener('touchstart', e => {
   questTouchY = t.clientY;
   profileTouchY = t.clientY;
   leaderboardTouchY = t.clientY;
+  adminLtmTouchY = t.clientY;
+  shopTouchY = t.clientY;
   touchSwipe = 0; touchSwipeTarget = 0;
 }, { passive:false });
 
@@ -455,6 +519,16 @@ canvas.addEventListener('touchmove', e => {
     profileTouchY=t.clientY;
     return;
   }
+  if (gs==='SHOP') {
+    const t=e.touches[0];
+    if (shopTouchY!==null) {
+      const dy=t.clientY-shopTouchY;
+      if (Math.abs(dy)>2) touchMoved=true;
+      shopScroll=clamp(shopScroll+dy, minShopScroll(), 0);
+    }
+    shopTouchY=t.clientY;
+    return;
+  }
   if (gs==='ADMIN_MENU') {
     const t=e.touches[0];
     if (profileTouchY!==null) {
@@ -463,6 +537,16 @@ canvas.addEventListener('touchmove', e => {
       adminScroll=clamp(adminScroll+dy, minAdminScroll(), 0);
     }
     profileTouchY=t.clientY;
+    return;
+  }
+  if (gs==='ADMIN_LTM') {
+    const t=e.touches[0];
+    if (adminLtmTouchY!==null) {
+      const dy=t.clientY-adminLtmTouchY;
+      if (Math.abs(dy)>2) touchMoved=true;
+      adminLtmScroll=clamp(adminLtmScroll+dy, minAdminLtmScroll(), 0);
+    }
+    adminLtmTouchY=t.clientY;
     return;
   }
 
@@ -480,11 +564,11 @@ canvas.addEventListener('touchend', e => {
   if (!touchMoved) {
     handleTap(e);
   }
-  touchActive = false; touchSwipe = 0; touchSwipeTarget = 0; touchMoved = false; questTouchY = null; profileTouchY=null; leaderboardTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
+  touchActive = false; touchSwipe = 0; touchSwipeTarget = 0; touchMoved = false; questTouchY = null; profileTouchY=null; leaderboardTouchY=null; adminLtmTouchY=null; shopTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
 }, { passive:false });
 
 canvas.addEventListener('touchcancel', () => {
-  touchActive = false; touchSwipe = 0; touchSwipeTarget = 0; touchMoved = false; questTouchY = null; profileTouchY=null; leaderboardTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
+  touchActive = false; touchSwipe = 0; touchSwipeTarget = 0; touchMoved = false; questTouchY = null; profileTouchY=null; leaderboardTouchY=null; adminLtmTouchY=null; shopTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
 });
 
 // Mouse (desktop)
@@ -567,6 +651,16 @@ document.addEventListener('wheel', e => {
     optionsScroll=clamp(optionsScroll - e.deltaY*0.8, minOptionsScroll(), 0);
     return;
   }
+  if (gs==='SHOP') {
+    e.preventDefault();
+    shopScroll=clamp(shopScroll - e.deltaY*0.8, minShopScroll(), 0);
+    return;
+  }
+  if (gs==='ADMIN_LTM') {
+    e.preventDefault();
+    adminLtmScroll=clamp(adminLtmScroll - e.deltaY*0.8, minAdminLtmScroll(), 0);
+    return;
+  }
 }, { passive:false });
 
 // Keyboard
@@ -634,6 +728,7 @@ window.addEventListener('keydown', e => {
   if (e.key==='Escape' && gs==='PROFILE')   { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='ADMIN_AUTH') { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='ADMIN_MENU') { doTransition('MENU'); }
+  if (e.key==='Escape' && gs==='ADMIN_LTM') { doTransition('MODESELECT'); }
   if (e.key.toLowerCase()==='m' && isAdminUser && (gs==='MENU' || gs==='PROFILE' || gs==='SETTINGS' || gs==='OPTIONS')) {
     adminAuthState='idle'; adminAuthMsg=''; adminAuthInput='';
     doTransition('ADMIN_AUTH');
@@ -718,6 +813,11 @@ function rrect(x,y,w,h,r) {
 function hexToRgba(hex,a) {
   const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
   return `rgba(${r},${g},${b},${a})`;
+}
+function clipRect(x,y,w,h) {
+  ctx.beginPath();
+  ctx.rect(x,y,w,h);
+  ctx.clip();
 }
 function drawNeonBtn(x,y,w,h,col,label,fontSize=14,alpha=1,pulse=1) {
   ctx.save(); ctx.globalAlpha=alpha*(0.7+0.3*pulse);
@@ -1076,9 +1176,9 @@ class Terrain {
   update(dt) {
     this.t+=dt;
     // Adventure mode: speed capped by stage config
-    const stage=(gameMode==='IMPOSSIBLE'?(IMP_STAGES[impossibleStage]||IMP_STAGES[0]):(ADV_STAGES[adventureStage]||ADV_STAGES[0]));
-    const maxSpd = (gameMode==='ADVENTURE'||gameMode==='IMPOSSIBLE') ? stage.spdMax : CFG.SPD_MAX;
-    const shrink = (gameMode==='ADVENTURE'||gameMode==='IMPOSSIBLE') ? stage.shrink : CFG.SHRINK;
+    const stage=currentStageConfig();
+    const maxSpd = isStageMode() ? stage.spdMax : CFG.SPD_MAX;
+    const shrink = isStageMode() ? stage.shrink : CFG.SHRINK;
     this.speed=Math.min(maxSpd, this.speed+CFG.SPD_ACC*dt);
     this.trackW=Math.max(CFG.TRACK_MIN, this.trackW-shrink*this.speed*dt);
     const dy=this.speed*dt;
@@ -1216,7 +1316,16 @@ class Gem {
     const lx=w.left+pad,rx=w.right-pad;
     this.x=lx<rx?rnd(lx,rx):(w.left+w.right)/2; this.y=-12;
     const ti=Math.random()<0.6?0:Math.random()<0.6?1:2;
-    this.type=GEM_TYPES[ti]; this.rot=0; this.active=true; this.collected=false;
+    this.type=GEM_TYPES[ti];
+    if (gameMode==='LTM') {
+      const lm=getActiveLtm();
+      if (lm&&lm.id==='gold_rush'&&Array.isArray(lm.gemSet)&&lm.gemSet.length>=3) {
+        const r=Math.random();
+        const pick=r<0.62?lm.gemSet[0]:(r<0.88?lm.gemSet[1]:lm.gemSet[2]);
+        this.type={col:pick.col,pts:pick.score,gemVal:pick.gems};
+      }
+    }
+    this.rot=0; this.active=true; this.collected=false;
   }
   update(dt,speed) {
     if (this.collected){this.active=false;return;}
@@ -1257,6 +1366,9 @@ const PWR_TYPES={
   X2_GEMS:     {col:'#ffd700',label:'X2 GEMS',      icon:'💎', dur:10.0},
   GEM_DROP:    {col:'#99ddff',label:'GEM DROP',     icon:'💠', dur:8.0},
   BAD_LUCK:    {col:'#ff3333',label:'BAD LUCK',     icon:'☠', dur:5.0},
+  X4_GEMS:     {col:'#ffe066',label:'X4 GEMS',      icon:'💠', dur:8.0},
+  SICK:        {col:'#ffffff',label:'SICK POWER',   icon:'🧪', dur:12.0},
+  LTM_SPECIAL: {col:'#ffffff',label:'LTM SPECIAL',  icon:'✹', dur:10.0},
 };
 const PWR_WEIGHTED=[
   ...Array(4).fill('SHIELD'),
@@ -1278,6 +1390,19 @@ function randPwrKey() {
     if (adventureStage>=5 && Math.random()<0.28) return 'MINI_JETPACK';
     pool=pool.filter(k=>k!=='BAD_LUCK');
     return pool[rndI(0,pool.length-1)];
+  }
+
+  if (gameMode==='LTM') {
+    const mode=getActiveLtm();
+    const forced=(mode&&mode.forcedPowerups)||[];
+    if (Math.random()<0.10) return 'SICK';
+    if (Math.random()<0.12) return 'LTM_SPECIAL';
+    if (forced.length) {
+      const map={X2_SCORE:'BOOST',JETPACK:'JETPACK',MINI_JETPACK:'MINI_JETPACK',SHIELD:'SHIELD',MAGNET:'MAGNET',REGEN:'REGEN',HEALTH_BOOST:'HEALTH_BOOST',IMMUNITY:'SHIELD',X2_GEMS:'X2_GEMS',X4_GEMS:'X4_GEMS',GEM_DROP:'GEM_DROP'};
+      const key=forced[rndI(0,forced.length-1)];
+      return map[key]||'BOOST';
+    }
+    return ['BOOST','MAGNET','SHIELD','X2_GEMS'][rndI(0,3)];
   }
   if (gameMode==='IMPOSSIBLE') {
     let pool=PWR_WEIGHTED.filter(k=>!['REGEN','HEALTH_BOOST','NEW_STAGE'].includes(k));
@@ -1307,14 +1432,27 @@ class PowerUp {
     if (!this.active) return;
     const {x,y,t,info,key}=this;
     ctx.save(); ctx.translate(x,y);
-    const isSpecial=key==='JETPACK'||key==='NEW_STAGE'||key==='MINI_JETPACK';
+    const isSpecial=key==='JETPACK'||key==='NEW_STAGE'||key==='MINI_JETPACK'||key==='SICK'||key==='LTM_SPECIAL'||key==='X4_GEMS';
     if (isSpecial) {
-      glow(info.col,28);
-      ctx.strokeStyle=info.col; ctx.lineWidth=2;
+      let col=info.col;
+      const rainbow=(key==='SICK'||key==='LTM_SPECIAL');
+      if (rainbow) col=`hsl(${Math.floor((t*240)%360)},100%,60%)`;
+      if (key==='LTM_SPECIAL'&&gameMode==='LTM') col=(getActiveLtm().specialCol||col);
+      const r=(key==='SICK'||key==='LTM_SPECIAL')?22:(key==='X4_GEMS'?20:18);
+      glow(col,30);
+      ctx.strokeStyle=col; ctx.lineWidth=2.6;
       ctx.globalAlpha=0.5+0.4*Math.sin(t*5);
-      ctx.beginPath(); ctx.arc(0,0,18,0,Math.PI*2); ctx.stroke();
-      ctx.globalAlpha=0.2+0.1*Math.sin(t*7);
-      ctx.fillStyle=info.col; ctx.beginPath(); ctx.arc(0,0,18,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=0.22+0.12*Math.sin(t*7);
+      ctx.fillStyle=col; ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.fill();
+      if (rainbow) {
+        ctx.globalAlpha=0.5;
+        for (let i=0;i<6;i++) {
+          const a=t*2+i*Math.PI/3;
+          const rc=`hsl(${(i*60+Math.floor(t*260))%360},100%,65%)`;
+          glow(rc,8); circle(Math.cos(a)*(r+3),Math.sin(a)*(r+3),2.6,rc);
+        }
+      }
       ctx.globalAlpha=1;
       ctx.font='bold 14px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.fillStyle='#fff'; glow('#fff',8); ctx.fillText(info.icon,0,1);
@@ -1335,7 +1473,7 @@ class PowerUp {
   }
   checkHit(px,py) {
     if (this.collected) return false;
-    return Math.hypot(px-this.x,py-this.y)<20;
+    return Math.hypot(px-this.x,py-this.y)<((this.key==='SICK'||this.key==='LTM_SPECIAL'||this.key==='X4_GEMS')?26:20);
   }
 }
 
@@ -1622,9 +1760,9 @@ function drawHUD() {
   ctx.restore();
 
   // Adventure stage indicator
-  if (gameMode==='ADVENTURE' || gameMode==='IMPOSSIBLE') {
+  if (isStageMode()) {
     ctx.save(); setFont(9,'700');
-    const st=gameMode==='IMPOSSIBLE'?(IMP_STAGES[impossibleStage]||IMP_STAGES[0]):(ADV_STAGES[adventureStage]);
+    const st=currentStageConfig();
     glow(gameMode==='IMPOSSIBLE'?'#ff4455':CFG.GR,12);
     txt(`${st.name} · ${st.label}`,LW/2,pdY+68,gameMode==='IMPOSSIBLE'?'#ff4455':CFG.GR); ctx.restore();
   }
@@ -1725,7 +1863,7 @@ function drawHUD() {
   if (miniJetpackActive) {
     activeTimers.push({icon:'🛸',label:'MINI JETPACK',col:'#88ffcc',time:miniJetpackTimer});
   }
-  if (gemDoubleActive) activeTimers.push({icon:'💎',label:'X2 GEMS',col:'#ffd700',time:(gameMode==='IMPOSSIBLE'&&impossibleStage>=2)?999:gemDoubleTimer});
+  if (gemDoubleActive) activeTimers.push({icon:'💎',label:`X${Math.max(2,gemBoostMult)} GEMS`,col:'#ffd700',time:(gameMode==='IMPOSSIBLE'&&impossibleStage>=2)?999:gemDoubleTimer});
   if (gemDropActive) activeTimers.push({icon:'💠',label:'GEM DROP',col:'#99ddff',time:gemDropTimer});
   if (newStageActive) {
     activeTimers.push({icon:'🌀',label:'NEW STAGE',col:'#66bbff',time:newStageTimer});
@@ -1980,7 +2118,20 @@ function drawStartScreen(t) {
   const authW=188,authH=28,authX=(LW-authW)/2;
   BTNS.authAction={x:authX,y:btnY,w:authW,h:authH};
   drawNeonBtn(authX,btnY,authW,authH,'#8a8a8a',isSignedIn?'👤 VIEW PROFILE':'SIGN IN!',10,0.9,Math.sin(t*2.2));
-  if (!isSignedIn) {
+  const nameBannerW=120;
+  ctx.save();
+  ctx.fillStyle='rgba(60,130,255,0.65)'; ctx.fillRect(LW-nameBannerW-14,10,nameBannerW,20);
+  ctx.strokeStyle='rgba(180,220,255,0.85)'; ctx.lineWidth=1; ctx.strokeRect(LW-nameBannerW-14,10,nameBannerW,20);
+  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt((isSignedIn?(auth.name||'RUNNER'):'GUEST').slice(0,14),LW-20,24,'#fff','right');
+  ctx.restore();
+  BTNS.noAds={x:8,y:8,w:28,h:28};
+  ctx.save(); ctx.fillStyle='rgba(255,30,30,0.75)'; ctx.fillRect(8,8,28,28); ctx.strokeStyle='#ff9090'; ctx.strokeRect(8,8,28,28);
+  setFont(10,'900',"'Share Tech Mono',monospace"); noGlow(); txt('⛔',22,27,'#fff'); ctx.restore();
+  if (!navigator.onLine) {
+    setFont(14,'900'); glow(CFG.PK,12); txt('PLAYER OFFLINE',LW/2,LH/2-8,CFG.PK);
+    setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); txt('Connect to internet to load leaderboard.',LW/2,LH/2+16,CFG.CY);
+    leaderboardContentH=listH;
+  } else if (!isSignedIn) {
     ctx.save(); ctx.fillStyle='#ffe600'; ctx.fillRect(authX+authW-74,btnY-2,72,12);
     setFont(6,'900',"'Share Tech Mono',monospace"); noGlow(); ctx.fillStyle='#000';
     txt('SAVE PROGRESS!',authX+authW-38,btnY+7,'#000'); ctx.restore();
@@ -1994,6 +2145,19 @@ function drawStartScreen(t) {
   }
   ctx.save(); noGlow(); setFont(10,'700'); glow(CFG.CY,8); ctx.globalAlpha=0.7;
   txt(`◆ ${totalGems}`,LW-14,LH-8,CFG.CY,'right'); ctx.restore();
+  if (noAdsPopup) {
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,0.74)'; ctx.fillRect(0,0,LW,LH);
+    const w=280,h=170,x=(LW-w)/2,y=(LH-h)/2;
+    ctx.fillStyle='#111'; ctx.fillRect(x,y,w,h);
+    ctx.strokeStyle=CFG.PK; ctx.lineWidth=2; glow(CFG.PK,10); ctx.strokeRect(x,y,w,h);
+    setFont(16,'900'); txt('TIRED OF ADS?',LW/2,y+30,'#fff');
+    BTNS.noAdsBuy={x:x+20,y:y+62,w:w-40,h:36};
+    BTNS.noAdsContinue={x:x+20,y:y+110,w:w-40,h:30};
+    drawNeonBtn(BTNS.noAdsBuy.x,BTNS.noAdsBuy.y,BTNS.noAdsBuy.w,BTNS.noAdsBuy.h,CFG.YL,'PURCHASE $2.99',12,1,Math.sin(t*3));
+    drawNeonBtn(BTNS.noAdsContinue.x,BTNS.noAdsContinue.y,BTNS.noAdsContinue.w,BTNS.noAdsContinue.h,'#777','CONTINUE WITH ADS',10,1,0);
+    ctx.restore();
+  }
   drawFooter();
   ctx.restore(); // menuSlideY translate
 }
@@ -2113,13 +2277,14 @@ function drawModeSelect(t) {
   setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.55;
   txt('Pick a lane',LW/2,82,'rgba(0,245,255,0.55)'); ctx.globalAlpha=1;
 
-  const cardY=106, cardH=404, cardW=118, gap=12;
-  const startX=(LW-(cardW*3+gap*2))/2;
+  const cardY=102, cardH=382, cardW=88, gap=8;
+  const startX=(LW-(cardW*4+gap*3))/2;
 
   const cards=[
-    {key:'modeEndless',x:startX,col:CFG.CY,title:'ENDLESS',sub:'CLASSIC',icon:'∞',feats:['Classic run','No stage cap','Score chase'],btn:'PLAY'},
-    {key:'modeAdventure',x:startX+cardW+gap,col:CFG.GR,title:'ADVENTURE',sub:'STAGES',icon:'🌀',feats:['Stage flow','Difficulty ramp','Rewards'],btn:'PLAY'},
-    {key:'modeImpossible',x:startX+(cardW+gap)*2,col:'#ff4455',title:'IMPOSSIBLE',sub:'ONE LIFE',icon:'☠',feats:['4 brutal stages','No life regen','Red storm mode'],btn:'PLAY'}
+    {key:'modeEndless',x:startX,col:CFG.CY,title:'ENDLESS',sub:'CLASSIC',icon:'∞',feats:['Classic run','No cap','Score chase'],btn:'PLAY'},
+    {key:'modeAdventure',x:startX+cardW+gap,col:CFG.GR,title:'ADVENTURE',sub:'STAGES',icon:'🌀',feats:['Stage flow','Ramp','Rewards'],btn:'PLAY'},
+    {key:'modeImpossible',x:startX+(cardW+gap)*2,col:'#ff4455',title:'IMPOSSIBLE',sub:'ONE LIFE',icon:'☠',feats:['4 brutal','No regen','Red storm'],btn:'PLAY'},
+    {key:'modeLtm',x:startX+(cardW+gap)*3,col:'#ffd700',title:'LTM',sub:'DAILY',icon:'★',feats:['Daily mode','Special rules','Bonus powerups'],btn:'PLAY'}
   ];
 
   cards.forEach((c,i)=>{
@@ -2142,15 +2307,21 @@ function drawModeSelect(t) {
     ctx.restore();
   });
 
-  const soonW=cardW*3+gap*2, soonH=44, soonX=startX, soonY=cardY+cardH+18;
+  const daily=getActiveLtm();
+  const soonW=cardW*4+gap*3, soonH=50, soonX=startX, soonY=cardY+cardH+12;
   BTNS.modeWideSoon={x:soonX,y:soonY,w:soonW,h:soonH};
   ctx.save();
-  ctx.fillStyle='rgba(130,130,130,0.12)'; ctx.fillRect(soonX,soonY,soonW,soonH);
-  glow('#9a9a9a',12); ctx.strokeStyle='#8d8d8d'; ctx.lineWidth=2; ctx.strokeRect(soonX,soonY,soonW,soonH);
-  setFont(18,'900'); glow('#c2c2c2',8); txt('?',soonX+22,soonY+27,'#bdbdbd','left');
-  setFont(11,'700',"'Share Tech Mono',monospace"); noGlow();
-  txt('LTM Gamemodes Coming Soon in 1.0.0!',soonX+soonW-14,soonY+27,'#c7c7c7','right');
+  ctx.fillStyle='rgba(255,230,0,0.2)'; ctx.fillRect(soonX,soonY,soonW,soonH);
+  glow('#ffe45a',12); ctx.strokeStyle='#e8d24d'; ctx.lineWidth=2; ctx.strokeRect(soonX,soonY,soonW,soonH);
+  setFont(9,'900',"'Share Tech Mono',monospace"); noGlow(); txt(`DAILY LTM: ${daily.name}`,soonX+10,soonY+18,'#000','left');
+  txt(`ROTATES IN ${getDailyCountdown()}`,soonX+10,soonY+36,'#000','left');
   ctx.restore();
+  if (isAdminUser) {
+    BTNS.adminViewLtm={x:soonX,y:soonY+56,w:soonW,h:28};
+    ctx.fillStyle='rgba(255,230,0,0.9)'; ctx.fillRect(BTNS.adminViewLtm.x,BTNS.adminViewLtm.y,BTNS.adminViewLtm.w,BTNS.adminViewLtm.h);
+    ctx.strokeStyle='#000'; ctx.strokeRect(BTNS.adminViewLtm.x,BTNS.adminViewLtm.y,BTNS.adminViewLtm.w,BTNS.adminViewLtm.h);
+    setFont(10,'900',"'Share Tech Mono',monospace"); noGlow(); txt('ADMIN * VIEW ALL LTM!',LW/2,BTNS.adminViewLtm.y+18,'#000');
+  }
 
   const bW=130,bH=34,bX=(LW-bW)/2,bY=LH-46;
   BTNS.back={x:bX,y:bY,w:bW,h:bH};
@@ -2306,6 +2477,16 @@ function drawLeaderboardScreen(t) {
   setFont(32,'900'); glow(CFG.GR,20); txt('LEADERBOARD',LW/2,54,CFG.GR);
   setFont(8,'400',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.6;
   txt('Top 100 · refreshes every hour',LW/2,72,CFG.CY); ctx.globalAlpha=1;
+  const tabs=['GLOBAL','ENDLESS','ADVENTURE','IMPOSSIBLE','LTM'];
+  const tabY=78, tabW=72, tabH=16, tabGap=4, tabX=(LW-(tabW*tabs.length+tabGap*(tabs.length-1)))/2;
+  tabs.forEach((tb,i)=>{
+    const x=tabX+i*(tabW+tabGap);
+    BTNS['leaderboardTab'+tb.charAt(0)+tb.slice(1).toLowerCase()]={x,y:tabY,w:tabW,h:tabH};
+    const on=leaderboardCategory===tb;
+    ctx.fillStyle=on?'rgba(57,255,20,0.28)':'rgba(0,0,0,0.35)'; ctx.fillRect(x,tabY,tabW,tabH);
+    ctx.strokeStyle=on?CFG.GR:'rgba(130,130,130,0.4)'; ctx.strokeRect(x,tabY,tabW,tabH);
+    setFont(7,'900',"'Share Tech Mono',monospace"); txt(tb,x+tabW/2,tabY+11,on?CFG.GR:'#9ea6ad');
+  });
 
   const bx=24,by=98,bw=LW-48,bh=520;
   const listX=bx+10, listY=by+42, listW=bw-20, listH=bh-54;
@@ -2319,7 +2500,11 @@ function drawLeaderboardScreen(t) {
   txt('SCORE',bx+bw-20,by+26,CFG.YL,'right');
   ctx.strokeStyle='rgba(57,255,20,0.25)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(listX,by+30); ctx.lineTo(listX+listW,by+30); ctx.stroke();
 
-  if (!isSignedIn) {
+  if (!navigator.onLine) {
+    setFont(14,'900'); glow(CFG.PK,12); txt('PLAYER OFFLINE',LW/2,LH/2-8,CFG.PK);
+    setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); txt('Connect to internet to load leaderboard.',LW/2,LH/2+16,CFG.CY);
+    leaderboardContentH=listH;
+  } else if (!isSignedIn) {
     setFont(14,'900'); glow(CFG.PK,12); txt('SIGN IN REQUIRED',LW/2,LH/2-8,CFG.PK);
     setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); txt('Please sign in to view leaderboard.',LW/2,LH/2+16,CFG.CY);
     leaderboardContentH=listH;
@@ -2370,8 +2555,52 @@ function drawLeaderboardScreen(t) {
   }
 
   BTNS.leaderboardBack={x:(LW-140)/2,y:LH-48,w:140,h:34};
-  drawNeonBtn((LW-140)/2,LH-48,140,34,CFG.PK,leaderboardReturnState==='PAUSE'?'← PAUSE':'← BACK',11,1,Math.sin(t*2.5));
+  const backLbl=leaderboardReturnState==='PAUSE'?'← PAUSE':(leaderboardReturnState==='OVER'?'← WIPEOUT':'← BACK');
+  drawNeonBtn((LW-140)/2,LH-48,140,34,CFG.PK,backLbl,11,1,Math.sin(t*2.5));
   ctx.restore();
+}
+
+
+function drawAdminLtmScreen(t){
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
+  drawPerspGrid(terrain.scrollY,0.06); drawBgSquares();
+  setFont(28,'900'); glow(CFG.YL,18); txt('ADMIN LTM TEST MODE',LW/2,54,CFG.YL);
+  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt('NOT OFFICIAL RANKED DATA',LW/2,72,'rgba(255,245,140,0.9)');
+  const x=20,y=90,w=LW-40,h=560;
+  ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle='rgba(255,230,0,0.5)'; ctx.strokeRect(x,y,w,h);
+  const rowH=124;
+  adminLtmTestButtons=[];
+  adminLtmViewH=h-10;
+  adminLtmContentH=LTM_MODES.length*rowH+8;
+  adminLtmScroll=clamp(adminLtmScroll,minAdminLtmScroll(),0);
+  ctx.save(); ctx.beginPath(); ctx.rect(x+6,y+6,w-12,h-12); ctx.clip();
+  ctx.translate(0,adminLtmScroll);
+  LTM_MODES.forEach((m,i)=>{
+    const yy=y+12+i*rowH;
+    ctx.fillStyle='rgba(255,255,255,0.04)'; ctx.fillRect(x+12,yy,w-24,102);
+    ctx.strokeStyle=m.cardCol||CFG.YL; glow(m.cardCol||CFG.YL,8); ctx.strokeRect(x+12,yy,w-24,102);
+    setFont(14,'900'); txt(`${i+1}. ${m.name}`,x+24,yy+22,m.cardCol||CFG.YL,'left');
+    setFont(8,'400',"'Share Tech Mono',monospace"); noGlow(); txt((m.desc||'').slice(0,44),x+24,yy+38,'rgba(220,235,240,0.9)','left');
+    const st=(m.stages||[]).map(s=>`${s.name.split(' ')[1]||''}:${s.label}`).join(' | ').slice(0,60);
+    txt(st,x+24,yy+54,'rgba(180,210,230,0.8)','left');
+    txt(`Starter PWR: ${(m.forcedPowerups||[]).slice(0,5).join(', ')}`,x+24,yy+70,'rgba(160,255,180,0.8)','left');
+    const tb={x:x+w-138,y:yy+62,w:110,h:26};
+    adminLtmTestButtons[i]=tb;
+    drawNeonBtn(tb.x,tb.y,tb.w,tb.h,m.cardCol||CFG.CY,'TEST PLAY',9,1,Math.sin(t*2+i));
+    txt('TEST MODE',x+w-34,yy+22,CFG.PK,'right');
+  });
+  ctx.restore();
+  if (minAdminLtmScroll()<0) {
+    const sbX=x+w-8, sbY=y+8, sbH=h-16;
+    const thumbH=Math.max(26,(adminLtmViewH/(adminLtmViewH+Math.abs(minAdminLtmScroll())))*sbH);
+    const track=sbH-thumbH;
+    const thumbY=sbY + ((-adminLtmScroll)/Math.abs(minAdminLtmScroll()))*track;
+    ctx.fillStyle='rgba(255,230,0,0.18)'; ctx.fillRect(sbX,sbY,4,sbH);
+    ctx.fillStyle='rgba(255,230,0,0.9)'; ctx.fillRect(sbX,thumbY,4,thumbH);
+  }
+  BTNS.adminLtmBack={x:(LW-150)/2,y:LH-42,w:150,h:30};
+  drawNeonBtn(BTNS.adminLtmBack.x,BTNS.adminLtmBack.y,150,30,CFG.PK,'← BACK',11,1,Math.sin(t*2));
 }
 
 function drawContinueOffer(t) {
@@ -2420,8 +2649,8 @@ function drawGameOver(t) {
     ctx.globalAlpha=0.7+0.3*Math.sin(t*4); setFont(11,'700'); glow(CFG.YL,14);
     txt('★ NEW BEST! ★',LW/2,LH*0.48+20,CFG.YL); ctx.globalAlpha=1;
   }
-  if (gameMode==='ADVENTURE' || gameMode==='IMPOSSIBLE') {
-    const st=gameMode==='IMPOSSIBLE'?(IMP_STAGES[impossibleStage]||IMP_STAGES[0]):(ADV_STAGES[adventureStage]);
+  if (isStageMode()) {
+    const st=currentStageConfig();
     setFont(10,'700'); glow(gameMode==='IMPOSSIBLE'?'#ff4455':CFG.GR,10);
     txt(`Reached: ${st.name} · ${st.label}`,LW/2,LH*0.52,gameMode==='IMPOSSIBLE'?'#ff4455':CFG.GR);
   }
@@ -2451,7 +2680,10 @@ function drawGameOver(t) {
   }
   BTNS.retry={x:bX,y:retryY,w:bW,h:bH};
   drawNeonBtn(bX,retryY,bW,bH,CFG.CY,'↺  PLAY AGAIN',14,1,Math.sin(t*3.2));
-  const homeY=retryY+54;
+  const lbY=retryY+54;
+  BTNS.overLeaderboard={x:bX,y:lbY,w:bW,h:34};
+  drawNeonBtn(bX,lbY,bW,34,CFG.GR,'🏆 MODE LEADERBOARD',10,0.9,Math.sin(t*2.8));
+  const homeY=lbY+40;
   BTNS.home={x:bX,y:homeY,w:bW,h:bH};
   drawNeonBtn(bX,homeY,bW,bH,CFG.PK,'⌂  MAIN MENU',12,0.9,Math.sin(t*2.5));
   noGlow(); ctx.globalAlpha=0.3; setFont(9,'400',"'Share Tech Mono',monospace");
@@ -2603,23 +2835,25 @@ const SHOP_CATALOG=[
   {key:'SHIELD',       label:'SHIELD',          icon:'🛡', cost:150,  desc:'Absorb one hit'},
   {key:'HEALTH_BOOST', label:'HEALTH BOOST',    icon:'❤', cost:300,  desc:'5 lives for 60s!'},
 ];
-let shopOffers=[],shopSelected=-1;
+let shopOffers=[],shopSelected=-1,shopScroll=0,shopViewH=0,shopContentH=0;
 const SHOP_RECTS=[];
+function minShopScroll(){ return Math.min(0, shopViewH-shopContentH); }
 function shuffleShop() {
   const pool=[...SHOP_CATALOG].sort(()=>Math.random()-0.5);
-  shopOffers=pool.slice(0,3); shopSelected=-1; SHOP_RECTS.length=0;
+  shopOffers=pool.slice(0,3); shopSelected=-1; SHOP_RECTS.length=0; shopScroll=0;
 }
 
 function handleShopTap(p) {
-  if (hitBtn(p,BTNS.shopBack)) { SFX.click(); doTransition('MODESELECT'); return; }
-  if (hitBtn(p,BTNS.shopSkip)) { SFX.click(); startGame(null); return; }
-  SHOP_RECTS.forEach((r,i)=>{ if (hitBtn(p,r)) shopSelected=(shopSelected===i)?-1:i; });
-  if (hitBtn(p,BTNS.start)&&shopSelected>=0) { SFX.click();
+  const p2={x:p.x,y:p.y-shopScroll};
+  if (hitBtn(p2,BTNS.shopBack)) { SFX.click(); doTransition('MODESELECT'); return; }
+  if (hitBtn(p2,BTNS.shopSkip)) { SFX.click(); startGame(null); return; }
+  SHOP_RECTS.forEach((r,i)=>{ if (hitBtn(p2,r)) shopSelected=(shopSelected===i)?-1:i; });
+  if (hitBtn(p2,BTNS.start)&&shopSelected>=0) { SFX.click();
     const offer=shopOffers[shopSelected];
     if (totalGems>=offer.cost) {
       totalGems-=offer.cost; saveBank(totalGems); startGame(offer.key);
     } else { addNotif(`Need ${offer.cost}◆ gems!`,CFG.PK); SFX.hit(); }
-  } else if (hitBtn(p,BTNS.start)&&shopSelected<0) { SFX.click(); startGame(null); }
+  } else if (hitBtn(p2,BTNS.start)&&shopSelected<0) { SFX.click(); startGame(null); }
 }
 
 function drawShopScreen(t) {
@@ -2635,6 +2869,13 @@ function drawShopScreen(t) {
   SHOP_RECTS.length=0;
   const cardW=116,cardH=158,gap=7;
   const totalW=cardW*3+gap*2,startX=(LW-totalW)/2;
+  const viewTop=88,viewBottom=LH-10;
+  shopViewH=viewBottom-viewTop;
+  shopContentH=330;
+  shopScroll=clamp(shopScroll,minShopScroll(),0);
+  ctx.save();
+  clipRect(0,viewTop,LW,shopViewH);
+  ctx.translate(0,shopScroll);
 
   shopOffers.forEach((offer,i)=>{
     const cx=startX+i*(cardW+gap),cy=92;
@@ -2697,6 +2938,17 @@ function drawShopScreen(t) {
   const backY=skipY+46,backW=140,backX=(LW-backW)/2;
   BTNS.shopBack={x:backX,y:backY,w:backW,h:30};
   drawNeonBtn(backX,backY,backW,30,CFG.PK,'← BACK',9,0.85,0);
+  shopContentH=backY+30-viewTop+10;
+  ctx.restore();
+
+  if (minShopScroll()<0) {
+    const sbX=LW-10,sbY=viewTop,sbH=shopViewH;
+    const thumbH=Math.max(24,(shopViewH/(shopViewH+Math.abs(minShopScroll())))*sbH);
+    const track=Math.max(1,sbH-thumbH);
+    const thumbY=sbY + ((-shopScroll)/Math.abs(minShopScroll()))*track;
+    ctx.fillStyle='rgba(0,245,255,0.16)'; ctx.fillRect(sbX,sbY,4,sbH);
+    ctx.fillStyle='rgba(0,245,255,0.62)'; ctx.fillRect(sbX,thumbY,4,thumbH);
+  }
   ctx.restore();
 }
 
@@ -3560,6 +3812,15 @@ async function syncSlopeMirror(extra={}){
   await fbDb.ref(`${CLOUD_SLOPE_ROOT}/${fbUser.uid}`).update(payload);
 }
 
+
+async function ensureSupportedVersions(){
+  if (!fbReady || !fbDb) return;
+  try {
+    await fbDb.ref('SLOPE/config/supportedVersions').set(['pre-1.0.0','0.12.4']);
+    await fbDb.ref('SLOPE/config/currentVersion').set('pre-1.0.0 (patch_03012026)');
+  } catch (e) {}
+}
+
 async function resolveCloudRoot(uid, preferExisting=false){
   if (!fbReady || !fbDb || !uid) return CLOUD_INFO_ROOT;
   if (!preferExisting) return CLOUD_INFO_ROOT;
@@ -3720,6 +3981,7 @@ function initFirebase(){
     fbAuth=firebase.auth();
     fbDb=firebase.database();
     fbReady=true;
+    ensureSupportedVersions();
     fbAuth.onAuthStateChanged(async u=>{
       fbUser=u||null;
       if (u) {
@@ -3809,7 +4071,7 @@ function drawSignInScreen(t){
   setFont(9,'700','Arial'); noGlow(); txt('Tap fields to type',LW/2,y+206,'#8a8a8a');
 
   BTNS.signinGoogle={x:x+24,y:y+196,w:w-48,h:34};
-  drawNeonBtn(BTNS.signinGoogle.x,BTNS.signinGoogle.y,BTNS.signinGoogle.w,BTNS.signinGoogle.h,'#db4437','SIGN IN WITH GOOGLE',11,1,Math.sin(t*2.6));
+  drawNeonBtn(BTNS.signinGoogle.x,BTNS.signinGoogle.y,BTNS.signinGoogle.w,BTNS.signinGoogle.h,'#db4437','▣ G SIGN IN WITH GOOGLE',10,1,Math.sin(t*2.6));
 
   BTNS.signinSwitch={x:x+24,y:y+244,w:w-48,h:30};
   drawNeonBtn(BTNS.signinSwitch.x,BTNS.signinSwitch.y,BTNS.signinSwitch.w,BTNS.signinSwitch.h,'#444','GO TO SIGN UP',10,1,0);
@@ -3823,8 +4085,8 @@ function drawSignUpScreen(t){
   setFont(20,'900','Arial'); noGlow(); txt('Sign Up',LW/2,86,'#202226');
   setFont(9,'400','Arial'); txt('Create your account (password 6-20)',LW/2,106,'#7b7b7b');
   const x=40,y=124,w=LW-80;
-  ctx.fillStyle='#f8f8f8'; ctx.fillRect(x,y,w,408);
-  ctx.strokeStyle='rgba(0,0,0,0.15)'; ctx.strokeRect(x,y,w,408);
+  ctx.fillStyle='#f8f8f8'; ctx.fillRect(x,y,w,446);
+  ctx.strokeStyle='rgba(0,0,0,0.15)'; ctx.strokeRect(x,y,w,446);
 
   BTNS.signupName={x:x+24,y:y+40,w:w-48,h:24};
   BTNS.signupEmail={x:x+24,y:y+84,w:w-48,h:24};
@@ -3838,7 +4100,9 @@ function drawSignUpScreen(t){
   BTNS.authSubmit={x:x+24,y:y+224,w:w-48,h:34};
   drawNeonBtn(BTNS.authSubmit.x,BTNS.authSubmit.y,BTNS.authSubmit.w,BTNS.authSubmit.h,CFG.GR,'SIGN UP',12,1,Math.sin(t*2.2));
 
-  BTNS.signupSwitch={x:x+24,y:y+274,w:w-48,h:30};
+  BTNS.signupGoogle={x:x+24,y:y+272,w:w-48,h:34};
+  drawNeonBtn(BTNS.signupGoogle.x,BTNS.signupGoogle.y,BTNS.signupGoogle.w,BTNS.signupGoogle.h,'#db4437','▣ G SIGN UP WITH GOOGLE',10,1,Math.sin(t*2.5));
+  BTNS.signupSwitch={x:x+24,y:y+316,w:w-48,h:30};
   drawNeonBtn(BTNS.signupSwitch.x,BTNS.signupSwitch.y,BTNS.signupSwitch.w,BTNS.signupSwitch.h,'#444','ALREADY HAVE ACCOUNT? SIGN IN',9,1,0);
 
   BTNS.authBack={x:(LW-130)/2,y:LH-44,w:130,h:30};
@@ -3853,7 +4117,7 @@ async function writeCloudUserInfo(extra={}) {
     email:fbUser.email||'',
     name:fbUser.displayName||auth.name||'Runner',
     displayName:fbUser.displayName||auth.name||'Runner',
-    verified:!!fbUser.emailVerified,
+    verified:!!((extra&&extra.verified===true)||(auth&&auth.verified===true)||fbUser.emailVerified),
     bio:profileBio||'',
     avatar:profileAvatar||'',
     pfpLink:profileAvatar||'',
@@ -3885,6 +4149,7 @@ function buildLocalProgressPayload(){
     doneObjs:loadDoneObjs(),
     options:OPTION_PREFS,
     bestScore:bestScore||0,
+    modeScores:modeScores||{endless:0,adventure:0,impossible:0,ltm:0},
     runs:parseInt(localStorage.getItem('slope_runs')||'0',10),
     totalTime:parseFloat(localStorage.getItem('slope_totalTime')||'0'),
     updatedAt:Date.now(),
@@ -3899,7 +4164,7 @@ async function syncProgressToCloud(reason='auto') {
     await fbDb.ref(`${cloudProfileRoot}/${fbUser.uid}/progress`).set(buildLocalProgressPayload());
     cloudGemCount=loadBank();
     cloudUpdatedAt=Date.now();
-    await syncSlopeMirror({gems:String(cloudGemCount),bestScore:String(Math.floor(bestScore||0)),updatedAt:String(cloudUpdatedAt)});
+    await syncSlopeMirror({gems:String(cloudGemCount),bestScore:String(Math.floor(bestScore||0)),endlessScore:String(Math.floor(modeScores.endless||0)),adventureScore:String(Math.floor(modeScores.adventure||0)),impossibleScore:String(Math.floor(modeScores.impossible||0)),ltmScore:String(Math.floor(modeScores.ltm||0)),updatedAt:String(cloudUpdatedAt)});
   } catch (e) {}
 }
 function queueCloudSync(delay=700){
@@ -3943,6 +4208,7 @@ async function loadCloudProfileAndProgress() {
       if (p.selectedAura) { setSelectedAura(p.selectedAura); }
       if (p.selectedTheme) { setSelectedTheme(p.selectedTheme); }
       if (typeof p.bestScore==='number') bestScore=Math.max(bestScore,p.bestScore);
+      if (p.modeScores && typeof p.modeScores==='object') modeScores={...modeScores,...p.modeScores};
       if (p.options && typeof p.options==='object') { OPTION_PREFS={...OPTION_PREFS,...p.options}; saveOptionPrefs(); }
     }
     cloudGemCount=Number((val.progress&&val.progress.gems)|| (slopeMirror&&slopeMirror.gems));
@@ -3950,14 +4216,14 @@ async function loadCloudProfileAndProgress() {
     cloudUpdatedAt=Number((val.progress&&val.progress.updatedAt)||val.updatedAt||(slopeMirror&&slopeMirror.updatedAt)||0)||0;
     cloudJoinedAt=parseCloudTs(val.createdAt||(slopeMirror&&slopeMirror.createdAt)||(fbUser&&fbUser.metadata&&fbUser.metadata.creationTime)||0);
     const isAdminDb=(String(val.admin??(slopeMirror&&slopeMirror.admin)??'false')==='true') || val.admin===true || (slopeMirror&&slopeMirror.admin===true);
-    auth={...auth,signedIn:true,name:val.name||auth.name,email:val.email||auth.email,uid:fbUser.uid,verified:!!fbUser.emailVerified,bio:profileBio,avatar:profileAvatar,admin:isAdminDb};
+    auth={...auth,signedIn:true,name:val.name||auth.name,email:val.email||auth.email,uid:fbUser.uid,verified:!!((auth&&auth.verified===true)||fbUser.emailVerified),bio:profileBio,avatar:profileAvatar,admin:isAdminDb};
     saveAuth(auth);
     refreshAdminFlag();
   } catch (e) {}
 }
 
 async function handleAuthSignIn(){
-  if (!fbReady || !fbAuth) { authFlowState='error'; authFlowError='Firebase unavailable'; return; }
+  if (!fbReady || !fbAuth) { authFlowState='error'; authFlowError='Cloud service unavailable'; return; }
   try {
     authFlowState='loading'; authFlowError='';
     const cred=await fbAuth.signInWithEmailAndPassword((signinForm.email||'').trim(),signinForm.password||'');
@@ -3966,12 +4232,12 @@ async function handleAuthSignIn(){
     authFlowState='success';
     authFlowMsg='Signed in and cloud sync ready. Tap REFRESH GAME.';
   } catch (e) {
-    authFlowState='error'; authFlowError=(e&&e.message)||'Sign in failed';
+    authFlowState='error'; authFlowError='Sign in failed. Please try again.';
   }
 }
 
 async function handleAuthGoogleSignIn(){
-  if (!fbReady || !fbAuth || !window.firebase || !firebase.auth) { authFlowState='error'; authFlowError='Firebase unavailable'; return; }
+  if (!fbReady || !fbAuth || !window.firebase || !firebase.auth) { authFlowState='error'; authFlowError='Cloud service unavailable'; return; }
   try {
     authFlowState='loading'; authFlowError='';
     const provider=new firebase.auth.GoogleAuthProvider();
@@ -3981,7 +4247,7 @@ async function handleAuthGoogleSignIn(){
     authFlowState='success';
     authFlowMsg='Signed in with Google. Tap MAIN MENU.';
   } catch (e) {
-    authFlowState='error'; authFlowError=(e&&e.message)||'Google sign in failed';
+    authFlowState='error'; authFlowError='Google sign in failed. Please try again.';
   }
 }
 
@@ -3989,9 +4255,21 @@ async function handleAuthSignUp(){
   const pwd=signupForm.password||'';
   if (pwd.length<6 || pwd.length>20) { authFlowState='error'; authFlowError='Password must be 6 to 20 chars.'; return; }
   if (signupForm.password!==signupForm.confirm) { authFlowState='error'; authFlowError='Password mismatch.'; return; }
-  if (!fbReady || !fbAuth) { authFlowState='error'; authFlowError='Firebase unavailable'; return; }
+  if (!fbReady || !fbAuth) { authFlowState='error'; authFlowError='Cloud service unavailable'; return; }
   try {
     authFlowState='loading'; authFlowError='';
+    const desired=(signupForm.username||'Runner').trim()||'Runner';
+    if (fbDb) {
+      const root=await resolveCloudRoot(fbUser&&fbUser.uid,true);
+      const snap=await fbDb.ref(root).get();
+      const all=snap&&snap.val?snap.val():{};
+      const clash=Object.values(all||{}).some(v=>String((v&&v.name)||'').toLowerCase()===desired.toLowerCase());
+      if (clash) {
+        const sug=`${desired}${Math.floor(100+Math.random()*900)}`;
+        authFlowState='error'; authFlowError=`Username taken. Try ${sug}`;
+        return;
+      }
+    }
     const cred=await fbAuth.createUserWithEmailAndPassword((signupForm.email||'').trim(),pwd);
     if (cred.user) {
       await cred.user.updateProfile({displayName:(signupForm.username||'Runner').trim()||'Runner'});
@@ -4005,7 +4283,7 @@ async function handleAuthSignUp(){
       authFlowMsg='Verification email sent. Verify, then tap REFRESH GAME.';
     }
   } catch (e) {
-    authFlowState='error'; authFlowError=(e&&e.message)||'Sign up failed';
+    authFlowState='error'; authFlowError='Sign up failed. Please try again.';
   }
 }
 
@@ -4027,6 +4305,7 @@ function handleSignUpTap(p){
   if (hitBtn(p,BTNS.signupPass)) { SFX.click(); openInputDialog({title:'SIGN UP',label:'Password (6-20)',value:'',maxLen:20,secret:true,onSubmit:v=>{signupForm.password=v||'';}}); return; }
   if (hitBtn(p,BTNS.signupConfirm)) { SFX.click(); openInputDialog({title:'SIGN UP',label:'Confirm Password',value:'',maxLen:20,secret:true,onSubmit:v=>{signupForm.confirm=v||'';}}); return; }
   if (hitBtn(p,BTNS.authSubmit)) { SFX.click(); handleAuthSignUp(); return; }
+  if (hitBtn(p,BTNS.signupGoogle)) { SFX.click(); handleAuthGoogleSignIn(); return; }
   if (hitBtn(p,BTNS.authRestart)) { SFX.click(); goMenu(); doTransition('MENU'); authFlowState='idle'; return; }
 }
 
@@ -4082,7 +4361,7 @@ async function verifyAdminPassword(){
 async function adminApplyVerifyStatus(){
   const uid=String(adminVerifyUid||'').trim();
   if (!uid) { addNotif('Admin: set target UID first.',CFG.PK); return; }
-  if (!fbReady || !fbDb) { addNotif('Admin: Firebase unavailable.',CFG.PK); return; }
+  if (!fbReady || !fbDb) { addNotif('Admin: cloud service unavailable.',CFG.PK); return; }
   try {
     const root=cloudProfileRoot||CLOUD_INFO_ROOT;
     await fbDb.ref(`${root}/${uid}`).update({verified:!!adminVerifyValue,updatedAt:Date.now()});
@@ -4442,20 +4721,32 @@ function handleProfileTap(p){
   if (hitBtn(p,BTNS.authBack)) { SFX.click(); doTransition('MENU'); return; }
   if (hitBtn(p,BTNS.profileAvatar) || hitBtn(p,BTNS.profileUpload)) {
     SFX.click();
-    if (!isSignedIn) { addNotif('Upload is locked for guests. Sign in first.',CFG.YL); return; }
+    if (!navigator.onLine) {
+    setFont(14,'900'); glow(CFG.PK,12); txt('PLAYER OFFLINE',LW/2,LH/2-8,CFG.PK);
+    setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); txt('Connect to internet to load leaderboard.',LW/2,LH/2+16,CFG.CY);
+    leaderboardContentH=listH;
+  } else if (!isSignedIn) { addNotif('Upload is locked for guests. Sign in first.',CFG.YL); return; }
     const inp=document.getElementById('profileUploadInput');
     if (inp) inp.click();
     return;
   }
   if (hitBtn(p,BTNS.profileTrash)) {
     SFX.click();
-    if (!isSignedIn) { addNotif('Trash is locked for guests.',CFG.YL); return; }
+    if (!navigator.onLine) {
+    setFont(14,'900'); glow(CFG.PK,12); txt('PLAYER OFFLINE',LW/2,LH/2-8,CFG.PK);
+    setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); txt('Connect to internet to load leaderboard.',LW/2,LH/2+16,CFG.CY);
+    leaderboardContentH=listH;
+  } else if (!isSignedIn) { addNotif('Trash is locked for guests.',CFG.YL); return; }
     openConfirm('REMOVE_PFP','REMOVE PROFILE ICON?','This resets avatar to default icon.');
     return;
   }
   if (hitBtn(p,BTNS.profileBio)) {
     SFX.click();
-    if (!isSignedIn) { addNotif('Bio is locked for guests. Sign in first.',CFG.YL); return; }
+    if (!navigator.onLine) {
+    setFont(14,'900'); glow(CFG.PK,12); txt('PLAYER OFFLINE',LW/2,LH/2-8,CFG.PK);
+    setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); txt('Connect to internet to load leaderboard.',LW/2,LH/2+16,CFG.CY);
+    leaderboardContentH=listH;
+  } else if (!isSignedIn) { addNotif('Bio is locked for guests. Sign in first.',CFG.YL); return; }
     openInputDialog({title:'UPDATE BIO',label:'Bio (max 100 chars)',value:profileBio||'',maxLen:100,multiline:true,onSubmit:(val)=>{ profileBio=(val||'').slice(0,100); auth={...auth,bio:profileBio}; saveAuth(auth); writeCloudUserInfo({bio:profileBio}); addNotif('BIO UPDATED',CFG.GR);} });
     return;
   }
@@ -4466,7 +4757,11 @@ function handleProfileTap(p){
   }
   if (hitBtn(p,BTNS.profileSignOut)) {
     SFX.click();
-    if (!isSignedIn) { doTransition('SIGNIN'); return; }
+    if (!navigator.onLine) {
+    setFont(14,'900'); glow(CFG.PK,12); txt('PLAYER OFFLINE',LW/2,LH/2-8,CFG.PK);
+    setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); txt('Connect to internet to load leaderboard.',LW/2,LH/2+16,CFG.CY);
+    leaderboardContentH=listH;
+  } else if (!isSignedIn) { doTransition('SIGNIN'); return; }
     openConfirm('SIGNOUT','SIGN OUT?','Cloud session will end and guest local save will be used.');
     return;
   }
@@ -4520,10 +4815,12 @@ let gs='LOADING';
 let gameMode='ENDLESS';
 let impossibleStage=0, impossibleIntroT=0, impossibleIntroDone=false;
 let score=0, bestScore=0, lives=0, maxLives=CFG.LIVES, multi=1, gemStreak=0, maxCombo=1;
+let modeScores={endless:0,adventure:0,impossible:0,ltm:0};
 let gemsCollected=0;
 let worldSpeedMult=1;
 let activePwr=null, pwrTimer=0;
 let gemDoubleActive=false, gemDoubleTimer=0;
+let gemBoostMult=1;
 let gemDropActive=false, gemDropTimer=0, gemDropSpawnTimer=0;
 transAlpha=1; transDir=1; pendingGS='MENU';
 
@@ -4561,6 +4858,33 @@ let leaderboardReturnState='MENU';
 let leaderboardScroll=0;
 let leaderboardViewH=0;
 let leaderboardContentH=0;
+
+let leaderboardCategory='GLOBAL';
+const LEADERBOARD_TABS=['GLOBAL','ENDLESS','ADVENTURE','IMPOSSIBLE','LTM'];
+let ltmRotationIndex=0;
+let ltmStage=0, ltmStageTimer=0;
+let adminLtmScroll=0, adminLtmViewH=0, adminLtmContentH=0;
+let noAdsPopup=false;
+let adminLtmTestButtons=[];
+let ltmForcedIndex=-1;
+function minAdminLtmScroll(){ return Math.min(0, adminLtmViewH-adminLtmContentH); }
+function getDailyLtmIndex(){
+  const now=new Date();
+  const key=`${now.getUTCFullYear()}-${now.getUTCMonth()+1}-${now.getUTCDate()}`;
+  let h=0; for (let i=0;i<key.length;i++) h=(h*31+key.charCodeAt(i))>>>0;
+  return h%Math.max(1,LTM_MODES.length);
+}
+function getDailyCountdown(){
+  const now=new Date();
+  const end=Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()+1,0,0,0);
+  let ms=Math.max(0,end-now.getTime());
+  const h=Math.floor(ms/3600000); ms-=h*3600000;
+  const m=Math.floor(ms/60000); ms-=m*60000;
+  const s=Math.floor(ms/1000);
+  return `${String(h).padStart(2,'0')}h:${String(m).padStart(2,'0')}m:${String(s).padStart(2,'0')}s`;
+}
+function getActiveLtm(){ return LTM_MODES[clamp(ltmRotationIndex,0,LTM_MODES.length-1)]||LTM_MODES[0]; }
+
 function minLeaderboardScroll(){ return Math.min(0,leaderboardViewH-leaderboardContentH); }
 
 // Score multiplier (includes mini jetpack bonus).
@@ -4569,6 +4893,7 @@ const scoreMultiplier = () => { const comboBonus=Math.max(0,multi-1); const base
 async function triggerLeaderboardFetch(force=false) {
   if (!force && leaderboardState==='loading') return;
   if (!force && Date.now()<leaderboardNextRefresh && leaderboardState==='loaded' && leaderboardData.length) return;
+  if (!navigator.onLine) { leaderboardState='error'; leaderboardData=[]; leaderboardScroll=0; return; }
   if (!isSignedIn) { leaderboardState='error'; leaderboardData=[]; leaderboardScroll=0; return; }
   leaderboardState='loading';
   leaderboardTimer=0;
@@ -4586,13 +4911,16 @@ async function triggerLeaderboardFetch(force=false) {
       all={};
       Object.keys(slopeAll||{}).forEach(uid=>{
         const u=slopeAll[uid]||{};
-        all[uid]={name:u.displayName||u.name||u.email||'Runner',email:u.email||'',progress:{bestScore:Number(u.bestScore||0)}};
+        all[uid]={name:u.displayName||u.name||u.email||'Runner',email:u.email||'',progress:{bestScore:Number(u.bestScore||0),modeScores:{endless:Number(u.endlessScore||0),adventure:Number(u.adventureScore||0),impossible:Number(u.impossibleScore||0),ltm:Number(u.ltmScore||0)}}};
       });
     }
     const rows=[];
     Object.keys(all||{}).forEach(uid=>{
       const u=all[uid]||{};
-      const score=Number(u.progress&&u.progress.bestScore||0);
+      const p=(u.progress||{});
+      const modeScores=(p.modeScores||{});
+      const globalSum=Number(modeScores.endless||0)+Number(modeScores.adventure||0)+Number(modeScores.impossible||0)+Number(modeScores.ltm||0);
+      const score=leaderboardCategory==='ENDLESS'?Number(modeScores.endless||0):leaderboardCategory==='ADVENTURE'?Number(modeScores.adventure||0):leaderboardCategory==='IMPOSSIBLE'?Number(modeScores.impossible||0):leaderboardCategory==='LTM'?Number(modeScores.ltm||0):(globalSum>0?globalSum:Number(p.bestScore||0));
       rows.push({uid,name:(u.name||u.email||'Runner').toString().slice(0,20),score:Number.isFinite(score)?score:0});
     });
     rows.sort((a,b)=>b.score-a.score);
@@ -4606,6 +4934,15 @@ async function triggerLeaderboardFetch(force=false) {
     leaderboardScroll=0;
   }
 }
+
+
+function currentStageConfig(){
+  if (gameMode==='IMPOSSIBLE') return IMP_STAGES[impossibleStage]||IMP_STAGES[0];
+  if (gameMode==='LTM') { const m=getActiveLtm(); return (m.stages&&m.stages[ltmStage])||m.stages[0]||ADV_STAGES[0]; }
+  if (gameMode==='ADVENTURE') return ADV_STAGES[adventureStage]||ADV_STAGES[0];
+  return ADV_STAGES[0];
+}
+function isStageMode(){ return gameMode==='ADVENTURE'||gameMode==='IMPOSSIBLE'||gameMode==='LTM'; }
 
 function activateImmunity(sec=immunityDuration()) {
   if (gameMode==='IMPOSSIBLE') sec=Math.min(sec,1.5);
@@ -4645,7 +4982,7 @@ function goMenu() {
   gems.length=0; powerups.length=0; obstacles.length=0;
   transDir=1; transAlpha=1;
   activePwr=null; pwrTimer=0; worldSpeedMult=1;
-  immunityActive=false; immunityTimer=0; obstacleClearTimer=0; badLuckActive=false; badLuckTimer=0; badLuckSpawnT=0; gemDoubleActive=false; gemDoubleTimer=0; gemDropActive=false; gemDropTimer=0; gemDropSpawnTimer=0;
+  immunityActive=false; immunityTimer=0; obstacleClearTimer=0; badLuckActive=false; badLuckTimer=0; badLuckSpawnT=0; gemDoubleActive=false; gemDoubleTimer=0; gemBoostMult=1; gemDropActive=false; gemDropTimer=0; gemDropSpawnTimer=0;
   pauseToggleLock=0;
   continueOfferTimer=0;
   shuffleShop();
@@ -4665,25 +5002,41 @@ function startGame(starterPwr=null, forceNoStarter=false) {
   obsTimer=0; obsNext=rnd(...CFG.OBS_INT);
   lastMilestone=0; clusterTimer=0; clusterNext=8;
   jetpackCount=0; regenUsed=0;
-  pwrCounts={JETPACK:0,MAGNET:0,BOOST:0,SHIELD:0,SLOW:0,HEALTH_BOOST:0,MINI_JETPACK:0,NEW_STAGE:0,REGEN:0,X2_GEMS:0,GEM_DROP:0,BAD_LUCK:0};
+  pwrCounts={JETPACK:0,MAGNET:0,BOOST:0,SHIELD:0,SLOW:0,HEALTH_BOOST:0,MINI_JETPACK:0,NEW_STAGE:0,REGEN:0,X2_GEMS:0,X4_GEMS:0,GEM_DROP:0,BAD_LUCK:0,SICK:0,LTM_SPECIAL:0};
   // Adventure setup
-  adventureStage=0; adventureStageTimer=0; impossibleStage=0;
+  adventureStage=0; adventureStageTimer=0; impossibleStage=0; ltmStage=0; ltmStageTimer=0;
+  ltmRotationIndex=(ltmForcedIndex>=0?ltmForcedIndex:getDailyLtmIndex());
   miniJetpackActive=false; miniJetpackTimer=0;
   newStageActive=false; newStageTimer=0;
   stagePowerupNext=rnd(20,30); stagePowerupElapsed=0;
   stageTransT=0;
-  immunityActive=false; immunityTimer=0; obstacleClearTimer=0; badLuckActive=false; badLuckTimer=0; badLuckSpawnT=0; gemDoubleActive=false; gemDoubleTimer=0; gemDropActive=false; gemDropTimer=0; gemDropSpawnTimer=0;
+  immunityActive=false; immunityTimer=0; obstacleClearTimer=0; badLuckActive=false; badLuckTimer=0; badLuckSpawnT=0; gemDoubleActive=false; gemDoubleTimer=0; gemBoostMult=1; gemDropActive=false; gemDropTimer=0; gemDropSpawnTimer=0;
   terrain.reset(); player.reset();
-  // Set adventure starting speed
+  // Set starting speed by mode
+  if (gameMode==='ENDLESS') {
+    terrain.speed=CFG.SPD0;
+  }
   if (gameMode==='ADVENTURE') {
     const st=ADV_STAGES[0];
     terrain.speed=st.spd;
+  }
+  if (gameMode==='LTM') {
+    const st=currentStageConfig();
+    terrain.speed=st.spd||terrain.speed;
   }
   if (gameMode==='IMPOSSIBLE') {
     const st=IMP_STAGES[0];
     terrain.speed=st.spd;
   }
   transDir=1; transAlpha=1;
+
+
+  if (gameMode==='LTM') {
+    const lm=getActiveLtm();
+    activePwr='BOOST'; pwrTimer=10;
+    activatePwr('SHIELD',shieldDuration(90)); player.shield=true;
+    addNotif(`${lm.name} ACTIVE`,lm.cardCol||CFG.YL);
+  }
 
   if (starterPwr && !forceNoStarter && gameMode!=='IMPOSSIBLE') {
     if (starterPwr==='SHIELD') {
@@ -4698,6 +5051,7 @@ function startGame(starterPwr=null, forceNoStarter=false) {
     }
     addNotif(`STARTED WITH ${PWR_TYPES[starterPwr]?.label||starterPwr}!`,PWR_TYPES[starterPwr]?.col||CFG.CY);
   }
+  if (gameMode==='LTM') ltmForcedIndex=-1;
   gs='PLAY'; SFX.start();
 }
 
@@ -4749,6 +5103,22 @@ function advanceAdventureStage() {
   flashAlpha=0.5; flashCol='#88ffcc';
 }
 
+
+
+function advanceLtmStage() {
+  const m=getActiveLtm();
+  if (!m || !m.stages || ltmStage>=m.stages.length-1) {
+    stageTransLabel='LTM MAX STAGE!'; stageTransT=2.8; addNotif('LTM MAX STAGE!',CFG.YL); return;
+  }
+  ltmStage++;
+  const st=currentStageConfig();
+  terrain.speed=Math.max(terrain.speed,st.spd||terrain.speed);
+  lives=Math.min(maxLives,lives+1);
+  stageTransLabel=`${m.name} · ${st.name} · ${st.label}`;
+  stageTransT=3.0;
+  addNotif(`⬆ ${m.name} ${st.name}!`,m.cardCol||CFG.YL);
+  addRing(LW/2,LH/2,m.cardCol||CFG.YL,180,280,3);
+}
 
 function advanceImpossibleStage() {
   if (impossibleStage>=IMP_STAGES.length-1) {
@@ -4820,6 +5190,10 @@ function finalizeGameOver() {
   gs='OVER';
   SFX.gameOver();
   if (score>bestScore) bestScore=score;
+  if (gameMode==='ENDLESS') modeScores.endless=Math.max(modeScores.endless||0,score);
+  if (gameMode==='ADVENTURE') modeScores.adventure=Math.max(modeScores.adventure||0,score);
+  if (gameMode==='IMPOSSIBLE') modeScores.impossible=Math.max(modeScores.impossible||0,score);
+  if (gameMode==='LTM') modeScores.ltm=Math.max(modeScores.ltm||0,score);
   const runs=parseInt(localStorage.getItem('slope_runs')||'0',10)+1;
   const total=parseFloat(localStorage.getItem('slope_totalTime')||'0')+Math.max(0,gameTime);
   localStorage.setItem('slope_runs',String(runs));
@@ -4883,14 +5257,15 @@ function collectGem(gem) {
   if (multi>maxCombo) maxCombo=multi;
   const pts=gem.type.pts*scoreMultiplier()*(activePwr==='BOOST'?scoreBoostMult():1);
   score+=pts; scorePopT=0.3;
-  const earned=gem.type.gemVal*(gemDoubleActive?2:1);
+  const gm=(gemDoubleActive?Math.max(2,gemBoostMult):1);
+  const earned=gem.type.gemVal*gm;
   totalGems=addToBank(earned);
   const tier=GEM_TYPES.indexOf(gem.type);
   SFX.gem(tier);
   burst(gem.x,gem.y,gem.type.col,12,180);
   flashAlpha=0.12; flashCol=gem.type.col;
   addFloat(gem.x,gem.y-10,`+${pts}${scoreMultiplier()>1?` ×${scoreMultiplier()}`:''}`,gem.type.col);
-  addFloat(gem.x,gem.y-28,`+${earned}◆${gemDoubleActive?'  X2':''}`,gem.type.col);
+  addFloat(gem.x,gem.y-28,`+${earned}◆${gemDoubleActive?`  X${Math.max(2,gemBoostMult)}`:''}`,gem.type.col);
 }
 
 function collectPwr(pwr) {
@@ -4905,13 +5280,16 @@ function collectPwr(pwr) {
   else if (pwr.key==='REGEN')        { SFX.regen(); collectRegen(pwr.x,pwr.y); pwrCounts.REGEN++; }
   else if (pwr.key==='MINI_JETPACK') { SFX.jetpack(); activateMiniJetpack(); pwrCounts.MINI_JETPACK++; }
   else if (pwr.key==='NEW_STAGE')    { if (newStageActive) return; SFX.stage(); activateNewStagePowerup(); pwrCounts.NEW_STAGE++; }
-  else if (pwr.key==='X2_GEMS')      { SFX.pwr(); activateGemDouble(); pwrCounts.X2_GEMS++; }
+  else if (pwr.key==='X2_GEMS')      { SFX.pwr(); activateGemDouble(2,10); pwrCounts.X2_GEMS++; }
+  else if (pwr.key==='X4_GEMS')      { SFX.pwr(); activateGemDouble(4,8); pwrCounts.X2_GEMS++; }
+  else if (pwr.key==='SICK')         { SFX.stage(); applyRandomSickPower(); }
+  else if (pwr.key==='LTM_SPECIAL')  { SFX.stage(); activateLtmSpecialPower(); }
   else if (pwr.key==='GEM_DROP')     { SFX.stage(); activateGemDrop(); pwrCounts.GEM_DROP++; }
   else if (pwr.key==='BAD_LUCK')     { SFX.hit(); activateBadLuck(); pwrCounts.BAD_LUCK++; }
   else SFX.pwr();
   burst(pwr.x,pwr.y,col,24,220); ringBurst(pwr.x,pwr.y,col);
   addShake(6,0.2); flashAlpha=0.35; flashCol=col;
-  if (pwr.key!=='HEALTH_BOOST'&&pwr.key!=='REGEN'&&pwr.key!=='MINI_JETPACK'&&pwr.key!=='NEW_STAGE'&&pwr.key!=='X2_GEMS'&&pwr.key!=='GEM_DROP'&&pwr.key!=='BAD_LUCK') {
+  if (pwr.key!=='HEALTH_BOOST'&&pwr.key!=='REGEN'&&pwr.key!=='MINI_JETPACK'&&pwr.key!=='NEW_STAGE'&&pwr.key!=='X2_GEMS'&&pwr.key!=='X4_GEMS'&&pwr.key!=='SICK'&&pwr.key!=='LTM_SPECIAL'&&pwr.key!=='GEM_DROP'&&pwr.key!=='BAD_LUCK') {
     addNotif(`${pwr.info.label} ACTIVATED!`,col);
     addFloat(pwr.x,pwr.y-16,pwr.info.icon+' '+pwr.info.label,col);
   }
@@ -4935,6 +5313,7 @@ function collectRegen(x,y) {
 }
 
 function activateMiniJetpack() {
+
   miniJetpackActive=true; miniJetpackTimer=10.0;
   newStageActive=false; newStageTimer=0;
   worldSpeedMult=Math.max(worldSpeedMult,1.08);
@@ -4959,11 +5338,11 @@ function activateNewStagePowerup() {
 
 
 
-function activateGemDouble() {
-  gemDoubleActive=true; gemDoubleTimer=10.0;
+function activateGemDouble(mult=2,dur=10.0) {
+  gemDoubleActive=true; gemBoostMult=Math.max(2,mult|0); gemDoubleTimer=dur;
   activateImmunity(3.0);
-  addNotif('💎 X2 GEMS ACTIVE!','#ffd700');
-  addFloat(player.x,player.y-24,'💎 X2 GEMS','#ffd700');
+  addNotif(`💎 X${gemBoostMult} GEMS ACTIVE!`,'#ffd700');
+  addFloat(player.x,player.y-24,`💎 X${gemBoostMult} GEMS`,'#ffd700');
 }
 
 function activateGemDrop() {
@@ -4971,6 +5350,128 @@ function activateGemDrop() {
   activateImmunity(3.0);
   addNotif('💠 GEM DROP ACTIVE!','#99ddff');
   addFloat(player.x,player.y-24,'💠 GEM RAIN','#99ddff');
+}
+
+
+function applyRandomSickPower(){
+  const effects=[
+    ()=>{ activatePwr('BOOST',8); addNotif('SICK: SCORE BOOST',CFG.YL); },
+    ()=>{ activatePwr('MAGNET',10); addNotif('SICK: MAGNET',CFG.PU); },
+    ()=>{ activatePwr('SHIELD',shieldDuration(120)); addNotif('SICK: SHIELD',CFG.BL); },
+    ()=>{ activateGemDouble(2,10); addNotif('SICK: X2 GEMS','#ffd700'); },
+    ()=>{ activateGemDouble(4,8); addNotif('SICK: X4 GEMS','#ffd700'); },
+    ()=>{ activateGemDrop(); gemDropTimer=Math.max(gemDropTimer,10); addNotif('SICK: GEM DROP','#99ddff'); },
+    ()=>{ activateMiniJetpack(); miniJetpackTimer=Math.max(miniJetpackTimer,12); addNotif('SICK: MINI JETPACK','#88ccff'); },
+  ];
+  effects[rndI(0,effects.length-1)]();
+}
+
+function activateLtmSpecialPower(){
+  if (gameMode!=='LTM') return;
+  const lm=getActiveLtm();
+  const id=(lm&&lm.id)||'';
+  if (id==='gold_rush') { activateGemDouble(4,8); activateGemDrop(); gemDropTimer=Math.max(gemDropTimer,10); totalGems=addToBank(40); addNotif('GOLD FEVER!',lm.specialCol||CFG.YL); return; }
+  if (id==='volcano') { activatePwr('SHIELD',shieldDuration(140)); activateImmunity(5); clearObstaclesTemporarily(); addShake(10,0.35); addNotif('LAVA ARMOR!',lm.specialCol||CFG.OR); return; }
+  if (id==='frostbite') { activatePwr('SLOW',10); activatePwr('SHIELD',shieldDuration(100)); addNotif('ICE FIELD!',lm.specialCol||CFG.CY); return; }
+  if (id==='space') { activateMiniJetpack(); miniJetpackTimer=Math.max(miniJetpackTimer,12); addNotif('COSMIC BURST!',lm.specialCol||CFG.CY); return; }
+  if (id==='storm') { activateImmunity(6); activatePwr('BOOST',10); addNotif('THUNDER CORE!',lm.specialCol||CFG.PU); return; }
+  if (id==='hacker') { activatePwr('MAGNET',12); activateGemDouble(2,12); addNotif('GLITCH BREAK!',lm.specialCol||CFG.CY); return; }
+  if (id==='void') { activateImmunity(8); activatePwr('SLOW',8); addNotif('VOID SHELL!',lm.specialCol||CFG.PU); return; }
+  if (id==='jungle') { activateGemDrop(); gemDropTimer=Math.max(gemDropTimer,12); collectRegen(player.x,player.y); addNotif('WILD GROWTH!',lm.specialCol||CFG.GR); return; }
+  if (id==='chrono') { activatePwr('BOOST',12); activatePwr('SLOW',8); addNotif('TIME FRACTURE!',lm.specialCol||CFG.YL); return; }
+  if (id==='metro') { activatePwr('MAGNET',10); activatePwr('BOOST',10); addNotif('RAIL RUSH!',lm.specialCol||CFG.PK); return; }
+  applyRandomSickPower();
+}
+
+function drawLtmModeFx(lm,t){
+  if (!lm) return;
+  const id=lm.id||'';
+  if (id==='space') {
+    ctx.save(); ctx.globalAlpha=0.16;
+    for (let i=0;i<26;i++) {
+      const sx=(i*31+t*15)%LW, sy=(i*67+t*8)%LH;
+      circle(sx,sy,1.2+((i%3)*0.7),'rgba(170,220,255,0.8)');
+    }
+    ctx.restore();
+    return;
+  }
+  if (id==='volcano') {
+    ctx.save();
+    const a=0.08+0.08*Math.sin(t*8);
+    ctx.fillStyle=`rgba(255,60,30,${a})`; ctx.fillRect(0,0,LW,LH);
+    ctx.restore();
+    if (Math.random()<0.03) addShake(4.5,0.08);
+    return;
+  }
+  if (id==='gold_rush') {
+    ctx.save();
+    ctx.globalAlpha=0.08+0.05*Math.sin(t*4);
+    ctx.fillStyle='rgba(255,220,80,0.55)';
+    for (let i=0;i<12;i++) ctx.fillRect((i*53+t*30)%LW,((i*71+t*24)%LH),2,2);
+    ctx.restore();
+    return;
+  }
+  if (id==='frostbite') {
+    ctx.save();
+    ctx.globalAlpha=0.11+0.04*Math.sin(t*2.5);
+    ctx.fillStyle='rgba(120,230,255,0.5)';
+    ctx.fillRect(0,0,LW,LH*0.35);
+    ctx.restore();
+    return;
+  }
+  if (id==='metro') {
+    ctx.save();
+    ctx.globalAlpha=0.12;
+    for (let y=40;y<LH;y+=80) {
+      ctx.fillStyle='rgba(255,77,210,0.35)';
+      ctx.fillRect((t*140+y*0.6)%LW,y,LW*0.2,2);
+    }
+    ctx.restore();
+    return;
+  }
+  if (id==='storm') {
+    if (Math.random()<0.03) {
+      ctx.save();
+      ctx.globalAlpha=0.2+Math.random()*0.25;
+      ctx.fillStyle='#d3c4ff';
+      ctx.fillRect(0,0,LW,LH*0.18);
+      ctx.restore();
+    }
+    return;
+  }
+  if (id==='hacker') {
+    ctx.save();
+    ctx.globalAlpha=0.08;
+    ctx.fillStyle='rgba(69,255,204,0.45)';
+    for (let i=0;i<8;i++) ctx.fillRect((i*70+t*55)%LW,80+i*60,20,2);
+    ctx.restore();
+    return;
+  }
+  if (id==='void') {
+    ctx.save();
+    const g=ctx.createRadialGradient(LW/2,LH*0.45,40,LW/2,LH*0.45,LH*0.7);
+    g.addColorStop(0,'rgba(169,139,255,0.0)');
+    g.addColorStop(1,'rgba(80,40,120,0.22)');
+    ctx.fillStyle=g; ctx.fillRect(0,0,LW,LH);
+    ctx.restore();
+    return;
+  }
+  if (id==='jungle') {
+    ctx.save();
+    ctx.globalAlpha=0.08;
+    ctx.fillStyle='rgba(125,255,96,0.45)';
+    for (let i=0;i<10;i++) ctx.fillRect((i*47+t*18)%LW,LH-(i*44%220),2,26);
+    ctx.restore();
+    return;
+  }
+  if (id==='chrono') {
+    ctx.save();
+    ctx.globalAlpha=0.10;
+    ctx.fillStyle='rgba(255,243,123,0.4)';
+    ctx.fillRect(0,0,2+Math.abs(Math.sin(t*4))*3,LH);
+    ctx.fillRect(LW-4,0,2+Math.abs(Math.cos(t*3.7))*3,LH);
+    ctx.restore();
+  }
 }
 
 function activateBadLuck() {
@@ -5015,7 +5516,7 @@ function spawnObjects(dt) {
   if (pwrTimer2>=pwrNext) { pwrTimer2=0; pwrNext=rnd(...CFG.PWR_INT); powerups.push(new PowerUp(terrain)); }
 
   // Adventure / Impossible stage powerup timing
-  if ((gameMode==='ADVENTURE' || gameMode==='IMPOSSIBLE') && !newStageActive) {
+  if (isStageMode() && !newStageActive) {
     stagePowerupElapsed+=dt;
     if (stagePowerupElapsed>=stagePowerupNext) {
       stagePowerupElapsed=0; stagePowerupNext=rnd(18,26);
@@ -5032,15 +5533,15 @@ function spawnObjects(dt) {
   }
 
   // Obstacles (mode-aware)
-  const stage=(gameMode==='IMPOSSIBLE'?(IMP_STAGES[impossibleStage]||IMP_STAGES[0]):(ADV_STAGES[adventureStage]||ADV_STAGES[0]));
-  const obsOff=(gameMode==='ADVENTURE'&&stage.obsOff);
+  const stage=currentStageConfig();
+  const obsOff=((gameMode==='ADVENTURE'||gameMode==='LTM')&&stage.obsOff);
   if (!obsOff&&obstacleClearTimer<=0) {
     const obsThresh=Math.max(60,CFG.OBS_THRESH-gameTime*8);
     if (score>=obsThresh) {
       obsTimer+=dt;
       if (obsTimer>=obsNext) {
         obsTimer=0;
-        const oi=gameMode==='ADVENTURE'?(stage.obsInt||[3.0,5.0]):CFG.OBS_INT;
+        const oi=(gameMode==='ADVENTURE'||gameMode==='LTM')?(stage.obsInt||[3.0,5.0]):CFG.OBS_INT;
         const minI=Math.max(1.4,oi[0]-gameTime*0.02);
         const maxI=Math.max(2.5,oi[1]-gameTime*0.04);
         obsNext=rnd(minI,maxI);
@@ -5089,8 +5590,7 @@ function loop(ts) {
   if (gs==='PLAY' || gs==='PAUSE') touchSwipe=lerp(touchSwipe,touchSwipeTarget,clamp(dt*14,0,1));
   else touchSwipe=lerp(touchSwipe,0,clamp(dt*10,0,1));
   updateProfileUploadController(dt);
-  seasonScrollX+=seasonDir*130*dt;
-  if (Math.abs(seasonScrollX)>130) seasonDir*=-1;
+  seasonScrollX=Math.sin(menuT*1.15)*82;
   if (leaderboardState==='loading') leaderboardTimer+=dt;
   if (charShopMsgT>0) charShopMsgT=Math.max(0,charShopMsgT-dt);
   if (stageTransT>0) stageTransT=Math.max(0,stageTransT-dt);
@@ -5284,6 +5784,13 @@ function loop(ts) {
     requestAnimationFrame(loop); return;
   }
 
+  if (gs==='ADMIN_LTM') {
+    drawAdminLtmScreen(menuT);
+    drawTransition();
+    drawTopOverlays(menuT);
+    requestAnimationFrame(loop); return;
+  }
+
   if (gs==='OPTIONS') {
     drawOptionsScreen(menuT);
     drawTransition();
@@ -5355,8 +5862,13 @@ function loop(ts) {
   // ── PLAY ────────────────────────────────────────────────────
   const wdt=dt*worldSpeedMult;
   gameTime+=dt;
+  if (gameMode==='LTM') {
+    const mode=getActiveLtm();
+    ltmStageTimer+=dt;
+    if (ltmStageTimer>=((mode&&mode.stageDuration)||35)) { ltmStageTimer=0; advanceLtmStage(); }
+  }
 
-  if (gameMode==='IMPOSSIBLE' && impossibleStage>=2) { gemDoubleActive=true; gemDoubleTimer=999; }
+  if (gameMode==='IMPOSSIBLE' && impossibleStage>=2) { gemDoubleActive=true; gemBoostMult=2; gemDoubleTimer=999; }
 
   // Active powerup countdown
   if (activePwr&&PWR_TYPES[activePwr]?.dur>0) {
@@ -5448,6 +5960,7 @@ function loop(ts) {
       collectNearbyDrops(player.x,player.y,150);
       activateImmunity(3.0);
       if (gameMode==='IMPOSSIBLE') advanceImpossibleStage();
+      else if (gameMode==='LTM') advanceLtmStage();
       else advanceAdventureStage();
     }
   }
@@ -5547,8 +6060,10 @@ function loop(ts) {
   drawParticles(); drawRings();
   ctx.restore();
 
+  if (gameMode==='LTM') drawLtmModeFx(getActiveLtm(),menuT);
+
   const hideImpossibleVfx = (transDir===0 && transAlpha<1);
-  if (gameMode==='IMPOSSIBLE' && !hideImpossibleVfx) {
+  if (gameMode==='IMPOSSIBLE' && (gs==='PLAY'||gs==='PAUSE'||gs==='CONTINUE') && !hideImpossibleVfx) {
     const tint=IMP_STAGES[impossibleStage]?.theme||'rgba(255,20,20,0.1)';
     ctx.save(); ctx.fillStyle=tint; ctx.fillRect(0,0,LW,LH); ctx.restore();
     if (impossibleStage>=2 && Math.random()<0.06) {
@@ -5573,7 +6088,7 @@ function loop(ts) {
     ctx.restore();
   }
 
-  if (gameMode==='IMPOSSIBLE' && !hideImpossibleVfx) {
+  if (gameMode==='IMPOSSIBLE' && (gs==='PLAY'||gs==='PAUSE'||gs==='CONTINUE') && !hideImpossibleVfx) {
     ctx.save();
     const fogA=impossibleStage>=3?0.22:(impossibleStage>=2?0.16:0.1);
     const g=ctx.createLinearGradient(0,LH,0,LH*0.35);
