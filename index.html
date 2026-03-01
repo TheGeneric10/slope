@@ -827,6 +827,11 @@ function hexToRgba(hex,a) {
   const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
   return `rgba(${r},${g},${b},${a})`;
 }
+function clipRect(x,y,w,h) {
+  ctx.beginPath();
+  ctx.rect(x,y,w,h);
+  ctx.clip();
+}
 function drawNeonBtn(x,y,w,h,col,label,fontSize=14,alpha=1,pulse=1) {
   ctx.save(); ctx.globalAlpha=alpha*(0.7+0.3*pulse);
   glow(col,18); ctx.strokeStyle=col; ctx.lineWidth=2;
@@ -2566,47 +2571,6 @@ function drawLeaderboardScreen(t) {
   const backLbl=leaderboardReturnState==='PAUSE'?'← PAUSE':(leaderboardReturnState==='OVER'?'← WIPEOUT':'← BACK');
   drawNeonBtn((LW-140)/2,LH-48,140,34,CFG.PK,backLbl,11,1,Math.sin(t*2.5));
   ctx.restore();
-}
-
-
-function drawAdminLtmScreen(t){
-  ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
-  drawPerspGrid(terrain.scrollY,0.06); drawBgSquares();
-  setFont(28,'900'); glow(CFG.YL,18); txt('ADMIN LTM TEST MODE',LW/2,54,CFG.YL);
-  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt('NOT OFFICIAL RANKED DATA',LW/2,72,'rgba(255,245,140,0.9)');
-  const x=20,y=90,w=LW-40,h=560;
-  ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(x,y,w,h);
-  ctx.strokeStyle='rgba(255,230,0,0.5)'; ctx.strokeRect(x,y,w,h);
-  const rowH=124;
-  adminLtmTestButtons=[];
-  adminLtmViewH=h-10;
-  adminLtmContentH=LTM_MODES.length*rowH+8;
-  adminLtmScroll=clamp(adminLtmScroll,minAdminLtmScroll(),0);
-  ctx.save(); ctx.beginPath(); ctx.rect(x+6,y+6,w-12,h-12); ctx.clip();
-  ctx.translate(0,adminLtmScroll);
-  LTM_MODES.forEach((m,i)=>{
-    const yy=y+12+i*rowH;
-    ctx.fillStyle='rgba(255,255,255,0.04)'; ctx.fillRect(x+12,yy,w-24,102);
-    ctx.strokeStyle=m.cardCol||CFG.YL; glow(m.cardCol||CFG.YL,8); ctx.strokeRect(x+12,yy,w-24,102);
-    setFont(14,'900'); txt(`${i+1}. ${m.name}`,x+24,yy+22,m.cardCol||CFG.YL,'left');
-    setFont(8,'400',"'Share Tech Mono',monospace"); noGlow(); txt((m.desc||'').slice(0,44),x+24,yy+38,'rgba(220,235,240,0.9)','left');
-    const st=(m.stages||[]).map(s=>`${s.name.split(' ')[1]||''}:${s.label}`).join(' | ').slice(0,60);
-    txt(st,x+24,yy+54,'rgba(180,210,230,0.8)','left');
-    txt(`Starter PWR: ${(m.forcedPowerups||[]).slice(0,5).join(', ')}`,x+24,yy+70,'rgba(160,255,180,0.8)','left');
-    const tb={x:x+w-138,y:yy+62,w:110,h:26};
-    adminLtmTestButtons[i]=tb;
-    drawNeonBtn(tb.x,tb.y,tb.w,tb.h,m.cardCol||CFG.CY,'TEST PLAY',9,1,Math.sin(t*2+i));
-    txt('TEST MODE',x+w-34,yy+22,CFG.PK,'right');
-  });
-  ctx.restore();
-  if (minAdminLtmScroll()<0) {
-    const sbX=x+w-8, sbY=y+8, sbH=h-16;
-    const thumbH=Math.max(26,(adminLtmViewH/(adminLtmViewH+Math.abs(minAdminLtmScroll())))*sbH);
-    const track=sbH-thumbH;
-    const thumbY=sbY + ((-adminLtmScroll)/Math.abs(minAdminLtmScroll()))*track;
-    ctx.fillStyle='rgba(255,230,0,0.18)'; ctx.fillRect(sbX,sbY,4,sbH);
-    ctx.fillStyle='rgba(255,230,0,0.9)'; ctx.fillRect(sbX,thumbY,4,thumbH);
-  }
   BTNS.adminLtmBack={x:(LW-150)/2,y:LH-42,w:150,h:30};
   drawNeonBtn(BTNS.adminLtmBack.x,BTNS.adminLtmBack.y,150,30,CFG.PK,'← BACK',11,1,Math.sin(t*2));
 }
@@ -2650,41 +2614,6 @@ function drawAdminLtmScreen(t){
     ctx.fillStyle='rgba(255,230,0,0.18)'; ctx.fillRect(sbX,sbY,4,sbH);
     ctx.fillStyle='rgba(255,230,0,0.9)'; ctx.fillRect(sbX,thumbY,4,thumbH);
   }
-  BTNS.adminLtmBack={x:(LW-150)/2,y:LH-42,w:150,h:30};
-  drawNeonBtn(BTNS.adminLtmBack.x,BTNS.adminLtmBack.y,150,30,CFG.PK,'← BACK',11,1,Math.sin(t*2));
-}
-
-
-function drawAdminLtmScreen(t){
-  ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
-  drawPerspGrid(terrain.scrollY,0.06); drawBgSquares();
-  setFont(28,'900'); glow(CFG.YL,18); txt('ADMIN LTM TEST MODE',LW/2,54,CFG.YL);
-  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt('NOT OFFICIAL RANKED DATA',LW/2,72,'rgba(255,245,140,0.9)');
-  const x=20,y=90,w=LW-40,h=560;
-  ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(x,y,w,h);
-  ctx.strokeStyle='rgba(255,230,0,0.5)'; ctx.strokeRect(x,y,w,h);
-  const rowH=124;
-  adminLtmTestButtons=[];
-  adminLtmViewH=h-10;
-  adminLtmContentH=LTM_MODES.length*rowH+8;
-  adminLtmScroll=clamp(adminLtmScroll,minAdminLtmScroll(),0);
-  ctx.save(); ctx.beginPath(); ctx.rect(x+6,y+6,w-12,h-12); ctx.clip();
-  ctx.translate(0,adminLtmScroll);
-  LTM_MODES.forEach((m,i)=>{
-    const yy=y+12+i*rowH;
-    ctx.fillStyle='rgba(255,255,255,0.04)'; ctx.fillRect(x+12,yy,w-24,102);
-    ctx.strokeStyle=m.cardCol||CFG.YL; glow(m.cardCol||CFG.YL,8); ctx.strokeRect(x+12,yy,w-24,102);
-    setFont(14,'900'); txt(`${i+1}. ${m.name}`,x+24,yy+22,m.cardCol||CFG.YL,'left');
-    setFont(8,'400',"'Share Tech Mono',monospace"); noGlow(); txt((m.desc||'').slice(0,44),x+24,yy+38,'rgba(220,235,240,0.9)','left');
-    const st=(m.stages||[]).map(s=>`${s.name.split(' ')[1]||''}:${s.label}`).join(' | ').slice(0,60);
-    txt(st,x+24,yy+54,'rgba(180,210,230,0.8)','left');
-    txt(`Starter PWR: ${(m.forcedPowerups||[]).slice(0,5).join(', ')}`,x+24,yy+70,'rgba(160,255,180,0.8)','left');
-    const tb={x:x+w-138,y:yy+62,w:110,h:26};
-    adminLtmTestButtons[i]=tb;
-    drawNeonBtn(tb.x,tb.y,tb.w,tb.h,m.cardCol||CFG.CY,'TEST PLAY',9,1,Math.sin(t*2+i));
-    txt('TEST MODE',x+w-34,yy+22,CFG.PK,'right');
-  });
-  ctx.restore();
   BTNS.adminLtmBack={x:(LW-150)/2,y:LH-42,w:150,h:30};
   drawNeonBtn(BTNS.adminLtmBack.x,BTNS.adminLtmBack.y,150,30,CFG.PK,'← BACK',11,1,Math.sin(t*2));
 }
@@ -5469,6 +5398,97 @@ function activateLtmSpecialPower(){
   applyRandomSickPower();
 }
 
+function drawLtmModeFx(lm,t){
+  if (!lm) return;
+  const id=lm.id||'';
+  if (id==='space') {
+    ctx.save(); ctx.globalAlpha=0.16;
+    for (let i=0;i<26;i++) {
+      const sx=(i*31+t*15)%LW, sy=(i*67+t*8)%LH;
+      circle(sx,sy,1.2+((i%3)*0.7),'rgba(170,220,255,0.8)');
+    }
+    ctx.restore();
+    return;
+  }
+  if (id==='volcano') {
+    ctx.save();
+    const a=0.08+0.08*Math.sin(t*8);
+    ctx.fillStyle=`rgba(255,60,30,${a})`; ctx.fillRect(0,0,LW,LH);
+    ctx.restore();
+    if (Math.random()<0.03) addShake(4.5,0.08);
+    return;
+  }
+  if (id==='gold_rush') {
+    ctx.save();
+    ctx.globalAlpha=0.08+0.05*Math.sin(t*4);
+    ctx.fillStyle='rgba(255,220,80,0.55)';
+    for (let i=0;i<12;i++) ctx.fillRect((i*53+t*30)%LW,((i*71+t*24)%LH),2,2);
+    ctx.restore();
+    return;
+  }
+  if (id==='frostbite') {
+    ctx.save();
+    ctx.globalAlpha=0.11+0.04*Math.sin(t*2.5);
+    ctx.fillStyle='rgba(120,230,255,0.5)';
+    ctx.fillRect(0,0,LW,LH*0.35);
+    ctx.restore();
+    return;
+  }
+  if (id==='metro') {
+    ctx.save();
+    ctx.globalAlpha=0.12;
+    for (let y=40;y<LH;y+=80) {
+      ctx.fillStyle='rgba(255,77,210,0.35)';
+      ctx.fillRect((t*140+y*0.6)%LW,y,LW*0.2,2);
+    }
+    ctx.restore();
+    return;
+  }
+  if (id==='storm') {
+    if (Math.random()<0.03) {
+      ctx.save();
+      ctx.globalAlpha=0.2+Math.random()*0.25;
+      ctx.fillStyle='#d3c4ff';
+      ctx.fillRect(0,0,LW,LH*0.18);
+      ctx.restore();
+    }
+    return;
+  }
+  if (id==='hacker') {
+    ctx.save();
+    ctx.globalAlpha=0.08;
+    ctx.fillStyle='rgba(69,255,204,0.45)';
+    for (let i=0;i<8;i++) ctx.fillRect((i*70+t*55)%LW,80+i*60,20,2);
+    ctx.restore();
+    return;
+  }
+  if (id==='void') {
+    ctx.save();
+    const g=ctx.createRadialGradient(LW/2,LH*0.45,40,LW/2,LH*0.45,LH*0.7);
+    g.addColorStop(0,'rgba(169,139,255,0.0)');
+    g.addColorStop(1,'rgba(80,40,120,0.22)');
+    ctx.fillStyle=g; ctx.fillRect(0,0,LW,LH);
+    ctx.restore();
+    return;
+  }
+  if (id==='jungle') {
+    ctx.save();
+    ctx.globalAlpha=0.08;
+    ctx.fillStyle='rgba(125,255,96,0.45)';
+    for (let i=0;i<10;i++) ctx.fillRect((i*47+t*18)%LW,LH-(i*44%220),2,26);
+    ctx.restore();
+    return;
+  }
+  if (id==='chrono') {
+    ctx.save();
+    ctx.globalAlpha=0.10;
+    ctx.fillStyle='rgba(255,243,123,0.4)';
+    ctx.fillRect(0,0,2+Math.abs(Math.sin(t*4))*3,LH);
+    ctx.fillRect(LW-4,0,2+Math.abs(Math.cos(t*3.7))*3,LH);
+    ctx.restore();
+  }
+}
+
 function activateBadLuck() {
   if (gameMode!=='IMPOSSIBLE') return;
   badLuckActive=true; badLuckTimer=5.0; badLuckSpawnT=0;
@@ -6055,24 +6075,7 @@ function loop(ts) {
   drawParticles(); drawRings();
   ctx.restore();
 
-  if (gameMode==='LTM') {
-    const lm=getActiveLtm();
-    if (lm&&lm.lowGravity) {
-      ctx.save(); ctx.globalAlpha=0.16;
-      for (let i=0;i<26;i++) {
-        const sx=(i*31+menuT*15)%LW, sy=(i*67+menuT*8)%LH;
-        circle(sx,sy,1.2+((i%3)*0.7),'rgba(170,220,255,0.8)');
-      }
-      ctx.restore();
-    }
-    if (lm&&lm.volcanoFX) {
-      ctx.save();
-      const a=0.08+0.08*Math.sin(menuT*8);
-      ctx.fillStyle=`rgba(255,60,30,${a})`; ctx.fillRect(0,0,LW,LH);
-      ctx.restore();
-      if (Math.random()<0.03) addShake(4.5,0.08);
-    }
-  }
+  if (gameMode==='LTM') drawLtmModeFx(getActiveLtm(),menuT);
 
   const hideImpossibleVfx = (transDir===0 && transAlpha<1);
   if (gameMode==='IMPOSSIBLE' && (gs==='PLAY'||gs==='PAUSE'||gs==='CONTINUE') && !hideImpossibleVfx) {
