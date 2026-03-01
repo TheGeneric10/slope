@@ -156,10 +156,12 @@ let touchActive = false;
 let touchStartX = 0;
 let touchCurrentX = 0;
 let touchSwipe = 0;   // -1 to 1 continuous
+let touchSwipeTarget = 0;
 let touchMoved = false;
 let _lastTouchEnd = 0;
 let questTouchY = null;
 let profileTouchY = null;
+let leaderboardTouchY = null;
 let joyL=false, joyR=false;
 let usingTouchJoy=false;
 const isTouchDevice=('ontouchstart' in window)||(navigator.maxTouchPoints>0);
@@ -402,7 +404,8 @@ canvas.addEventListener('touchstart', e => {
   touchStartX = t.clientX; touchCurrentX = t.clientX;
   questTouchY = t.clientY;
   profileTouchY = t.clientY;
-  touchSwipe = 0;
+  leaderboardTouchY = t.clientY;
+  touchSwipe = 0; touchSwipeTarget = 0;
 }, { passive:false });
 
 canvas.addEventListener('touchmove', e => {
@@ -418,6 +421,16 @@ canvas.addEventListener('touchmove', e => {
       questScroll=clamp(questScroll+dy, minQuestScroll(), 0);
     }
     questTouchY=t.clientY;
+    return;
+  }
+  if (gs==='LEADERBOARD') {
+    const t=e.touches[0];
+    if (leaderboardTouchY!==null) {
+      const dy=t.clientY-leaderboardTouchY;
+      if (Math.abs(dy)>2) touchMoved=true;
+      leaderboardScroll=clamp(leaderboardScroll+dy, minLeaderboardScroll(), 0);
+    }
+    leaderboardTouchY=t.clientY;
     return;
   }
   if (gs==='PROFILE') {
@@ -454,8 +467,9 @@ canvas.addEventListener('touchmove', e => {
   touchCurrentX = e.touches[0].clientX;
   const delta = touchCurrentX - touchStartX;
   if (Math.abs(delta) > 8) touchMoved = true;
-  // Smooth swipe: delta of 60px = full speed
-  touchSwipe = clamp(delta / 60, -1, 1);
+  // Smooth swipe target + easing
+  touchSwipeTarget = clamp(delta / 78, -1, 1);
+  touchSwipe = lerp(touchSwipe,touchSwipeTarget,0.25);
 }, { passive:false });
 
 canvas.addEventListener('touchend', e => {
@@ -464,11 +478,11 @@ canvas.addEventListener('touchend', e => {
   if (!touchMoved) {
     handleTap(e);
   }
-  touchActive = false; touchSwipe = 0; touchMoved = false; questTouchY = null; profileTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
+  touchActive = false; touchSwipe = 0; touchSwipeTarget = 0; touchMoved = false; questTouchY = null; profileTouchY=null; leaderboardTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
 }, { passive:false });
 
 canvas.addEventListener('touchcancel', () => {
-  touchActive = false; touchSwipe = 0; touchMoved = false; questTouchY = null; profileTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
+  touchActive = false; touchSwipe = 0; touchSwipeTarget = 0; touchMoved = false; questTouchY = null; profileTouchY=null; leaderboardTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
 });
 
 // Mouse (desktop)
@@ -502,10 +516,11 @@ canvas.addEventListener('mousemove', e => {
   touchCurrentX = e.clientX;
   const delta = touchCurrentX - touchStartX;
   if (Math.abs(delta) > 8) touchMoved = true;
-  touchSwipe = clamp(delta / 80, -1, 1);
+  touchSwipeTarget = clamp(delta / 92, -1, 1);
+  touchSwipe = lerp(touchSwipe,touchSwipeTarget,0.22);
 });
-canvas.addEventListener('mouseup', () => { touchActive=false; touchSwipe=0; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction(); });
-canvas.addEventListener('mouseleave', () => { touchActive=false; touchSwipe=0; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction(); });
+canvas.addEventListener('mouseup', () => { touchActive=false; touchSwipe=0; touchSwipeTarget=0; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction(); });
+canvas.addEventListener('mouseleave', () => { touchActive=false; touchSwipe=0; touchSwipeTarget=0; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction(); });
 
 document.addEventListener('click', e => {
   if (Date.now() - _lastTouchEnd < 450) return;
@@ -528,6 +543,11 @@ document.addEventListener('wheel', e => {
       return;
     }
     profileScroll=clamp(profileScroll - e.deltaY*0.6, minProfileScroll(), 0);
+    return;
+  }
+  if (gs==='LEADERBOARD') {
+    e.preventDefault();
+    leaderboardScroll=clamp(leaderboardScroll - e.deltaY*0.8, minLeaderboardScroll(), 0);
     return;
   }
   if (gs==='SETTINGS') {
@@ -766,6 +786,7 @@ function drawTransition() {
 
 function drawTopOverlays(t){
   drawAuthOverlay(t);
+  drawOptimizeConfirmPopup(t);
   drawConfirmDialog();
   drawInputDialog(t);
 }
@@ -1132,15 +1153,16 @@ class Player {
     }
 
     // Horizontal movement (keyboard or swipe)
-    const touchBoost=(1 + (touchSwipe!==0 ? Math.abs(touchSwipe)*0.4 : 0));
+    const smoothSwipe=clamp(touchSwipe,-1,1);
+    const touchBoost=(1 + (smoothSwipe!==0 ? Math.abs(smoothSwipe)*0.55 : 0));
     const lMul=Math.max(
       K.left?SETTINGS.keyboardSensitivity:0,
-      (touchSwipe<-0.1||joyL)?SETTINGS.touchSensitivity*touchBoost:0,
+      (smoothSwipe<-0.05||joyL)?SETTINGS.touchSensitivity*touchBoost*Math.max(0.2,Math.abs(smoothSwipe)):0,
       GP.left?SETTINGS.controllerSensitivity:0
     );
     const rMul=Math.max(
       K.right?SETTINGS.keyboardSensitivity:0,
-      (touchSwipe>0.1||joyR)?SETTINGS.touchSensitivity*touchBoost:0,
+      (smoothSwipe>0.05||joyR)?SETTINGS.touchSensitivity*touchBoost*Math.max(0.2,Math.abs(smoothSwipe)):0,
       GP.right?SETTINGS.controllerSensitivity:0
     );
     if (lMul>0) this.x-=CFG.PSPD*lMul*dt;
@@ -1252,6 +1274,7 @@ function randPwrKey() {
     let pool=[...PWR_WEIGHTED];
     if (!allowRegen) pool=pool.filter(k=>k!=='REGEN');
     if (adventureStage>=5 && Math.random()<0.28) return 'MINI_JETPACK';
+    pool=pool.filter(k=>k!=='BAD_LUCK');
     return pool[rndI(0,pool.length-1)];
   }
   if (gameMode==='IMPOSSIBLE') {
@@ -1261,7 +1284,7 @@ function randPwrKey() {
     if (impossibleStage<=1 && Math.random()<0.22) return 'BAD_LUCK';
     return pool[rndI(0,pool.length-1)];
   }
-  const pool=allowRegen?PWR_WEIGHTED:PWR_WEIGHTED.filter(k=>k!=='REGEN');
+  const pool=(allowRegen?PWR_WEIGHTED:PWR_WEIGHTED.filter(k=>k!=='REGEN')).filter(k=>k!=='BAD_LUCK');
   return pool[rndI(0,pool.length-1)];
 }
 
@@ -1645,8 +1668,8 @@ function drawHUD() {
 
 
   if (isTouchDevice && OPTION_PREFS.showTouchJoycons) {
-    const r=26, y=LH-82;
-    const lx=56, rx=LW-56;
+    const r=32, y=LH-92;
+    const lx=64, rx=LW-64;
     const pulse=0.72+0.28*Math.sin(menuT*5);
     BTNS.touchJoyL={x:lx-r,y:y-r,w:r*2,h:r*2};
     BTNS.touchJoyR={x:rx-r,y:y-r,w:r*2,h:r*2};
@@ -1667,9 +1690,18 @@ function drawHUD() {
     BTNS.touchJoyL=BTNS.touchJoyR=null;
   }
 
-  // Speed bar
+  // Speed bar + next-stage meter
   ctx.save();
   const bw=120,bh=3,bx=(LW-bw)/2,by=LH-pdY-bh;
+  if (gameMode!=='ENDLESS') {
+    const nby=by-12;
+    const stageFrac=clamp(stagePowerupElapsed/Math.max(0.001,stagePowerupNext),0,1);
+    setFont(7,'400',"'Share Tech Mono',monospace"); txt('NEXT STAGE',LW/2,nby-4,'rgba(140,255,220,0.55)');
+    ctx.fillStyle='rgba(136,255,204,0.12)'; ctx.fillRect(bx,nby,bw,bh);
+    const ng=ctx.createLinearGradient(bx,0,bx+bw,0);
+    ng.addColorStop(0,'#88ffcc'); ng.addColorStop(1,'#66bbff');
+    ctx.fillStyle=ng; glow('#88ffcc',7); ctx.fillRect(bx,nby,bw*stageFrac,bh);
+  }
   setFont(8,'400',"'Share Tech Mono',monospace"); txt('SPEED',LW/2,by-6,'rgba(0,245,255,0.35)');
   ctx.fillStyle='rgba(0,245,255,0.1)'; ctx.fillRect(bx,by,bw,bh);
   const spGrad=ctx.createLinearGradient(bx,0,bx+bw,0);
@@ -1714,7 +1746,8 @@ function drawHUD() {
   // Combo
   if (multi>1||gemStreak>0) {
     ctx.save(); const mx=pdX,my=LH-pdY-22;
-    setFont(9,'700'); glow(CFG.YL,10); txt(`×${multi} COMBO`,mx+30,my,CFG.YL,'left');
+    const sm=scoreMultiplier();
+    setFont(9,'700'); glow(CFG.YL,10); txt(`COMBO ×${multi}  ·  SCORE ×${sm}`,mx+30,my,CFG.YL,'left');
     if (multi<4) {
       const bwm=60,bhm=2,pct=(gemStreak%5)/5;
       ctx.fillStyle='rgba(255,230,0,0.1)'; ctx.fillRect(mx,my+4,bwm,bhm);
@@ -2017,6 +2050,29 @@ function drawAboutScreen(t) {
   ctx.restore();
 }
 
+function drawOptimizeConfirmPopup(t){
+  if (!showOptimizeConfirm) return;
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.78)';
+  ctx.fillRect(0,0,LW,LH);
+  ctx.globalAlpha=0.95; ctx.fillStyle='#000';
+  rrect(LW/2-132,LH/2-84,264,168,8); ctx.fill();
+  ctx.strokeStyle=CFG.GR; ctx.lineWidth=2; glow(CFG.GR,14);
+  rrect(LW/2-132,LH/2-84,264,168,8); ctx.stroke();
+  ctx.globalAlpha=1;
+  setFont(13,'900'); glow(CFG.GR,12); txt('OPTIMIZE GAME?',LW/2,LH/2-54,CFG.GR);
+  setFont(8,'400',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.75;
+  txt('Sets LOW quality + 30 FPS',LW/2,LH/2-34,'rgba(57,255,20,0.9)');
+  txt('Disables particles, scanlines, shake',LW/2,LH/2-22,'rgba(57,255,20,0.9)');
+  txt('and keeps control sensitivity values.',LW/2,LH/2-10,'rgba(57,255,20,0.9)');
+  ctx.globalAlpha=1;
+  BTNS.confirmYes={x:LW/2-112,y:LH/2+10,w:104,h:38};
+  BTNS.confirmNo={x:LW/2+8,y:LH/2+10,w:104,h:38};
+  drawNeonBtn(BTNS.confirmYes.x,BTNS.confirmYes.y,BTNS.confirmYes.w,BTNS.confirmYes.h,CFG.GR,'YES',13,1,Math.sin(t*4));
+  drawNeonBtn(BTNS.confirmNo.x,BTNS.confirmNo.y,BTNS.confirmNo.w,BTNS.confirmNo.h,CFG.PK,'NO',13,1,Math.sin(t*3.5));
+  ctx.restore();
+}
+
 function drawControlsScreen(t) {
   drawPerspGrid(terrain.scrollY,0.03); drawTerrain(); drawBgSquares();
   ctx.save(); ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
@@ -2242,18 +2298,28 @@ function drawQuestsScreen(t) {
 function drawLeaderboardScreen(t) {
   ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
   drawPerspGrid(terrain.scrollY,0.06); drawBgSquares();
-  ctx.save(); ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
+  ctx.save();
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
   setFont(32,'900'); glow(CFG.GR,20); txt('LEADERBOARD',LW/2,54,CFG.GR);
   setFont(8,'400',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.6;
   txt('Top 100 · refreshes every hour',LW/2,72,CFG.CY); ctx.globalAlpha=1;
 
   const bx=24,by=98,bw=LW-48,bh=520;
+  const listX=bx+10, listY=by+42, listW=bw-20, listH=bh-54;
+  leaderboardViewH=listH;
   ctx.fillStyle='rgba(0,0,0,0.58)'; ctx.fillRect(bx,by,bw,bh);
   ctx.strokeStyle='rgba(57,255,20,0.35)'; ctx.lineWidth=1.5; ctx.strokeRect(bx,by,bw,bh);
+
+  setFont(10,'900'); glow(CFG.YL,10);
+  txt('RANK',listX+12,by+26,CFG.YL,'left');
+  txt('PLAYER',listX+74,by+26,CFG.YL,'left');
+  txt('SCORE',bx+bw-20,by+26,CFG.YL,'right');
+  ctx.strokeStyle='rgba(57,255,20,0.25)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(listX,by+30); ctx.lineTo(listX+listW,by+30); ctx.stroke();
 
   if (!isSignedIn) {
     setFont(14,'900'); glow(CFG.PK,12); txt('SIGN IN REQUIRED',LW/2,LH/2-8,CFG.PK);
     setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); txt('Please sign in to view leaderboard.',LW/2,LH/2+16,CFG.CY);
+    leaderboardContentH=listH;
   } else if (leaderboardState==='loading') {
     const sq=18, gap=10, total=3*sq+2*gap, sx=LW/2-total/2;
     for (let i=0;i<3;i++) {
@@ -2261,25 +2327,42 @@ function drawLeaderboardScreen(t) {
       ctx.globalAlpha=a; ctx.fillStyle=CFG.CY; ctx.fillRect(sx+i*(sq+gap),LH/2-20,sq,sq);
     }
     ctx.globalAlpha=0.9; setFont(11,'700'); glow(CFG.CY,10); txt('FETCHING...',LW/2,LH/2+20,CFG.CY);
+    leaderboardContentH=listH;
   } else if (leaderboardState==='error') {
     setFont(14,'900'); glow(CFG.PK,12); txt('UNAVAILABLE',LW/2,LH/2-8,CFG.PK);
     setFont(9,'400',"'Share Tech Mono',monospace"); noGlow(); txt('Could not fetch leaderboard.',LW/2,LH/2+16,CFG.CY);
+    leaderboardContentH=listH;
   } else {
-    const rowH=4.8;
+    const rowH=18;
+    leaderboardContentH=10 + (100*rowH);
+    leaderboardScroll=clamp(leaderboardScroll,minLeaderboardScroll(),0);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(listX,listY,listW,listH); ctx.clip();
+    ctx.translate(0,leaderboardScroll);
     for (let i=0;i<100;i++) {
       const r=leaderboardData[i]||{name:'—',score:0,empty:true};
-      const y=by+14+i*rowH;
-      if (y>by+bh-8) break;
-      let col='rgba(150,150,150,0.9)';
+      const y=listY+8+i*rowH;
+      const rowBg=(i%2===0)?'rgba(60,255,90,0.05)':'rgba(0,0,0,0)';
+      ctx.fillStyle=rowBg; ctx.fillRect(listX,y-10,listW,rowH);
+      let col='rgba(190,210,230,0.95)';
       if (i===0) col='#ffd700';
-      else if (i===1) col='#cfd5df';
+      else if (i===1) col='#e5ecf7';
       else if (i===2) col='#cd7f32';
-      else if (i<=4) col='#ffffff';
-      else if (i<=9) col='#d6d6d6';
-      setFont(7,'700',"'Share Tech Mono',monospace"); noGlow();
-      txt(`#${i+1}`,bx+10,y,col,'left');
-      txt(r.name||'—',bx+48,y,col,'left');
-      txt(`${Math.floor(r.score||0)}`,bx+bw-12,y,col,'right');
+      else if (i<=9) col='#ffffff';
+      setFont(11,'700',"'Share Tech Mono',monospace"); noGlow();
+      txt(`#${i+1}`,listX+8,y,col,'left');
+      txt(String(r.name||'—').slice(0,20),listX+72,y,col,'left');
+      txt(`${Math.floor(r.score||0)}`,listX+listW-10,y,col,'right');
+    }
+    ctx.restore();
+
+    if (minLeaderboardScroll()<0) {
+      const sbX=listX+listW-4, sbY=listY, sbH=listH;
+      const thumbH=Math.max(24,(listH/(listH+Math.abs(minLeaderboardScroll())))*sbH);
+      const track=sbH-thumbH;
+      const thumbY=sbY + ((-leaderboardScroll)/Math.abs(minLeaderboardScroll()))*track;
+      ctx.fillStyle='rgba(57,255,20,0.16)'; ctx.fillRect(sbX,sbY,4,sbH);
+      ctx.fillStyle='rgba(57,255,20,0.78)'; ctx.fillRect(sbX,thumbY,4,thumbH);
     }
   }
 
@@ -2760,25 +2843,6 @@ function drawSettingsScreen(t) {
   const bW=140,bH=36,bX=(LW-bW)/2,bY=LH-68;
   BTNS.back={x:bX,y:bY,w:bW,h:bH};
   drawNeonBtn(bX,bY,bW,bH,CFG.PU,'← BACK',13,1,Math.sin(t*2.5));
-
-  // Optimize confirm popup
-  if (showOptimizeConfirm) {
-    ctx.save(); ctx.globalAlpha=0.9; ctx.fillStyle='#000';
-    rrect(LW/2-120,LH/2-70,240,140,8); ctx.fill();
-    ctx.strokeStyle=CFG.GR; ctx.lineWidth=2; glow(CFG.GR,14);
-    rrect(LW/2-120,LH/2-70,240,140,8); ctx.stroke();
-    ctx.globalAlpha=1;
-    setFont(13,'900'); glow(CFG.GR,12); txt('OPTIMIZE?',LW/2,LH/2-44,CFG.GR);
-    setFont(8,'400',"'Share Tech Mono',monospace"); noGlow(); ctx.globalAlpha=0.65;
-    txt('Sets LOW quality + 30 FPS',LW/2,LH/2-28,'rgba(57,255,20,0.8)');
-    txt('Disables particles & effects',LW/2,LH/2-16,'rgba(57,255,20,0.8)');
-    ctx.globalAlpha=1;
-    BTNS.confirmYes={x:LW/2-108,y:LH/2+4,w:100,h:36};
-    BTNS.confirmNo={x:LW/2+8,y:LH/2+4,w:100,h:36};
-    drawNeonBtn(LW/2-108,LH/2+4,100,36,CFG.GR,'YES',13,1,Math.sin(t*4));
-    drawNeonBtn(LW/2+8,LH/2+4,100,36,CFG.PK,'NO',13,1,Math.sin(t*3.5));
-    ctx.restore();
-  }
   drawFooter();
   ctx.restore();
 }
@@ -4420,17 +4484,22 @@ let leaderboardTimer=0;
 let leaderboardData=[];
 let leaderboardNextRefresh=0;
 let leaderboardReturnState='MENU';
+let leaderboardScroll=0;
+let leaderboardViewH=0;
+let leaderboardContentH=0;
+function minLeaderboardScroll(){ return Math.min(0,leaderboardViewH-leaderboardContentH); }
 
 // Score multiplier (includes mini jetpack bonus).
-const scoreMultiplier = () => (multi*(gemDoubleActive?2:1)) + (player.jetpackActive ? 10 : 0) + (miniJetpackActive ? 5 : 0);
+const scoreMultiplier = () => { const base=multi + (player.jetpackActive ? 10 : 0) + (miniJetpackActive ? 5 : 0); return Math.max(1,Math.floor(base*(gemDoubleActive?2:1))); }; 
 
 async function triggerLeaderboardFetch(force=false) {
   if (!force && leaderboardState==='loading') return;
   if (!force && Date.now()<leaderboardNextRefresh && leaderboardState==='loaded' && leaderboardData.length) return;
-  if (!isSignedIn) { leaderboardState='error'; leaderboardData=[]; return; }
+  if (!isSignedIn) { leaderboardState='error'; leaderboardData=[]; leaderboardScroll=0; return; }
   leaderboardState='loading';
   leaderboardTimer=0;
   leaderboardData=[];
+  leaderboardScroll=0;
   leaderboardNextRefresh=Date.now()+3600*1000;
   try {
     if (!fbReady || !fbDb) throw new Error('Sign in required');
@@ -4460,6 +4529,7 @@ async function triggerLeaderboardFetch(force=false) {
   } catch (e) {
     leaderboardState='error';
     leaderboardData=[];
+    leaderboardScroll=0;
   }
 }
 
@@ -4826,7 +4896,8 @@ function activateGemDrop() {
 }
 
 function activateBadLuck() {
-  badLuckActive=true; badLuckTimer=5.5; badLuckSpawnT=0;
+  if (gameMode!=='IMPOSSIBLE') return;
+  badLuckActive=true; badLuckTimer=5.0; badLuckSpawnT=0;
   addNotif('☠ BAD LUCK! FALLING ROCKS','#ff3333');
   addFloat(player.x,player.y-24,'☠ BAD LUCK','#ff3333');
 }
@@ -4937,6 +5008,8 @@ function loop(ts) {
   if (fpsTimer>=0.5) { fps=Math.round(fpsFrames/fpsTimer); fpsFrames=0; fpsTimer=0; }
 
   menuT+=dt;
+  if (gs==='PLAY' || gs==='PAUSE') touchSwipe=lerp(touchSwipe,touchSwipeTarget,clamp(dt*14,0,1));
+  else touchSwipe=lerp(touchSwipe,0,clamp(dt*10,0,1));
   updateProfileUploadController(dt);
   seasonScrollX+=seasonDir*130*dt;
   if (Math.abs(seasonScrollX)>130) seasonDir*=-1;
@@ -5257,6 +5330,7 @@ function loop(ts) {
 
   if (obstacleClearTimer>0) obstacleClearTimer=Math.max(0,obstacleClearTimer-dt);
 
+  if (badLuckActive && gameMode!=='IMPOSSIBLE') { badLuckActive=false; badLuckTimer=0; }
   if (badLuckActive) {
     badLuckTimer-=dt; badLuckSpawnT-=dt;
     if (badLuckSpawnT<=0) {
