@@ -126,24 +126,24 @@ const LTM_MODES=[
     {name:'STAGE 4',label:'HARD',spd:320,spdMax:520,shrink:0.0065,obsInt:[3.0,4.2]},
     {name:'STAGE 5',label:'VERY HARD',spd:390,spdMax:620,shrink:0.0072,obsInt:[2.2,3.5]},
     {name:'STAGE 6',label:'INTENSE',spd:470,spdMax:700,shrink:0.0085,obsInt:[1.5,2.7]},
-  ], forcedPowerups:['X2_SCORE','MINI_JETPACK','SHIELD','MAGNET','REGEN','HEALTH_BOOST','X4_GEMS','GEM_DROP'], stagePowerupStage:5, gemSet:[{col:'#ffd700',score:100,gems:3},{col:'#ff9900',score:250,gems:5},{col:'#ff3344',score:500,gems:10}]},
-  {id:'space', name:'SPACE', desc:'Low gravity star ride', cardCol:'#7bc9ff', stageDuration:50, stages:[
+  ], forcedPowerups:['X2_SCORE','MINI_JETPACK','SHIELD','MAGNET','REGEN','HEALTH_BOOST','X4_GEMS','GEM_DROP'], stagePowerupStage:5, gemSet:[{col:'#ffd700',score:100,gems:3},{col:'#ff9900',score:250,gems:5},{col:'#ff3344',score:500,gems:10}],specialName:'GOLD FEVER',specialCol:'#ffd700'},
+  {id:'space', specialName:'COSMIC BURST', specialCol:'#7bc9ff', name:'SPACE', desc:'Low gravity star ride', cardCol:'#7bc9ff', stageDuration:50, stages:[
     {name:'STAGE 1',label:'EASY',spd:95,spdMax:220,shrink:0.002,obsInt:[6.0,8.5]},
     {name:'STAGE 2',label:'MEDIUM',spd:145,spdMax:290,shrink:0.0035,obsInt:[4.5,7.2]},
     {name:'STAGE 3',label:'HARD',spd:210,spdMax:380,shrink:0.0055,obsInt:[3.8,6.0]},
   ], forcedPowerups:['X2_SCORE','MINI_JETPACK','SHIELD','MAGNET','REGEN','HEALTH_BOOST','GEM_DROP'], stagePowerupStage:2, lowGravity:true},
-  {id:'volcano', name:'VOLCANO', desc:'Eruptions and red pressure', cardCol:'#ff5a2a', stageDuration:40, stages:[
+  {id:'volcano', specialName:'LAVA ARMOR', specialCol:'#ff5a2a', name:'VOLCANO', desc:'Eruptions and red pressure', cardCol:'#ff5a2a', stageDuration:40, stages:[
     {name:'STAGE 1',label:'MEDIUM',spd:220,spdMax:420,shrink:0.0055,obsInt:[3.5,5.5]},
     {name:'STAGE 2',label:'HARD',spd:320,spdMax:560,shrink:0.0082,obsInt:[2.4,4.0]},
     {name:'STAGE 3',label:'VERY HARD',spd:460,spdMax:720,shrink:0.0125,obsInt:[1.4,2.4]},
   ], forcedPowerups:['X2_SCORE','JETPACK','SHIELD','MAGNET','REGEN','HEALTH_BOOST','IMMUNITY','X2_GEMS','GEM_DROP'], stagePowerupStage:2, volcanoFX:true},
-  {id:'frostbite', name:'FROSTBITE', desc:'Frozen lanes and glide control', cardCol:'#7af0ff', stageDuration:35, stages:[{name:'STAGE 1',label:'CHILL',spd:150,spdMax:320,shrink:0.003,obsInt:[4.8,6.8]},{name:'STAGE 2',label:'COLD',spd:220,spdMax:430,shrink:0.005,obsInt:[3.4,5.2]},{name:'STAGE 3',label:'BLIZZARD',spd:320,spdMax:560,shrink:0.007,obsInt:[2.4,4.0]}], forcedPowerups:['X2_SCORE','SHIELD','MAGNET','REGEN','GEM_DROP']},
-  {id:'metro', name:'NEON METRO', desc:'City rails and fast pickups', cardCol:'#ff4dd2', stageDuration:34, stages:[{name:'STAGE 1',label:'RUSH',spd:180,spdMax:340,shrink:0.004,obsInt:[4.4,6.2]},{name:'STAGE 2',label:'HYPER',spd:260,spdMax:460,shrink:0.0064,obsInt:[3.1,4.8]},{name:'STAGE 3',label:'BLAZE',spd:360,spdMax:620,shrink:0.008,obsInt:[2.0,3.5]}], forcedPowerups:['X2_SCORE','MAGNET','REGEN','X2_GEMS','GEM_DROP']},
-  {id:'storm', name:'THUNDER RUN', desc:'Electric storms and shake', cardCol:'#d3c4ff', stageDuration:38, stages:[{name:'STAGE 1',label:'STATIC',spd:170,spdMax:320,shrink:0.0035,obsInt:[4.8,6.8]},{name:'STAGE 2',label:'SPARK',spd:240,spdMax:450,shrink:0.006,obsInt:[3.0,4.8]},{name:'STAGE 3',label:'THUNDER',spd:330,spdMax:610,shrink:0.0078,obsInt:[2.1,3.3]}], forcedPowerups:['X2_SCORE','SHIELD','IMMUNITY','REGEN','GEM_DROP']},
-  {id:'hacker', name:'GLITCH GRID', desc:'Digital chaos and pulse', cardCol:'#45ffcc', stageDuration:32, stages:[{name:'STAGE 1',label:'PATCHED',spd:160,spdMax:330,shrink:0.0036,obsInt:[4.7,6.5]},{name:'STAGE 2',label:'BREACH',spd:250,spdMax:470,shrink:0.0063,obsInt:[3.0,4.7]},{name:'STAGE 3',label:'MELTDOWN',spd:350,spdMax:620,shrink:0.0081,obsInt:[2.0,3.2]}], forcedPowerups:['X2_SCORE','MAGNET','X4_GEMS','REGEN','GEM_DROP']},
-  {id:'void', name:'VOID TUNNEL', desc:'Ultra dark precision route', cardCol:'#a98bff', stageDuration:42, stages:[{name:'STAGE 1',label:'DUSK',spd:170,spdMax:330,shrink:0.0041,obsInt:[4.8,6.4]},{name:'STAGE 2',label:'NIGHT',spd:260,spdMax:470,shrink:0.0066,obsInt:[2.8,4.6]},{name:'STAGE 3',label:'VOID',spd:360,spdMax:640,shrink:0.0088,obsInt:[1.8,3.0]}], forcedPowerups:['X2_SCORE','SHIELD','MAGNET','REGEN','IMMUNITY']},
-  {id:'jungle', name:'JUNGLE DASH', desc:'Roots, rain and gem rain', cardCol:'#7dff60', stageDuration:37, stages:[{name:'STAGE 1',label:'WET',spd:155,spdMax:320,shrink:0.0034,obsInt:[4.9,6.7]},{name:'STAGE 2',label:'VINES',spd:235,spdMax:430,shrink:0.0057,obsInt:[3.2,5.0]},{name:'STAGE 3',label:'CANOPY',spd:330,spdMax:580,shrink:0.0075,obsInt:[2.2,3.6]}], forcedPowerups:['X2_SCORE','MAGNET','REGEN','HEALTH_BOOST','GEM_DROP']},
-  {id:'chrono', name:'TIME WARP', desc:'Temporal speed spikes', cardCol:'#fff37b', stageDuration:36, stages:[{name:'STAGE 1',label:'SLOW',spd:125,spdMax:260,shrink:0.0028,obsInt:[5.0,7.0]},{name:'STAGE 2',label:'RIFT',spd:245,spdMax:440,shrink:0.006,obsInt:[3.0,4.8]},{name:'STAGE 3',label:'WARP',spd:390,spdMax:660,shrink:0.0092,obsInt:[1.7,2.9]}], forcedPowerups:['X2_SCORE','JETPACK','MAGNET','X2_GEMS','X4_GEMS']},
+  {id:'frostbite', specialName:'ICE FIELD', specialCol:'#7af0ff', name:'FROSTBITE', desc:'Frozen lanes and glide control', cardCol:'#7af0ff', stageDuration:35, stages:[{name:'STAGE 1',label:'CHILL',spd:150,spdMax:320,shrink:0.003,obsInt:[4.8,6.8]},{name:'STAGE 2',label:'COLD',spd:220,spdMax:430,shrink:0.005,obsInt:[3.4,5.2]},{name:'STAGE 3',label:'BLIZZARD',spd:320,spdMax:560,shrink:0.007,obsInt:[2.4,4.0]}], forcedPowerups:['X2_SCORE','SHIELD','MAGNET','REGEN','GEM_DROP']},
+  {id:'metro', specialName:'RAIL RUSH', specialCol:'#ff4dd2', name:'NEON METRO', desc:'City rails and fast pickups', cardCol:'#ff4dd2', stageDuration:34, stages:[{name:'STAGE 1',label:'RUSH',spd:180,spdMax:340,shrink:0.004,obsInt:[4.4,6.2]},{name:'STAGE 2',label:'HYPER',spd:260,spdMax:460,shrink:0.0064,obsInt:[3.1,4.8]},{name:'STAGE 3',label:'BLAZE',spd:360,spdMax:620,shrink:0.008,obsInt:[2.0,3.5]}], forcedPowerups:['X2_SCORE','MAGNET','REGEN','X2_GEMS','GEM_DROP']},
+  {id:'storm', specialName:'THUNDER CORE', specialCol:'#d3c4ff', name:'THUNDER RUN', desc:'Electric storms and shake', cardCol:'#d3c4ff', stageDuration:38, stages:[{name:'STAGE 1',label:'STATIC',spd:170,spdMax:320,shrink:0.0035,obsInt:[4.8,6.8]},{name:'STAGE 2',label:'SPARK',spd:240,spdMax:450,shrink:0.006,obsInt:[3.0,4.8]},{name:'STAGE 3',label:'THUNDER',spd:330,spdMax:610,shrink:0.0078,obsInt:[2.1,3.3]}], forcedPowerups:['X2_SCORE','SHIELD','IMMUNITY','REGEN','GEM_DROP']},
+  {id:'hacker', specialName:'GLITCH BREAK', specialCol:'#45ffcc', name:'GLITCH GRID', desc:'Digital chaos and pulse', cardCol:'#45ffcc', stageDuration:32, stages:[{name:'STAGE 1',label:'PATCHED',spd:160,spdMax:330,shrink:0.0036,obsInt:[4.7,6.5]},{name:'STAGE 2',label:'BREACH',spd:250,spdMax:470,shrink:0.0063,obsInt:[3.0,4.7]},{name:'STAGE 3',label:'MELTDOWN',spd:350,spdMax:620,shrink:0.0081,obsInt:[2.0,3.2]}], forcedPowerups:['X2_SCORE','MAGNET','X4_GEMS','REGEN','GEM_DROP']},
+  {id:'void', specialName:'VOID SHELL', specialCol:'#a98bff', name:'VOID TUNNEL', desc:'Ultra dark precision route', cardCol:'#a98bff', stageDuration:42, stages:[{name:'STAGE 1',label:'DUSK',spd:170,spdMax:330,shrink:0.0041,obsInt:[4.8,6.4]},{name:'STAGE 2',label:'NIGHT',spd:260,spdMax:470,shrink:0.0066,obsInt:[2.8,4.6]},{name:'STAGE 3',label:'VOID',spd:360,spdMax:640,shrink:0.0088,obsInt:[1.8,3.0]}], forcedPowerups:['X2_SCORE','SHIELD','MAGNET','REGEN','IMMUNITY']},
+  {id:'jungle', specialName:'WILD GROWTH', specialCol:'#7dff60', name:'JUNGLE DASH', desc:'Roots, rain and gem rain', cardCol:'#7dff60', stageDuration:37, stages:[{name:'STAGE 1',label:'WET',spd:155,spdMax:320,shrink:0.0034,obsInt:[4.9,6.7]},{name:'STAGE 2',label:'VINES',spd:235,spdMax:430,shrink:0.0057,obsInt:[3.2,5.0]},{name:'STAGE 3',label:'CANOPY',spd:330,spdMax:580,shrink:0.0075,obsInt:[2.2,3.6]}], forcedPowerups:['X2_SCORE','MAGNET','REGEN','HEALTH_BOOST','GEM_DROP']},
+  {id:'chrono', specialName:'TIME FRACTURE', specialCol:'#fff37b', name:'TIME WARP', desc:'Temporal speed spikes', cardCol:'#fff37b', stageDuration:36, stages:[{name:'STAGE 1',label:'SLOW',spd:125,spdMax:260,shrink:0.0028,obsInt:[5.0,7.0]},{name:'STAGE 2',label:'RIFT',spd:245,spdMax:440,shrink:0.006,obsInt:[3.0,4.8]},{name:'STAGE 3',label:'WARP',spd:390,spdMax:660,shrink:0.0092,obsInt:[1.7,2.9]}], forcedPowerups:['X2_SCORE','JETPACK','MAGNET','X2_GEMS','X4_GEMS']},
 ];
 </script>
 
@@ -431,8 +431,16 @@ function handleTap(e) {
       SFX.click();
     
   if (gameMode==='LTM') {
-    const st=currentStageConfig();
-    terrain.speed=st.spd||ADV_STAGES[0].spd;
+    const mode=getActiveLtm();
+    const forced=(mode&&mode.forcedPowerups)||[];
+    if (Math.random()<0.10) return 'SICK';
+    if (Math.random()<0.12) return 'LTM_SPECIAL';
+    if (forced.length) {
+      const map={X2_SCORE:'BOOST',JETPACK:'JETPACK',MINI_JETPACK:'MINI_JETPACK',SHIELD:'SHIELD',MAGNET:'MAGNET',REGEN:'REGEN',HEALTH_BOOST:'HEALTH_BOOST',IMMUNITY:'SHIELD',X2_GEMS:'X2_GEMS',X4_GEMS:'X4_GEMS',GEM_DROP:'GEM_DROP'};
+      const key=forced[rndI(0,forced.length-1)];
+      return map[key]||'BOOST';
+    }
+    return ['BOOST','MAGNET','SHIELD','X2_GEMS'][rndI(0,3)];
   }
   if (gameMode==='IMPOSSIBLE') { openConfirm('IMPOSSIBLE_RETRY','RETRY IMPOSSIBLE?','Restart with intro screen and one life only.'); return; }
       doTransition('SHOP');
@@ -1332,6 +1340,9 @@ const PWR_TYPES={
   X2_GEMS:     {col:'#ffd700',label:'X2 GEMS',      icon:'💎', dur:10.0},
   GEM_DROP:    {col:'#99ddff',label:'GEM DROP',     icon:'💠', dur:8.0},
   BAD_LUCK:    {col:'#ff3333',label:'BAD LUCK',     icon:'☠', dur:5.0},
+  X4_GEMS:     {col:'#ffe066',label:'X4 GEMS',      icon:'💠', dur:8.0},
+  SICK:        {col:'#ffffff',label:'SICK POWER',   icon:'🧪', dur:12.0},
+  LTM_SPECIAL: {col:'#ffffff',label:'LTM SPECIAL',  icon:'✹', dur:10.0},
 };
 const PWR_WEIGHTED=[
   ...Array(4).fill('SHIELD'),
@@ -1356,8 +1367,16 @@ function randPwrKey() {
   }
 
   if (gameMode==='LTM') {
-    const st=currentStageConfig();
-    terrain.speed=st.spd||ADV_STAGES[0].spd;
+    const mode=getActiveLtm();
+    const forced=(mode&&mode.forcedPowerups)||[];
+    if (Math.random()<0.10) return 'SICK';
+    if (Math.random()<0.12) return 'LTM_SPECIAL';
+    if (forced.length) {
+      const map={X2_SCORE:'BOOST',JETPACK:'JETPACK',MINI_JETPACK:'MINI_JETPACK',SHIELD:'SHIELD',MAGNET:'MAGNET',REGEN:'REGEN',HEALTH_BOOST:'HEALTH_BOOST',IMMUNITY:'SHIELD',X2_GEMS:'X2_GEMS',X4_GEMS:'X4_GEMS',GEM_DROP:'GEM_DROP'};
+      const key=forced[rndI(0,forced.length-1)];
+      return map[key]||'BOOST';
+    }
+    return ['BOOST','MAGNET','SHIELD','X2_GEMS'][rndI(0,3)];
   }
   if (gameMode==='IMPOSSIBLE') {
     let pool=PWR_WEIGHTED.filter(k=>!['REGEN','HEALTH_BOOST','NEW_STAGE'].includes(k));
@@ -1387,14 +1406,27 @@ class PowerUp {
     if (!this.active) return;
     const {x,y,t,info,key}=this;
     ctx.save(); ctx.translate(x,y);
-    const isSpecial=key==='JETPACK'||key==='NEW_STAGE'||key==='MINI_JETPACK';
+    const isSpecial=key==='JETPACK'||key==='NEW_STAGE'||key==='MINI_JETPACK'||key==='SICK'||key==='LTM_SPECIAL'||key==='X4_GEMS';
     if (isSpecial) {
-      glow(info.col,28);
-      ctx.strokeStyle=info.col; ctx.lineWidth=2;
+      let col=info.col;
+      const rainbow=(key==='SICK'||key==='LTM_SPECIAL');
+      if (rainbow) col=`hsl(${Math.floor((t*240)%360)},100%,60%)`;
+      if (key==='LTM_SPECIAL'&&gameMode==='LTM') col=(getActiveLtm().specialCol||col);
+      const r=(key==='SICK'||key==='LTM_SPECIAL')?22:(key==='X4_GEMS'?20:18);
+      glow(col,30);
+      ctx.strokeStyle=col; ctx.lineWidth=2.6;
       ctx.globalAlpha=0.5+0.4*Math.sin(t*5);
-      ctx.beginPath(); ctx.arc(0,0,18,0,Math.PI*2); ctx.stroke();
-      ctx.globalAlpha=0.2+0.1*Math.sin(t*7);
-      ctx.fillStyle=info.col; ctx.beginPath(); ctx.arc(0,0,18,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=0.22+0.12*Math.sin(t*7);
+      ctx.fillStyle=col; ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.fill();
+      if (rainbow) {
+        ctx.globalAlpha=0.5;
+        for (let i=0;i<6;i++) {
+          const a=t*2+i*Math.PI/3;
+          const rc=`hsl(${(i*60+Math.floor(t*260))%360},100%,65%)`;
+          glow(rc,8); circle(Math.cos(a)*(r+3),Math.sin(a)*(r+3),2.6,rc);
+        }
+      }
       ctx.globalAlpha=1;
       ctx.font='bold 14px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.fillStyle='#fff'; glow('#fff',8); ctx.fillText(info.icon,0,1);
@@ -1415,7 +1447,7 @@ class PowerUp {
   }
   checkHit(px,py) {
     if (this.collected) return false;
-    return Math.hypot(px-this.x,py-this.y)<20;
+    return Math.hypot(px-this.x,py-this.y)<((this.key==='SICK'||this.key==='LTM_SPECIAL'||this.key==='X4_GEMS')?26:20);
   }
 }
 
@@ -1805,7 +1837,7 @@ function drawHUD() {
   if (miniJetpackActive) {
     activeTimers.push({icon:'🛸',label:'MINI JETPACK',col:'#88ffcc',time:miniJetpackTimer});
   }
-  if (gemDoubleActive) activeTimers.push({icon:'💎',label:'X2 GEMS',col:'#ffd700',time:(gameMode==='IMPOSSIBLE'&&impossibleStage>=2)?999:gemDoubleTimer});
+  if (gemDoubleActive) activeTimers.push({icon:'💎',label:`X${Math.max(2,gemBoostMult)} GEMS`,col:'#ffd700',time:(gameMode==='IMPOSSIBLE'&&impossibleStage>=2)?999:gemDoubleTimer});
   if (gemDropActive) activeTimers.push({icon:'💠',label:'GEM DROP',col:'#99ddff',time:gemDropTimer});
   if (newStageActive) {
     activeTimers.push({icon:'🌀',label:'NEW STAGE',col:'#66bbff',time:newStageTimer});
@@ -2500,6 +2532,49 @@ function drawLeaderboardScreen(t) {
   const backLbl=leaderboardReturnState==='PAUSE'?'← PAUSE':(leaderboardReturnState==='OVER'?'← WIPEOUT':'← BACK');
   drawNeonBtn((LW-140)/2,LH-48,140,34,CFG.PK,backLbl,11,1,Math.sin(t*2.5));
   ctx.restore();
+}
+
+
+function drawAdminLtmScreen(t){
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
+  drawPerspGrid(terrain.scrollY,0.06); drawBgSquares();
+  setFont(28,'900'); glow(CFG.YL,18); txt('ADMIN LTM TEST MODE',LW/2,54,CFG.YL);
+  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt('NOT OFFICIAL RANKED DATA',LW/2,72,'rgba(255,245,140,0.9)');
+  const x=20,y=90,w=LW-40,h=560;
+  ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle='rgba(255,230,0,0.5)'; ctx.strokeRect(x,y,w,h);
+  const rowH=124;
+  adminLtmTestButtons=[];
+  adminLtmViewH=h-10;
+  adminLtmContentH=LTM_MODES.length*rowH+8;
+  adminLtmScroll=clamp(adminLtmScroll,minAdminLtmScroll(),0);
+  ctx.save(); ctx.beginPath(); ctx.rect(x+6,y+6,w-12,h-12); ctx.clip();
+  ctx.translate(0,adminLtmScroll);
+  LTM_MODES.forEach((m,i)=>{
+    const yy=y+12+i*rowH;
+    ctx.fillStyle='rgba(255,255,255,0.04)'; ctx.fillRect(x+12,yy,w-24,102);
+    ctx.strokeStyle=m.cardCol||CFG.YL; glow(m.cardCol||CFG.YL,8); ctx.strokeRect(x+12,yy,w-24,102);
+    setFont(14,'900'); txt(`${i+1}. ${m.name}`,x+24,yy+22,m.cardCol||CFG.YL,'left');
+    setFont(8,'400',"'Share Tech Mono',monospace"); noGlow(); txt((m.desc||'').slice(0,44),x+24,yy+38,'rgba(220,235,240,0.9)','left');
+    const st=(m.stages||[]).map(s=>`${s.name.split(' ')[1]||''}:${s.label}`).join(' | ').slice(0,60);
+    txt(st,x+24,yy+54,'rgba(180,210,230,0.8)','left');
+    txt(`Starter PWR: ${(m.forcedPowerups||[]).slice(0,5).join(', ')}`,x+24,yy+70,'rgba(160,255,180,0.8)','left');
+    const tb={x:x+w-138,y:yy+62,w:110,h:26};
+    adminLtmTestButtons[i]=tb;
+    drawNeonBtn(tb.x,tb.y,tb.w,tb.h,m.cardCol||CFG.CY,'TEST PLAY',9,1,Math.sin(t*2+i));
+    txt('TEST MODE',x+w-34,yy+22,CFG.PK,'right');
+  });
+  ctx.restore();
+  if (minAdminLtmScroll()<0) {
+    const sbX=x+w-8, sbY=y+8, sbH=h-16;
+    const thumbH=Math.max(26,(adminLtmViewH/(adminLtmViewH+Math.abs(minAdminLtmScroll())))*sbH);
+    const track=sbH-thumbH;
+    const thumbY=sbY + ((-adminLtmScroll)/Math.abs(minAdminLtmScroll()))*track;
+    ctx.fillStyle='rgba(255,230,0,0.18)'; ctx.fillRect(sbX,sbY,4,sbH);
+    ctx.fillStyle='rgba(255,230,0,0.9)'; ctx.fillRect(sbX,thumbY,4,thumbH);
+  }
+  BTNS.adminLtmBack={x:(LW-150)/2,y:LH-42,w:150,h:30};
+  drawNeonBtn(BTNS.adminLtmBack.x,BTNS.adminLtmBack.y,150,30,CFG.PK,'← BACK',11,1,Math.sin(t*2));
 }
 
 
@@ -4734,6 +4809,7 @@ let gemsCollected=0;
 let worldSpeedMult=1;
 let activePwr=null, pwrTimer=0;
 let gemDoubleActive=false, gemDoubleTimer=0;
+let gemBoostMult=1;
 let gemDropActive=false, gemDropTimer=0, gemDropSpawnTimer=0;
 transAlpha=1; transDir=1; pendingGS='MENU';
 
@@ -4832,7 +4908,8 @@ async function triggerLeaderboardFetch(force=false) {
       const u=all[uid]||{};
       const p=(u.progress||{});
       const modeScores=(p.modeScores||{});
-      const score=leaderboardCategory==='ENDLESS'?Number(modeScores.endless||0):leaderboardCategory==='ADVENTURE'?Number(modeScores.adventure||0):leaderboardCategory==='IMPOSSIBLE'?Number(modeScores.impossible||0):leaderboardCategory==='LTM'?Number(modeScores.ltm||0):Number(p.bestScore||0);
+      const globalSum=Number(modeScores.endless||0)+Number(modeScores.adventure||0)+Number(modeScores.impossible||0)+Number(modeScores.ltm||0);
+      const score=leaderboardCategory==='ENDLESS'?Number(modeScores.endless||0):leaderboardCategory==='ADVENTURE'?Number(modeScores.adventure||0):leaderboardCategory==='IMPOSSIBLE'?Number(modeScores.impossible||0):leaderboardCategory==='LTM'?Number(modeScores.ltm||0):(globalSum>0?globalSum:Number(p.bestScore||0));
       rows.push({uid,name:(u.name||u.email||'Runner').toString().slice(0,20),score:Number.isFinite(score)?score:0});
     });
     rows.sort((a,b)=>b.score-a.score);
@@ -4894,7 +4971,7 @@ function goMenu() {
   gems.length=0; powerups.length=0; obstacles.length=0;
   transDir=1; transAlpha=1;
   activePwr=null; pwrTimer=0; worldSpeedMult=1;
-  immunityActive=false; immunityTimer=0; obstacleClearTimer=0; badLuckActive=false; badLuckTimer=0; badLuckSpawnT=0; gemDoubleActive=false; gemDoubleTimer=0; gemDropActive=false; gemDropTimer=0; gemDropSpawnTimer=0;
+  immunityActive=false; immunityTimer=0; obstacleClearTimer=0; badLuckActive=false; badLuckTimer=0; badLuckSpawnT=0; gemDoubleActive=false; gemDoubleTimer=0; gemBoostMult=1; gemDropActive=false; gemDropTimer=0; gemDropSpawnTimer=0;
   pauseToggleLock=0;
   continueOfferTimer=0;
   shuffleShop();
@@ -4922,7 +4999,7 @@ function startGame(starterPwr=null, forceNoStarter=false) {
   newStageActive=false; newStageTimer=0;
   stagePowerupNext=rnd(20,30); stagePowerupElapsed=0;
   stageTransT=0;
-  immunityActive=false; immunityTimer=0; obstacleClearTimer=0; badLuckActive=false; badLuckTimer=0; badLuckSpawnT=0; gemDoubleActive=false; gemDoubleTimer=0; gemDropActive=false; gemDropTimer=0; gemDropSpawnTimer=0;
+  immunityActive=false; immunityTimer=0; obstacleClearTimer=0; badLuckActive=false; badLuckTimer=0; badLuckSpawnT=0; gemDoubleActive=false; gemDoubleTimer=0; gemBoostMult=1; gemDropActive=false; gemDropTimer=0; gemDropSpawnTimer=0;
   terrain.reset(); player.reset();
   // Set adventure starting speed
   if (gameMode==='ADVENTURE') {
@@ -4931,8 +5008,16 @@ function startGame(starterPwr=null, forceNoStarter=false) {
   }
 
   if (gameMode==='LTM') {
-    const st=currentStageConfig();
-    terrain.speed=st.spd||ADV_STAGES[0].spd;
+    const mode=getActiveLtm();
+    const forced=(mode&&mode.forcedPowerups)||[];
+    if (Math.random()<0.10) return 'SICK';
+    if (Math.random()<0.12) return 'LTM_SPECIAL';
+    if (forced.length) {
+      const map={X2_SCORE:'BOOST',JETPACK:'JETPACK',MINI_JETPACK:'MINI_JETPACK',SHIELD:'SHIELD',MAGNET:'MAGNET',REGEN:'REGEN',HEALTH_BOOST:'HEALTH_BOOST',IMMUNITY:'SHIELD',X2_GEMS:'X2_GEMS',X4_GEMS:'X4_GEMS',GEM_DROP:'GEM_DROP'};
+      const key=forced[rndI(0,forced.length-1)];
+      return map[key]||'BOOST';
+    }
+    return ['BOOST','MAGNET','SHIELD','X2_GEMS'][rndI(0,3)];
   }
   if (gameMode==='IMPOSSIBLE') {
     const st=IMP_STAGES[0];
@@ -4945,8 +5030,6 @@ function startGame(starterPwr=null, forceNoStarter=false) {
     const lm=getActiveLtm();
     activePwr='BOOST'; pwrTimer=10;
     activatePwr('SHIELD',shieldDuration(90)); player.shield=true;
-    gemDropActive=true; gemDropTimer=7; gemDropSpawnTimer=0.08;
-    gemDoubleActive=true; gemDoubleTimer=8;
     addNotif(`${lm.name} ACTIVE`,lm.cardCol||CFG.YL);
   }
 
@@ -5169,14 +5252,15 @@ function collectGem(gem) {
   if (multi>maxCombo) maxCombo=multi;
   const pts=gem.type.pts*scoreMultiplier()*(activePwr==='BOOST'?scoreBoostMult():1);
   score+=pts; scorePopT=0.3;
-  const earned=gem.type.gemVal*(gemDoubleActive?2:1);
+  const gm=(gemDoubleActive?Math.max(2,gemBoostMult):1);
+  const earned=gem.type.gemVal*gm;
   totalGems=addToBank(earned);
   const tier=GEM_TYPES.indexOf(gem.type);
   SFX.gem(tier);
   burst(gem.x,gem.y,gem.type.col,12,180);
   flashAlpha=0.12; flashCol=gem.type.col;
   addFloat(gem.x,gem.y-10,`+${pts}${scoreMultiplier()>1?` ×${scoreMultiplier()}`:''}`,gem.type.col);
-  addFloat(gem.x,gem.y-28,`+${earned}◆${gemDoubleActive?'  X2':''}`,gem.type.col);
+  addFloat(gem.x,gem.y-28,`+${earned}◆${gemDoubleActive?`  X${Math.max(2,gemBoostMult)}`:''}`,gem.type.col);
 }
 
 function collectPwr(pwr) {
@@ -5191,13 +5275,16 @@ function collectPwr(pwr) {
   else if (pwr.key==='REGEN')        { SFX.regen(); collectRegen(pwr.x,pwr.y); pwrCounts.REGEN++; }
   else if (pwr.key==='MINI_JETPACK') { SFX.jetpack(); activateMiniJetpack(); pwrCounts.MINI_JETPACK++; }
   else if (pwr.key==='NEW_STAGE')    { if (newStageActive) return; SFX.stage(); activateNewStagePowerup(); pwrCounts.NEW_STAGE++; }
-  else if (pwr.key==='X2_GEMS')      { SFX.pwr(); activateGemDouble(); pwrCounts.X2_GEMS++; }
+  else if (pwr.key==='X2_GEMS')      { SFX.pwr(); activateGemDouble(2,10); pwrCounts.X2_GEMS++; }
+  else if (pwr.key==='X4_GEMS')      { SFX.pwr(); activateGemDouble(4,8); pwrCounts.X2_GEMS++; }
+  else if (pwr.key==='SICK')         { SFX.stage(); applyRandomSickPower(); }
+  else if (pwr.key==='LTM_SPECIAL')  { SFX.stage(); activateLtmSpecialPower(); }
   else if (pwr.key==='GEM_DROP')     { SFX.stage(); activateGemDrop(); pwrCounts.GEM_DROP++; }
   else if (pwr.key==='BAD_LUCK')     { SFX.hit(); activateBadLuck(); pwrCounts.BAD_LUCK++; }
   else SFX.pwr();
   burst(pwr.x,pwr.y,col,24,220); ringBurst(pwr.x,pwr.y,col);
   addShake(6,0.2); flashAlpha=0.35; flashCol=col;
-  if (pwr.key!=='HEALTH_BOOST'&&pwr.key!=='REGEN'&&pwr.key!=='MINI_JETPACK'&&pwr.key!=='NEW_STAGE'&&pwr.key!=='X2_GEMS'&&pwr.key!=='GEM_DROP'&&pwr.key!=='BAD_LUCK') {
+  if (pwr.key!=='HEALTH_BOOST'&&pwr.key!=='REGEN'&&pwr.key!=='MINI_JETPACK'&&pwr.key!=='NEW_STAGE'&&pwr.key!=='X2_GEMS'&&pwr.key!=='X4_GEMS'&&pwr.key!=='SICK'&&pwr.key!=='LTM_SPECIAL'&&pwr.key!=='GEM_DROP'&&pwr.key!=='BAD_LUCK') {
     addNotif(`${pwr.info.label} ACTIVATED!`,col);
     addFloat(pwr.x,pwr.y-16,pwr.info.icon+' '+pwr.info.label,col);
   }
@@ -5246,11 +5333,11 @@ function activateNewStagePowerup() {
 
 
 
-function activateGemDouble() {
-  gemDoubleActive=true; gemDoubleTimer=10.0;
+function activateGemDouble(mult=2,dur=10.0) {
+  gemDoubleActive=true; gemBoostMult=Math.max(2,mult|0); gemDoubleTimer=dur;
   activateImmunity(3.0);
-  addNotif('💎 X2 GEMS ACTIVE!','#ffd700');
-  addFloat(player.x,player.y-24,'💎 X2 GEMS','#ffd700');
+  addNotif(`💎 X${gemBoostMult} GEMS ACTIVE!`,'#ffd700');
+  addFloat(player.x,player.y-24,`💎 X${gemBoostMult} GEMS`,'#ffd700');
 }
 
 function activateGemDrop() {
@@ -5258,6 +5345,37 @@ function activateGemDrop() {
   activateImmunity(3.0);
   addNotif('💠 GEM DROP ACTIVE!','#99ddff');
   addFloat(player.x,player.y-24,'💠 GEM RAIN','#99ddff');
+}
+
+
+function applyRandomSickPower(){
+  const effects=[
+    ()=>{ activatePwr('BOOST',8); addNotif('SICK: SCORE BOOST',CFG.YL); },
+    ()=>{ activatePwr('MAGNET',10); addNotif('SICK: MAGNET',CFG.PU); },
+    ()=>{ activatePwr('SHIELD',shieldDuration(120)); addNotif('SICK: SHIELD',CFG.BL); },
+    ()=>{ activateGemDouble(2,10); addNotif('SICK: X2 GEMS','#ffd700'); },
+    ()=>{ activateGemDouble(4,8); addNotif('SICK: X4 GEMS','#ffd700'); },
+    ()=>{ activateGemDrop(); gemDropTimer=Math.max(gemDropTimer,10); addNotif('SICK: GEM DROP','#99ddff'); },
+    ()=>{ activateMiniJetpack(); miniJetpackTimer=Math.max(miniJetpackTimer,12); addNotif('SICK: MINI JETPACK','#88ccff'); },
+  ];
+  effects[rndI(0,effects.length-1)]();
+}
+
+function activateLtmSpecialPower(){
+  if (gameMode!=='LTM') return;
+  const lm=getActiveLtm();
+  const id=(lm&&lm.id)||'';
+  if (id==='gold_rush') { activateGemDouble(4,8); activateGemDrop(); gemDropTimer=Math.max(gemDropTimer,10); totalGems=addToBank(40); addNotif('GOLD FEVER!',lm.specialCol||CFG.YL); return; }
+  if (id==='volcano') { activatePwr('SHIELD',shieldDuration(140)); activateImmunity(5); clearObstaclesTemporarily(); addShake(10,0.35); addNotif('LAVA ARMOR!',lm.specialCol||CFG.OR); return; }
+  if (id==='frostbite') { activatePwr('SLOW',10); activatePwr('SHIELD',shieldDuration(100)); addNotif('ICE FIELD!',lm.specialCol||CFG.CY); return; }
+  if (id==='space') { activateMiniJetpack(); miniJetpackTimer=Math.max(miniJetpackTimer,12); addNotif('COSMIC BURST!',lm.specialCol||CFG.CY); return; }
+  if (id==='storm') { activateImmunity(6); activatePwr('BOOST',10); addNotif('THUNDER CORE!',lm.specialCol||CFG.PU); return; }
+  if (id==='hacker') { activatePwr('MAGNET',12); activateGemDouble(2,12); addNotif('GLITCH BREAK!',lm.specialCol||CFG.CY); return; }
+  if (id==='void') { activateImmunity(8); activatePwr('SLOW',8); addNotif('VOID SHELL!',lm.specialCol||CFG.PU); return; }
+  if (id==='jungle') { activateGemDrop(); gemDropTimer=Math.max(gemDropTimer,12); collectRegen(player.x,player.y); addNotif('WILD GROWTH!',lm.specialCol||CFG.GR); return; }
+  if (id==='chrono') { activatePwr('BOOST',12); activatePwr('SLOW',8); addNotif('TIME FRACTURE!',lm.specialCol||CFG.YL); return; }
+  if (id==='metro') { activatePwr('MAGNET',10); activatePwr('BOOST',10); addNotif('RAIL RUSH!',lm.specialCol||CFG.PK); return; }
+  applyRandomSickPower();
 }
 
 function activateBadLuck() {
@@ -5654,7 +5772,7 @@ function loop(ts) {
     if (ltmStageTimer>=((mode&&mode.stageDuration)||35)) { ltmStageTimer=0; advanceLtmStage(); }
   }
 
-  if (gameMode==='IMPOSSIBLE' && impossibleStage>=2) { gemDoubleActive=true; gemDoubleTimer=999; }
+  if (gameMode==='IMPOSSIBLE' && impossibleStage>=2) { gemDoubleActive=true; gemBoostMult=2; gemDoubleTimer=999; }
 
   // Active powerup countdown
   if (activePwr&&PWR_TYPES[activePwr]?.dur>0) {
