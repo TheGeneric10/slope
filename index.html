@@ -197,7 +197,7 @@ const BTNS = {
   pauseOptions:null, optionsBack:null, optionsToggleQuests:null, optionsToggleTutorials:null, hudOptions:null,
   signinEmail:null, signinPass:null, signupName:null, signupEmail:null, signupPass:null, signupConfirm:null, signupSwitch:null, signinSwitch:null, signinGoogle:null,
   profileChangePassword:null, profileAvatar:null, profileTrash:null, profileUploadOk:null, profileUploadCancel:null, profileUploadZoomIn:null, profileUploadZoomOut:null, profileUploadReset:null, profileUploadErrOk:null,
-  adminBack:null, adminAuthInput:null, adminAuthSubmit:null, adminSetGems:null, adminGrantSelected:null, adminUnlockAll:null, adminLockAll:null, adminLockSelectedSkin:null, adminLockSelectedAura:null, adminLockSelectedTheme:null,
+  adminBack:null, adminAuthInput:null, adminAuthSubmit:null, adminSetGems:null, adminGrantSelected:null, adminUnlockAll:null, adminLockAll:null, adminLockSelectedSkin:null, adminLockSelectedAura:null, adminLockSelectedTheme:null, adminVerifyUid:null, adminVerifyToggle:null, adminVerifyApply:null,
   controls:null, controlsBack:null, touchJoyL:null, touchJoyR:null,
 };
 
@@ -3588,7 +3588,6 @@ let signinForm={email:'',password:''};
 let signupForm={username:'Neon Runner',email:'',password:'',confirm:''};
 
 const ADMIN_SECRET_ENABLED=true;
-const ADMIN_PASS_HASH='95f07e36f8f80f01f4b67f09d6f19e6f2134de9f0f06fe9f4657af4cae6f3f88';
 let isAdminUser=false;
 let adminSessionUnlocked=false;
 let adminAuthInput='';
@@ -3598,6 +3597,8 @@ let adminScroll=0;
 let adminViewH=0;
 let adminContentH=0;
 let adminFlags={syncCloud:true, grantSkin:true, grantAura:true, grantTheme:true, confirmLocks:false};
+let adminVerifyUid='';
+let adminVerifyValue=false;
 refreshAdminFlag();
 
 function refreshAdminFlag(){
@@ -3605,11 +3606,6 @@ function refreshAdminFlag(){
   if (!isAdminUser) adminSessionUnlocked=false;
 }
 
-async function sha256Hex(str){
-  const data=new TextEncoder().encode(String(str||''));
-  const buf=await crypto.subtle.digest('SHA-256',data);
-  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
-}
 
 function minAdminScroll(){ return Math.min(0, adminViewH-adminContentH); }
 
@@ -4044,9 +4040,9 @@ function drawAdminAuthScreen(t){
   ctx.strokeStyle='rgba(255,230,0,0.45)'; ctx.lineWidth=2; glow(CFG.YL,12); ctx.strokeRect(x,y,w,h);
   setFont(24,'900'); glow(CFG.YL,16); txt('ADMIN AUTH',LW/2,y+38,CFG.YL);
   setFont(9,'700',"'Share Tech Mono',monospace"); noGlow();
-  txt('ENTER ADMIN PASSWORD TO UNLOCK ADMIN MENU',LW/2,y+62,'rgba(255,245,160,0.9)');
+  txt('ENTER ADMIN + YOUR ACCOUNT PASSWORD',LW/2,y+62,'rgba(255,245,160,0.9)');
   BTNS.adminAuthInput={x:x+26,y:y+96,w:w-52,h:42};
-  drawNeonBtn(BTNS.adminAuthInput.x,BTNS.adminAuthInput.y,BTNS.adminAuthInput.w,BTNS.adminAuthInput.h,CFG.CY,adminAuthInput?'••••••••':'TYPE PASSWORD',11,1,0);
+  drawNeonBtn(BTNS.adminAuthInput.x,BTNS.adminAuthInput.y,BTNS.adminAuthInput.w,BTNS.adminAuthInput.h,CFG.CY,adminAuthInput?'••••••••••':'TYPE ADMIN+PASSWORD',10,1,0);
   BTNS.adminAuthSubmit={x:x+26,y:y+152,w:w-52,h:36};
   drawNeonBtn(BTNS.adminAuthSubmit.x,BTNS.adminAuthSubmit.y,BTNS.adminAuthSubmit.w,BTNS.adminAuthSubmit.h,CFG.GR,'VERIFY',12,1,Math.sin(t*2));
   const msgCol=adminAuthState==='error'?CFG.PK:adminAuthState==='ok'?CFG.GR:'rgba(200,235,255,0.8)';
@@ -4059,22 +4055,42 @@ function drawAdminAuthScreen(t){
 
 async function verifyAdminPassword(){
   if (!isAdminUser) { adminAuthState='error'; adminAuthMsg='Admin account required.'; return; }
+  const raw=String(adminAuthInput||'').trim();
+  if (!raw.startsWith('ADMIN')) { adminAuthState='error'; adminAuthMsg='Prefix with ADMIN + your password.'; return; }
+  const pwd=raw.slice(5);
+  if (!pwd) { adminAuthState='error'; adminAuthMsg='Missing password after ADMIN prefix.'; return; }
+  if (!fbUser || !window.firebase || !firebase.auth || !firebase.auth.EmailAuthProvider) {
+    adminAuthState='error'; adminAuthMsg='Email/password auth required.'; return;
+  }
   try {
-    const h=await sha256Hex(adminAuthInput);
-    if (h===ADMIN_PASS_HASH) {
-      adminSessionUnlocked=true;
-      adminAuthState='ok';
-      adminAuthMsg='Access granted.';
-      addNotif('Admin menu unlocked.',CFG.YL);
-      doTransition('ADMIN_MENU');
-    } else {
-      adminAuthState='error';
-      adminAuthMsg='Invalid password.';
-      addNotif('Admin auth failed.',CFG.PK);
-    }
+    const email=String((fbUser&&fbUser.email)||(auth&&auth.email)||'').trim();
+    if (!email) { adminAuthState='error'; adminAuthMsg='Current account has no email.'; return; }
+    const cred=firebase.auth.EmailAuthProvider.credential(email,pwd);
+    await fbUser.reauthenticateWithCredential(cred);
+    adminSessionUnlocked=true;
+    adminAuthState='ok';
+    adminAuthMsg='Access granted.';
+    addNotif('Admin menu unlocked.',CFG.YL);
+    doTransition('ADMIN_MENU');
   } catch (e) {
     adminAuthState='error';
-    adminAuthMsg='Security API unavailable.';
+    adminAuthMsg='Invalid ADMIN+password.';
+    addNotif('Admin auth failed.',CFG.PK);
+  }
+}
+
+async function adminApplyVerifyStatus(){
+  const uid=String(adminVerifyUid||'').trim();
+  if (!uid) { addNotif('Admin: set target UID first.',CFG.PK); return; }
+  if (!fbReady || !fbDb) { addNotif('Admin: Firebase unavailable.',CFG.PK); return; }
+  try {
+    const root=cloudProfileRoot||CLOUD_INFO_ROOT;
+    await fbDb.ref(`${root}/${uid}`).update({verified:!!adminVerifyValue,updatedAt:Date.now()});
+    await fbDb.ref(`${CLOUD_SLOPE_ROOT}/${uid}`).update({verified:String(!!adminVerifyValue),updatedAt:String(Date.now())});
+    if (auth && auth.uid===uid) { auth={...auth,verified:!!adminVerifyValue}; saveAuth(auth); }
+    addNotif(`Admin: verified for ${uid.slice(0,8)}... = ${adminVerifyValue?'TRUE':'FALSE'}`,CFG.YL);
+  } catch (e) {
+    addNotif('Admin: verify update failed.',CFG.PK);
   }
 }
 
@@ -4138,6 +4154,13 @@ function drawAdminMenuScreen(t){
   BTNS.adminLockSelectedTheme={x:viewX+8,y:cy,w:viewW-16,h:28};
   drawNeonBtn(BTNS.adminLockSelectedTheme.x,BTNS.adminLockSelectedTheme.y,BTNS.adminLockSelectedTheme.w,BTNS.adminLockSelectedTheme.h,CFG.PK,'LOCK SELECTED THEME',9,1,0); cy+=38;
 
+  BTNS.adminVerifyUid={x:viewX+8,y:cy,w:viewW-16,h:28};
+  drawNeonBtn(BTNS.adminVerifyUid.x,BTNS.adminVerifyUid.y,BTNS.adminVerifyUid.w,BTNS.adminVerifyUid.h,CFG.CY,`TARGET UID: ${(adminVerifyUid||'NOT SET').slice(0,22)}`,9,1,0); cy+=32;
+  BTNS.adminVerifyToggle={x:viewX+8,y:cy,w:viewW-16,h:28};
+  drawNeonBtn(BTNS.adminVerifyToggle.x,BTNS.adminVerifyToggle.y,BTNS.adminVerifyToggle.w,BTNS.adminVerifyToggle.h,adminVerifyValue?CFG.GR:CFG.PK,`VERIFIED: ${adminVerifyValue?'TRUE':'FALSE'} (TOGGLE)`,9,1,0); cy+=32;
+  BTNS.adminVerifyApply={x:viewX+8,y:cy,w:viewW-16,h:30};
+  drawNeonBtn(BTNS.adminVerifyApply.x,BTNS.adminVerifyApply.y,BTNS.adminVerifyApply.w,BTNS.adminVerifyApply.h,CFG.YL,'APPLY VERIFY STATUS TO TARGET UID',9,1,Math.sin(t*2)); cy+=40;
+
   BTNS.adminUnlockAll={x:viewX+8,y:cy,w:viewW-16,h:30};
   drawNeonBtn(BTNS.adminUnlockAll.x,BTNS.adminUnlockAll.y,BTNS.adminUnlockAll.w,BTNS.adminUnlockAll.h,CFG.CY,'UNLOCK ALL SKINS / AURAS / THEMES',10,1,0); cy+=36;
   BTNS.adminLockAll={x:viewX+8,y:cy,w:viewW-16,h:30};
@@ -4182,6 +4205,13 @@ function handleAdminMenuTap(p){
   if (hitAdminBtn(p,BTNS.adminT3)) { SFX.click(); adminFlags.grantTheme=!adminFlags.grantTheme; return; }
   if (hitAdminBtn(p,BTNS.adminT4)) { SFX.click(); adminFlags.confirmLocks=!adminFlags.confirmLocks; return; }
   if (hitAdminBtn(p,BTNS.adminGrantSelected)) { SFX.click(); adminUnlockSelected(); return; }
+  if (hitAdminBtn(p,BTNS.adminVerifyUid)) {
+    SFX.click();
+    openInputDialog({title:'ADMIN VERIFY',label:'Target UID',value:adminVerifyUid||'',maxLen:80,onSubmit:v=>{adminVerifyUid=String(v||'').trim();}});
+    return;
+  }
+  if (hitAdminBtn(p,BTNS.adminVerifyToggle)) { SFX.click(); adminVerifyValue=!adminVerifyValue; return; }
+  if (hitAdminBtn(p,BTNS.adminVerifyApply)) { SFX.click(); adminApplyVerifyStatus(); return; }
   if (hitAdminBtn(p,BTNS.adminLockSelectedSkin)) { SFX.click(); if (!adminFlags.confirmLocks) { addNotif('Enable CONFIRM LOCK ACTIONS.',CFG.PK); return; } if (selectedChar!=='default') unlockedChars=unlockedChars.filter(id=>id!==selectedChar); if (!unlockedChars.includes('default')) unlockedChars.unshift('default'); if (!unlockedChars.includes(selectedChar)) setSelectedChar('default'); saveAdminUnlocks(); return; }
   if (hitAdminBtn(p,BTNS.adminLockSelectedAura)) { SFX.click(); if (!adminFlags.confirmLocks) { addNotif('Enable CONFIRM LOCK ACTIONS.',CFG.PK); return; } if (selectedAura!=='none') unlockedAuras=unlockedAuras.filter(id=>id!==selectedAura); if (!unlockedAuras.includes('none')) unlockedAuras.unshift('none'); if (!unlockedAuras.includes(selectedAura)) setSelectedAura('none'); saveAdminUnlocks(); return; }
   if (hitAdminBtn(p,BTNS.adminLockSelectedTheme)) { SFX.click(); if (!adminFlags.confirmLocks) { addNotif('Enable CONFIRM LOCK ACTIONS.',CFG.PK); return; } if (selectedTheme!=='classic') unlockedThemes=unlockedThemes.filter(id=>id!==selectedTheme); if (!unlockedThemes.includes('classic')) unlockedThemes.unshift('classic'); if (!unlockedThemes.includes(selectedTheme)) setSelectedTheme('classic'); saveAdminUnlocks(); return; }
