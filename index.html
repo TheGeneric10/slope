@@ -226,7 +226,7 @@ const BTNS = {
   authAction:null, authBack:null, authSubmit:null, authRestart:null,
   pauseOptions:null, optionsBack:null, optionsToggleQuests:null, optionsToggleTutorials:null, hudOptions:null,
   signinEmail:null, signinPass:null, signupName:null, signupEmail:null, signupPass:null, signupConfirm:null, signupSwitch:null, signinSwitch:null, signinGoogle:null, signupGoogle:null,
-  profileChangeUsername:null, profileChangePassword:null, profileAvatar:null, profileTrash:null, profileUploadOk:null, profileUploadCancel:null, profileUploadZoomIn:null, profileUploadZoomOut:null, profileUploadReset:null, profileUploadErrOk:null, profileInfoBox:null, profileUidToggle:null, profileUidCopy:null, profileStatusDefault:null, profileStatusIdle:null, profileStatusDnd:null, profileStatusOffline:null, usernameTryAgain:null, usernameExit:null, usernameContinue:null, playerCardClose:null, playerCardEdit:null, playerCardFav:null, menuProfileBox:null, guestPromptSignIn:null, guestPromptContinue:null, publicProfileBack:null, publicProfileRequests:null,
+  profileChangeUsername:null, profileChangePassword:null, profileAvatar:null, profileTrash:null, profileUploadOk:null, profileUploadCancel:null, profileUploadZoomIn:null, profileUploadZoomOut:null, profileUploadReset:null, profileUploadErrOk:null, profileInfoBox:null, profileUidToggle:null, profileUidCopy:null, profileStatusDefault:null, profileStatusIdle:null, profileStatusDnd:null, profileStatusOffline:null, usernameTryAgain:null, usernameExit:null, usernameContinue:null, playerCardClose:null, playerCardEdit:null, playerCardFav:null, menuProfileBox:null, guestPromptSignIn:null, guestPromptContinue:null, publicProfileBack:null, publicProfileRequests:null, publicProfileFriends:null, playerCardFind:null, playerCardAdd:null, socialTabFriends:null, socialTabFollowers:null, socialTabFollowing:null, socialActionA:null, socialActionB:null, profileDelete:null,
   adminBack:null, adminAuthInput:null, adminAuthSubmit:null, adminSetGems:null, adminGrantSelected:null, adminUnlockAll:null, adminLockAll:null, adminLockSelectedSkin:null, adminLockSelectedAura:null, adminLockSelectedTheme:null, adminVerifyUid:null, adminVerifyToggle:null, adminVerifyApply:null, adminViewLtm:null, adminLtmBack:null,
   controls:null, controlsBack:null, touchJoyL:null, touchJoyR:null, noAds:null, noAdsBuy:null, noAdsContinue:null, overLeaderboard:null,
 };
@@ -252,7 +252,7 @@ function openActionPopup(title,msg,ok=true){
 }
 
 let uidVisible=false;
-let playerCardPopup={active:false,isSelf:false,favorite:false};
+let playerCardPopup={active:false,isSelf:false,favorite:false,fromMenu:false,viewed:null};
 let guestProfilePrompt={active:false};
 const PRIVACY_LEVELS=['FRIENDS OF FRIENDS','FRIENDS ONLY','PRIVATE'];
 const PUBLIC_PROFILE_KEY='slope_public_profile';
@@ -273,9 +273,32 @@ function savePublicProfilePrefs(){ localStorage.setItem(PUBLIC_PROFILE_KEY,JSON.
 const STATUS_COLORS={online:'#39ff14',idle:'#ffe45a',dnd:'#ff3366',offline:'#8a95a5'};
 const STATUS_LABELS={online:'Online',idle:'Idle',dnd:'Do Not Disturb',offline:'Offline'};
 function getStatusValue(){
+  if (!isSignedIn || !navigator.onLine) return 'offline';
   const st=String((auth&&auth.status)||'').toLowerCase();
-  return STATUS_COLORS[st]?st:'offline';
+  return STATUS_COLORS[st]?st:'online';
 }
+function getStatusPref(){
+  const st=String((auth&&auth.statusPref)||'').toLowerCase();
+  return STATUS_COLORS[st]?st:'online';
+}
+async function applyConnectivityStatus(syncCloud=false){
+  if (!isSignedIn) {
+    auth={...auth,status:'offline',statusPref:'offline',lastSeen:Date.now()};
+    saveAuth(auth);
+    return;
+  }
+  const now=Date.now();
+  const target=navigator.onLine?getStatusPref():'offline';
+  if (String(auth.status||'')===target) return;
+  auth={...auth,status:target,lastSeen:now};
+  saveAuth(auth);
+  if (syncCloud && fbUser && fbReady) {
+    try { await writeCloudUserInfo({status:target,lastSeen:now,statusPref:getStatusPref()}); } catch(e){}
+    try { await syncSlopeMirror({status:String(target),lastSeen:String(now)}); } catch(e){}
+  }
+}
+window.addEventListener('offline',()=>{ applyConnectivityStatus(true); });
+window.addEventListener('online',()=>{ applyConnectivityStatus(true); });
 function fmtOfflineAgo(ts){
   const sec=Math.max(0,Math.floor((Date.now()-Number(ts||0))/1000));
   if (sec<60) return `${sec}s`;
@@ -286,12 +309,14 @@ function fmtOfflineAgo(ts){
   const y=Math.floor(d/365); return `${Math.max(1,y)}y`;
 }
 async function setPlayerStatus(next){
-  const st=String(next||'offline').toLowerCase();
+  if (!isSignedIn) { addNotif('Guest status is locked to OFFLINE.',CFG.PK); return; }
+  if (!navigator.onLine) { await applyConnectivityStatus(true); addNotif('STATUS LOCKED WHILE OFFLINE',CFG.PK); return; }
+  const st=String(next||'online').toLowerCase();
   if (!STATUS_COLORS[st]) return;
   const now=Date.now();
-  auth={...auth,status:st,lastSeen:now}; saveAuth(auth);
-  if (isSignedIn && fbUser) {
-    try { await writeCloudUserInfo({status:st,lastSeen:now}); } catch(e){}
+  auth={...auth,status:st,statusPref:st,lastSeen:now}; saveAuth(auth);
+  if (fbUser) {
+    try { await writeCloudUserInfo({status:st,lastSeen:now,statusPref:st}); } catch(e){}
     try { await syncSlopeMirror({status:String(st),lastSeen:String(now)}); } catch(e){}
   }
   addNotif(`STATUS: ${STATUS_LABELS[st].toUpperCase()}`,STATUS_COLORS[st]);
@@ -315,14 +340,23 @@ function drawPlayerCardPopup(t){
   if (playerCardPopup.isSelf) {
     BTNS.playerCardEdit={x:x+10,y:y+10,w:56,h:24};
     BTNS.playerCardFav={x:x+72,y:y+10,w:28,h:24};
+    BTNS.playerCardFind={x:x+106,y:y+10,w:56,h:24};
     drawNeonBtn(BTNS.playerCardEdit.x,BTNS.playerCardEdit.y,56,24,CFG.CY,'EDIT',8,1,0);
     drawNeonBtn(BTNS.playerCardFav.x,BTNS.playerCardFav.y,28,24,playerCardPopup.favorite?'#ff9a1a':CFG.YL,playerCardPopup.favorite?'★':'☆',10,1,0);
-  } else { BTNS.playerCardEdit=null; BTNS.playerCardFav=null; }
+    drawNeonBtn(BTNS.playerCardFind.x,BTNS.playerCardFind.y,56,24,CFG.GR,'FIND',8,1,0);
+    BTNS.playerCardAdd=null;
+  } else {
+    BTNS.playerCardEdit=null; BTNS.playerCardFav=null; BTNS.playerCardFind=null;
+    BTNS.playerCardAdd={x:x+10,y:y+10,w:94,h:24};
+    drawNeonBtn(BTNS.playerCardAdd.x,BTNS.playerCardAdd.y,94,24,CFG.GR,'ADD FRIEND',8,1,Math.sin(t*2));
+  }
 
-  const name=String((auth&&auth.name)||'Player');
+  const cardUser=playerCardPopup.viewed||{};
+  const name=String((playerCardPopup.isSelf?(auth&&auth.name):cardUser.name)||'Player');
   const pfpX=x+w-48, pfpY=y+58, r=22;
-  if (profileAvatar) {
-    const img=new Image(); img.src=profileAvatar;
+  const cardAvatar=playerCardPopup.isSelf?profileAvatar:String(cardUser.avatar||'');
+  if (cardAvatar) {
+    const img=new Image(); img.src=cardAvatar;
     ctx.save(); ctx.beginPath(); ctx.arc(pfpX,pfpY,r,0,Math.PI*2); ctx.clip(); ctx.drawImage(img,pfpX-r,pfpY-r,r*2,r*2); ctx.restore();
   } else {
     circle(pfpX,pfpY,r,'#1f2c36',true); drawDefaultProfileIcon(pfpX,pfpY,r,'rgba(216,246,255,0.95)');
@@ -341,15 +375,26 @@ function drawPlayerCardPopup(t){
     }
     ctx.restore();
   }
-  drawStatusDot(x+18,y+58,status);
-  setFont(10,'900'); noGlow(); txt(`${STATUS_LABELS[status]}${status==='offline'?` (${fmtOfflineAgo(auth&&auth.lastSeen)} ago)`:''}`,x+30,y+62,'#d8f6ff','left');
+  const cardStatus=playerCardPopup.isSelf?status:String(cardUser.status||'offline');
+  const cardSeen=playerCardPopup.isSelf?(auth&&auth.lastSeen):Number(cardUser.lastSeen||0);
+  drawStatusDot(x+18,y+58,cardStatus);
+  setFont(10,'900'); noGlow(); txt(`${STATUS_LABELS[cardStatus]||'Offline'}${cardStatus==='offline'?` (${fmtOfflineAgo(cardSeen)} ago)`:''}`,x+30,y+62,'#d8f6ff','left');
   setFont(16,'900'); glow(CFG.CY,10); txt(name,x+14,y+96,CFG.CY,'left');
   setFont(8,'700',"'Share Tech Mono',monospace"); noGlow();
-  txt(`Best: ${Math.floor(bestScore||0)}`,x+14,y+122,'rgba(220,240,255,0.9)','left');
+  const cardBest=playerCardPopup.isSelf?bestScore:Number(cardUser.bestScore||0);
+  txt(`Best: ${Math.floor(cardBest||0)}`,x+14,y+122,'rgba(220,240,255,0.9)','left');
   txt(`Skin: ${String((CHAR_CATALOG.find(c=>c.id===selectedChar)||CHAR_CATALOG[0]).name)}`,x+14,y+140,'rgba(220,240,255,0.85)','left');
   txt(`Aura: ${String((AURA_CATALOG.find(a=>a.id===selectedAura)||AURA_CATALOG[0]).name)}`,x+14,y+158,'rgba(220,240,255,0.85)','left');
   txt(`Theme: ${String((THEME_CATALOG.find(t2=>t2.id===selectedTheme)||THEME_CATALOG[0]).name)}`,x+14,y+176,'rgba(220,240,255,0.85)','left');
-  txt(`Bio: ${(profileBio||'No bio').slice(0,60)}`,x+14,y+196,'rgba(190,220,235,0.8)','left');
+  txt(`Bio: ${((playerCardPopup.isSelf?profileBio:cardUser.bio)||'No bio').slice(0,60)}`,x+14,y+196,'rgba(190,220,235,0.8)','left');
+  const statW=88, statH=20, statGap=8, statY=y+h-28;
+  const statX=x+12;
+  const lockFriends=publicProfilePrefs.friends>=1;
+  const lockFollowers=publicProfilePrefs.followers>=1;
+  const lockFollowing=publicProfilePrefs.following>=1;
+  drawNeonBtn(statX,statY,statW,statH,lockFriends?'#45535f':CFG.CY,'0 FRIENDS',7,1,0);
+  drawNeonBtn(statX+statW+statGap,statY,statW,statH,lockFollowers?'#45535f':CFG.GR,'0 FOLLOWERS',7,1,0);
+  drawNeonBtn(statX+(statW+statGap)*2,statY,statW,statH,lockFollowing?'#45535f':CFG.YL,'0 FOLLOWING',7,1,0);
   ctx.restore();
 }
 function runConfirmAction() {
@@ -362,6 +407,7 @@ function runConfirmAction() {
   if (a==='IMPOSSIBLE_RETRY') { startImpossibleIntro(); return; }
   if (a==='SIGNOUT') { if (typeof doSignOut==='function') doSignOut(); return; }
   if (a==='REMOVE_PFP') { if (typeof clearProfileAvatar==='function') clearProfileAvatar(); return; }
+  if (a==='DELETE_ACCOUNT') { if (typeof beginDeleteAccountFlow==='function') beginDeleteAccountFlow(); return; }
   if (a==='RESET_EVERYTHING') {
     localStorage.clear();
     location.reload();
@@ -408,14 +454,16 @@ function handleTap(e) {
 
   if (playerCardPopup.active) {
     if (hitBtn(p,BTNS.playerCardClose)) { SFX.click(); playerCardPopup.active=false; return; }
-    if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardEdit)) { SFX.click(); playerCardPopup.active=false; return; }
+    if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardEdit)) { SFX.click(); playerCardPopup.active=false; doTransition('PROFILE'); return; }
     if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFav)) { SFX.click(); playerCardPopup.favorite=!playerCardPopup.favorite; return; }
+    if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFind)) { SFX.click(); openInputDialog({title:'FIND USER',label:'Username',value:'',maxLen:32,onSubmit:async v=>{ await openMiniProfileByUsername(v||''); }}); return; }
+    if (!playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardAdd)) { SFX.click(); sendFriendRequestToViewed(); return; }
     return;
   }
 
   if (guestProfilePrompt.active) {
     if (hitBtn(p,BTNS.guestPromptSignIn)) { SFX.click(); guestProfilePrompt.active=false; doTransition('SIGNIN'); return; }
-    if (hitBtn(p,BTNS.guestPromptContinue)) { SFX.click(); guestProfilePrompt.active=false; doTransition('PROFILE'); return; }
+    if (hitBtn(p,BTNS.guestPromptContinue)) { SFX.click(); guestProfilePrompt.active=false; doTransition('MENU'); return; }
     return;
   }
 
@@ -475,8 +523,8 @@ function handleTap(e) {
     if (hitBtn(p, BTNS.leaderboard)) { SFX.click(); leaderboardReturnState='MENU'; doTransition('LEADERBOARD'); triggerLeaderboardFetch(); return; }
     if (hitBtn(p, BTNS.upgrades)) { SFX.click(); doTransition('UPGRADES'); return; }
     if (hitBtn(p, BTNS.charShop)) { SFX.click(); doTransition('CHARSHOP'); charShopPage=0; return; }
-    if (hitBtn(p, BTNS.authAction)) { SFX.click(); if (isSignedIn) doTransition('PROFILE'); else guestProfilePrompt.active=true; authFlowState='idle'; authFlowTimer=0; authFlowError=''; return; }
-    if (hitBtn(p, BTNS.menuProfileBox)) { SFX.click(); if (isSignedIn) doTransition('PROFILE'); else guestProfilePrompt.active=true; return; }
+    if (hitBtn(p, BTNS.authAction)) { SFX.click(); if (isSignedIn) { playerCardPopup.active=true; playerCardPopup.isSelf=true; playerCardPopup.fromMenu=true; playerCardPopup.viewed=null; } else guestProfilePrompt.active=true; authFlowState='idle'; authFlowTimer=0; authFlowError=''; return; }
+    if (hitBtn(p, BTNS.menuProfileBox)) { SFX.click(); if (isSignedIn) { playerCardPopup.active=true; playerCardPopup.isSelf=true; playerCardPopup.fromMenu=true; playerCardPopup.viewed=null; } else guestProfilePrompt.active=true; return; }
     return;
   }
   if (gs === 'MODESELECT') {
@@ -561,7 +609,8 @@ function handleTap(e) {
   }
   if (gs === 'PUBLIC_PROFILE') {
     if (hitBtn(p,BTNS.publicProfileBack)) { SFX.click(); doTransition('PROFILE'); return; }
-    if (hitBtn(p,BTNS.publicProfileRequests)) { SFX.click(); doTransition('FRIEND_REQUESTS'); return; }
+    if (hitBtn(p,BTNS.publicProfileRequests)) { SFX.click(); socialView.mode='received'; socialView.scroll=0; doTransition('FRIEND_REQUESTS'); fetchSocialData(); return; }
+    if (hitBtn(p,BTNS.publicProfileFriends)) { SFX.click(); socialView.mode='friends'; socialView.scroll=0; doTransition('FRIENDS_LIST'); fetchSocialData(); return; }
     const rows=['publicBioBtn','publicFriendsBtn','publicFollowersBtn','publicFollowingBtn'];
     for (const k of rows) if (hitBtn(p,BTNS[k])) { SFX.click();
       if (k==='publicBioBtn') publicProfilePrefs.bio=(publicProfilePrefs.bio+1)%3;
@@ -574,6 +623,17 @@ function handleTap(e) {
   }
   if (gs === 'FRIEND_REQUESTS') {
     if (hitBtn(p,BTNS.publicProfileBack)) { SFX.click(); doTransition('PUBLIC_PROFILE'); return; }
+    if (hitBtn(p,BTNS.socialTabFriends)) { SFX.click(); socialView.mode='received'; socialView.scroll=0; return; }
+    if (hitBtn(p,BTNS.socialTabFollowers)) { SFX.click(); socialView.mode='sent'; socialView.scroll=0; return; }
+    if (BTNS.socialActionA&&hitBtn(p,BTNS.socialActionA)) { SFX.click(); handleSocialPrimaryAction(); return; }
+    if (BTNS.socialActionB&&hitBtn(p,BTNS.socialActionB)) { SFX.click(); handleSocialSecondaryAction(); return; }
+    return;
+  }
+  if (gs === 'FRIENDS_LIST') {
+    if (hitBtn(p,BTNS.publicProfileBack)) { SFX.click(); doTransition('PUBLIC_PROFILE'); return; }
+    if (hitBtn(p,BTNS.socialTabFriends)) { SFX.click(); socialView.mode='friends'; socialView.scroll=0; return; }
+    if (hitBtn(p,BTNS.socialTabFollowers)) { SFX.click(); socialView.mode='followers'; socialView.scroll=0; return; }
+    if (hitBtn(p,BTNS.socialTabFollowing)) { SFX.click(); socialView.mode='following'; socialView.scroll=0; return; }
     return;
   }
   if (gs === 'ADMIN_AUTH') {
@@ -752,11 +812,11 @@ canvas.addEventListener('touchend', e => {
   if (!touchMoved) {
     handleTap(e);
   }
-  touchActive = false; touchSwipe = 0; touchSwipeTarget = 0; touchMoved = false; questTouchY = null; profileTouchY=null; leaderboardTouchY=null; adminLtmTouchY=null; shopTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
+  touchActive = false; touchSwipe = 0; touchSwipeTarget = 0; touchMoved = false; questTouchY = null; profileTouchY=null; leaderboardTouchY=null; adminLtmTouchY=null; shopTouchY=null; settingsTouchY=null; optionsTouchY=null; socialTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
 }, { passive:false });
 
 canvas.addEventListener('touchcancel', () => {
-  touchActive = false; touchSwipe = 0; touchSwipeTarget = 0; touchMoved = false; questTouchY = null; profileTouchY=null; leaderboardTouchY=null; adminLtmTouchY=null; shopTouchY=null; settingsTouchY=null; optionsTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
+  touchActive = false; touchSwipe = 0; touchSwipeTarget = 0; touchMoved = false; questTouchY = null; profileTouchY=null; leaderboardTouchY=null; adminLtmTouchY=null; shopTouchY=null; settingsTouchY=null; optionsTouchY=null; socialTouchY=null; joyL=false; joyR=false; usingTouchJoy=false; profileAvatarPressing=false; profileAvatarHoldFX=false; stopProfileCropInteraction();
 });
 
 // Mouse (desktop)
@@ -916,6 +976,7 @@ window.addEventListener('keydown', e => {
   if (e.key==='Escape' && gs==='PROFILE')   { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='PUBLIC_PROFILE') { doTransition('PROFILE'); }
   if (e.key==='Escape' && gs==='FRIEND_REQUESTS') { doTransition('PUBLIC_PROFILE'); }
+  if (e.key==='Escape' && gs==='FRIENDS_LIST') { doTransition('PUBLIC_PROFILE'); }
   if (e.key==='Escape' && gs==='ADMIN_AUTH') { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='ADMIN_MENU') { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='ADMIN_LTM') { doTransition('MODESELECT'); }
@@ -1111,21 +1172,7 @@ function drawGlobalFps(){
   setFont(8,'700',"'Share Tech Mono',monospace");
   noGlow();
   if (gs==='MENU') {
-    txt(`FPS ${fps}`,LW-90,38,fpsCol,'left');
-  } else {
-    txt(`FPS ${fps}`,LW-12,14,fpsCol,'right');
-  }
-  ctx.restore();
-}
-
-function drawGlobalFps(){
-  if (!(SETTINGS.showFPS && OPTION_PREFS.showFPS)) return;
-  ctx.save();
-  const fpsCol=fps>=55?'rgba(57,255,20,0.78)':fps>=30?'rgba(255,230,0,0.78)':'rgba(255,0,110,0.82)';
-  setFont(8,'700',"'Share Tech Mono',monospace");
-  noGlow();
-  if (gs==='MENU') {
-    txt(`FPS ${fps}`,LW-90,38,fpsCol,'left');
+    txt(`FPS ${fps}`,LW-90,46,fpsCol,'left');
   } else {
     txt(`FPS ${fps}`,LW-12,14,fpsCol,'right');
   }
@@ -2361,12 +2408,14 @@ function drawStartScreen(t) {
 
   const authW=188,authH=28,authX=(LW-authW)/2;
   BTNS.authAction={x:authX,y:btnY,w:authW,h:authH};
-  drawNeonBtn(authX,btnY,authW,authH,'#8a8a8a',isSignedIn?'👤 VIEW PROFILE':'SIGN IN!',10,0.9,Math.sin(t*2.2));
+  drawNeonBtn(authX,btnY,authW,authH,isSignedIn?'#8a8a8a':'#6c6c6c',isSignedIn?'👤 MINI PROFILE':'SIGN IN!',10,0.9,Math.sin(t*2.2));
   const nameBannerW=152;
   BTNS.menuProfileBox={x:LW-nameBannerW-14,y:10,w:nameBannerW,h:22};
   ctx.save();
-  ctx.fillStyle='rgba(60,130,255,0.65)'; ctx.fillRect(LW-nameBannerW-14,10,nameBannerW,22);
-  ctx.strokeStyle='rgba(180,220,255,0.85)'; ctx.lineWidth=1; ctx.strokeRect(LW-nameBannerW-14,10,nameBannerW,22);
+  const bannerFill=isSignedIn?'rgba(60,130,255,0.65)':'rgba(120,120,120,0.65)';
+  const bannerStroke=isSignedIn?'rgba(180,220,255,0.85)':'rgba(210,210,210,0.85)';
+  ctx.fillStyle=bannerFill; ctx.fillRect(LW-nameBannerW-14,10,nameBannerW,22);
+  ctx.strokeStyle=bannerStroke; ctx.lineWidth=1; ctx.strokeRect(LW-nameBannerW-14,10,nameBannerW,22);
   const bannerName=(isSignedIn?(auth.name||'RUNNER'):'GUEST').slice(0,12);
   const pfpR=8, pfpX=LW-24, pfpY=21;
   if (isSignedIn && profileAvatar) { const img=new Image(); img.src=profileAvatar; ctx.save(); ctx.beginPath(); ctx.arc(pfpX,pfpY,pfpR,0,Math.PI*2); ctx.clip(); ctx.drawImage(img,pfpX-pfpR,pfpY-pfpR,pfpR*2,pfpR*2); ctx.restore(); }
@@ -2433,6 +2482,7 @@ function drawGuestProfilePrompt(t){
 }
 
 function drawPublicProfileScreen(t){
+  if (isSignedIn && !socialView.loading && (socialCounters.friends+socialCounters.followers+socialCounters.following+socialCounters.received+socialCounters.sent===0)) fetchSocialData();
   ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
   drawPerspGrid(terrain.scrollY*0.08,0.03); drawBgSquares();
   const x=24,y=86,w=LW-48,h=560;
@@ -2451,23 +2501,74 @@ function drawPublicProfileScreen(t){
     drawNeonBtn(x+16,ry,w-32,52,CFG.CY,`${r[0]}  :  ${PRIVACY_LEVELS[publicProfilePrefs[r[1]]||0]}`,9,1,Math.sin(t*1.8+i));
   });
   BTNS.publicProfileRequests={x:x+16,y:y+322,w:w-32,h:34};
-  drawNeonBtn(BTNS.publicProfileRequests.x,BTNS.publicProfileRequests.y,BTNS.publicProfileRequests.w,BTNS.publicProfileRequests.h,CFG.YL,'VIEW FRIEND REQUESTS (RECEIVED 0 | SENT 0)',9,1,Math.sin(t*2.3));
-  drawNeonBtn(x+16,y+368,w-32,34,CFG.CY,'VIEW FRIENDS 0 | 0 FOLLOWERS | 0 FOLLOWING',9,1,0);
+  drawNeonBtn(BTNS.publicProfileRequests.x,BTNS.publicProfileRequests.y,BTNS.publicProfileRequests.w,BTNS.publicProfileRequests.h,CFG.YL,`VIEW FRIEND REQUESTS (RECEIVED ${socialCounters.received} | SENT ${socialCounters.sent})`,9,1,Math.sin(t*2.3));
+  BTNS.publicProfileFriends={x:x+16,y:y+368,w:w-32,h:34};
+  drawNeonBtn(BTNS.publicProfileFriends.x,BTNS.publicProfileFriends.y,BTNS.publicProfileFriends.w,BTNS.publicProfileFriends.h,CFG.CY,`VIEW FRIENDS ${socialCounters.friends} | ${socialCounters.followers} FOLLOWERS | ${socialCounters.following} FOLLOWING`,9,1,0);
   BTNS.publicProfileBack={x:(LW-220)/2,y:LH-52,w:220,h:34};
   drawNeonBtn(BTNS.publicProfileBack.x,BTNS.publicProfileBack.y,BTNS.publicProfileBack.w,BTNS.publicProfileBack.h,CFG.PK,'RETURN TO PRIVATE PROFILE',10,1,Math.sin(t*2));
+}
+
+function drawSocialRows(t,title,sub,list,mode){
+  const x=28,y=102,w=LW-56,h=520;
+  ctx.fillStyle='rgba(8,10,14,0.95)'; ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle='rgba(255,230,0,0.35)'; ctx.strokeRect(x,y,w,h);
+  setFont(22,'900'); glow(CFG.YL,12); txt(title,LW/2,60,CFG.YL);
+  setFont(9,'700',"'Share Tech Mono',monospace"); noGlow(); txt(sub,LW/2,80,'rgba(255,240,150,0.9)');
+  BTNS.socialTabFriends={x:x+8,y:y-2,w:104,h:24};
+  BTNS.socialTabFollowers={x:x+118,y:y-2,w:104,h:24};
+  if (mode==='list') BTNS.socialTabFollowing={x:x+228,y:y-2,w:104,h:24}; else BTNS.socialTabFollowing=null;
+  drawNeonBtn(BTNS.socialTabFriends.x,BTNS.socialTabFriends.y,BTNS.socialTabFriends.w,BTNS.socialTabFriends.h,CFG.CY,mode==='requests'?'RECEIVED':'FRIENDS',8,1,0);
+  drawNeonBtn(BTNS.socialTabFollowers.x,BTNS.socialTabFollowers.y,BTNS.socialTabFollowers.w,BTNS.socialTabFollowers.h,CFG.PU,mode==='requests'?'SENT':'FOLLOWERS',8,1,0);
+  if (mode==='list') drawNeonBtn(BTNS.socialTabFollowing.x,BTNS.socialTabFollowing.y,BTNS.socialTabFollowing.w,BTNS.socialTabFollowing.h,CFG.GR,'FOLLOWING',8,1,0);
+
+  const listX=x+8,listY=y+30,listW=w-16,listH=h-38;
+  socialView.viewH=listH;
+  socialView.contentH=Math.max(listH,Math.max(1,list.length)*58+8);
+  socialView.scroll=clamp(socialView.scroll,minSocialScroll(),0);
+  ctx.save(); ctx.beginPath(); ctx.rect(listX,listY,listW,listH); ctx.clip(); ctx.translate(0,socialView.scroll);
+  socialView.renderCount=Math.min(list.length,socialView.renderCount+4);
+  for (let i=0;i<socialView.renderCount;i++) {
+    const it=list[i]||{};
+    const ry=listY+8+i*58;
+    ctx.fillStyle=(i%2===0)?'rgba(255,255,255,0.03)':'rgba(0,0,0,0.0)'; ctx.fillRect(listX,ry-12,listW,54);
+    setFont(10,'900'); glow(CFG.CY,6); txt((it.name||'Runner').slice(0,20),listX+12,ry+4,CFG.CY,'left');
+    setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt(`${it.status||'offline'} · ${fmtOfflineAgo(it.lastSeen||Date.now())} ago`,listX+12,ry+20,'rgba(210,230,255,0.78)','left');
+    if (mode==='requests') {
+      BTNS.socialActionA={x:listX+listW-88,y:ry-8,w:36,h:22,idx:i};
+      BTNS.socialActionB={x:listX+listW-46,y:ry-8,w:36,h:22,idx:i};
+      const aLbl=(socialView.mode==='received')?'✓':'👤';
+      drawNeonBtn(BTNS.socialActionA.x,BTNS.socialActionA.y,36,22,socialView.mode==='received'?CFG.GR:'#888',aLbl,9,1,0);
+      drawNeonBtn(BTNS.socialActionB.x,BTNS.socialActionB.y,36,22,CFG.PK,'✕',9,1,0);
+    }
+  }
+  ctx.restore();
+  if (socialView.loading) drawLoadingDots(LW/2,y+h-20,t,CFG.CY);
+  if (!list.length && !socialView.loading) { setFont(10,'700',"'Share Tech Mono',monospace"); noGlow(); txt('No entries yet.',LW/2,y+44,'rgba(220,230,255,0.9)'); }
+
+  if (minSocialScroll()<0) {
+    const sbX=listX+listW-4,sbY=listY,sbH=listH;
+    const th=Math.max(24,(listH/(listH+Math.abs(minSocialScroll())))*sbH);
+    const ty=sbY + ((-socialView.scroll)/Math.abs(minSocialScroll()))*(sbH-th);
+    ctx.fillStyle='rgba(0,245,255,0.18)'; ctx.fillRect(sbX,sbY,4,sbH);
+    ctx.fillStyle='rgba(0,245,255,0.78)'; ctx.fillRect(sbX,ty,4,th);
+  }
+
+  BTNS.publicProfileBack={x:(LW-180)/2,y:LH-52,w:180,h:34};
+  drawNeonBtn(BTNS.publicProfileBack.x,BTNS.publicProfileBack.y,BTNS.publicProfileBack.w,BTNS.publicProfileBack.h,CFG.PK,'← BACK',11,1,Math.sin(t*2));
 }
 
 function drawFriendRequestsScreen(t){
   ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
   drawPerspGrid(terrain.scrollY*0.07,0.03); drawBgSquares();
-  setFont(22,'900'); glow(CFG.YL,12); txt('FRIEND REQUESTS',LW/2,60,CFG.YL);
-  setFont(9,'700',"'Share Tech Mono',monospace"); noGlow(); txt('RECEIVED 0  |  SENT 0',LW/2,80,'rgba(255,240,150,0.9)');
-  const x=28,y=102,w=LW-56,h=520;
-  ctx.fillStyle='rgba(8,10,14,0.95)'; ctx.fillRect(x,y,w,h);
-  ctx.strokeStyle='rgba(255,230,0,0.35)'; ctx.strokeRect(x,y,w,h);
-  setFont(10,'700',"'Share Tech Mono',monospace"); txt('No requests yet.',LW/2,y+44,'rgba(220,230,255,0.9)');
-  BTNS.publicProfileBack={x:(LW-180)/2,y:LH-52,w:180,h:34};
-  drawNeonBtn(BTNS.publicProfileBack.x,BTNS.publicProfileBack.y,BTNS.publicProfileBack.w,BTNS.publicProfileBack.h,CFG.PK,'← BACK',11,1,Math.sin(t*2));
+  const list=socialView.mode==='sent'?socialData.sent:socialData.received;
+  drawSocialRows(t,'FRIEND REQUESTS',`RECEIVED ${socialCounters.received}  |  SENT ${socialCounters.sent}`,list,'requests');
+}
+
+function drawFriendsListScreen(t){
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
+  drawPerspGrid(terrain.scrollY*0.07,0.03); drawBgSquares();
+  const list=socialView.mode==='followers'?socialData.followers:(socialView.mode==='following'?socialData.following:socialData.friends);
+  drawSocialRows(t,'SOCIAL LISTS',`FRIENDS ${socialCounters.friends} | FOLLOWERS ${socialCounters.followers} | FOLLOWING ${socialCounters.following}`,list,'list');
 }
 
 function drawFooter() {
@@ -3075,6 +3176,7 @@ function drawPause() {
 let optionsReturnState='PAUSE';
 let optionsScroll=0, optionsTouchY=null;
 let settingsScroll=0, settingsTouchY=null;
+let socialTouchY=null;
 let profileScroll=0;
 let profileViewH=402, profileContentH=620;
 function minProfileScroll(){ return Math.min(0, profileViewH-profileContentH); }
@@ -3935,7 +4037,7 @@ function drawUpgradesScreen(t){
 
 
 const AUTH_KEY='slope_auth';
-const AUTH_GUEST={signedIn:false,name:'Guest Runner',email:'',uid:'',verified:false,bio:'',avatar:'',status:'offline',lastSeen:0};
+const AUTH_GUEST={signedIn:false,name:'Guest Runner',email:'',uid:'',verified:false,bio:'',avatar:'',status:'offline',statusPref:'offline',lastSeen:0};
 const FIREBASE_CONFIG={
   apiKey:"AIzaSyA375t6p_Zc9Ztfi-RUniqAmjttsjPyy1k",
   authDomain:"thegeneric-685b0.firebaseapp.com",
@@ -4168,6 +4270,11 @@ async function ensureSupportedVersions(){
   if (!fbReady || !fbDb) return;
   try {
     await fbDb.ref('SLOPE/config/currentVersion').get();
+    const sv=await fbDb.ref('SLOPE/config/supportedVersions').get();
+    const list=(sv&&sv.val)?(sv.val()||[]):[];
+    if (Array.isArray(list) && !list.includes(VERSION)) {
+      await fbDb.ref('SLOPE/config/supportedVersions').set([...list,VERSION].slice(-40));
+    }
     await loadGlobalLtmConfig(true);
   } catch (e) {}
 }
@@ -4469,10 +4576,11 @@ function initFirebase(){
       if (u) {
         isSignedIn=true;
         const keepVerified=(auth&&typeof auth.verified==='boolean')?auth.verified:!!u.emailVerified;
-        auth={signedIn:true,name:u.displayName||auth.name||'Runner',email:u.email||'',uid:u.uid||'',verified:!!keepVerified,bio:profileBio||'',avatar:profileAvatar||'',admin:!!(auth&&auth.admin)};
+        auth={signedIn:true,name:u.displayName||auth.name||'Runner',email:u.email||'',uid:u.uid||'',verified:!!keepVerified,bio:profileBio||'',avatar:profileAvatar||'',admin:!!(auth&&auth.admin),status:'online',statusPref:'online'};
         saveAuth(auth);
         refreshAdminFlag();
         await loadCloudProfileAndProgress();
+        await applyConnectivityStatus(false);
       } else {
         isSignedIn=false;
         auth={...AUTH_GUEST};
@@ -4606,6 +4714,7 @@ async function writeCloudUserInfo(extra={}) {
     pfpLink:profileAvatar||'',
     pfpLinkId:getAvatarLinkId(profileAvatar)||'none',
     status:String((auth&&auth.status)||'offline'),
+    statusPref:String((auth&&auth.statusPref)||'online'),
     lastSeen:Number((auth&&auth.lastSeen)||Date.now()),
     gems:loadBank(),
     bestScore:Math.floor(bestScore||0),
@@ -4705,7 +4814,7 @@ async function loadCloudProfileAndProgress() {
     const isAdminDb=(String(val.admin??(slopeMirror&&slopeMirror.admin)??'false')==='true') || val.admin===true || (slopeMirror&&slopeMirror.admin===true);
     const dbVerifiedRaw=(val.verified??(slopeMirror&&slopeMirror.verified));
     const dbVerified=(dbVerifiedRaw===true||String(dbVerifiedRaw)==='true');
-    auth={...auth,signedIn:true,name:val.name||auth.name,email:val.email||auth.email,uid:fbUser.uid,verified:dbVerified,bio:profileBio,avatar:profileAvatar,admin:isAdminDb,status:STATUS_COLORS[dbStatus]?dbStatus:'online',lastSeen:dbLastSeen};
+    auth={...auth,signedIn:true,name:val.name||auth.name,email:val.email||auth.email,uid:fbUser.uid,verified:dbVerified,bio:profileBio,avatar:profileAvatar,admin:isAdminDb,status:STATUS_COLORS[dbStatus]?dbStatus:'online',statusPref:STATUS_COLORS[String(val.statusPref||'').toLowerCase()]?String(val.statusPref).toLowerCase():(STATUS_COLORS[dbStatus]?dbStatus:'online'),lastSeen:dbLastSeen};
     saveAuth(auth);
     refreshAdminFlag();
   } catch (e) {}
@@ -4757,6 +4866,15 @@ async function handleAuthGoogleSignIn(){
   }
 }
 
+function resetLocalForNewAccount(){
+  bestScore=0;
+  modeScores={endless:0,adventure:0,impossible:0,ltm:0};
+  saveBank(0);
+  totalGems=0;
+  localStorage.setItem('slope_runs','0');
+  localStorage.setItem('slope_totalTime','0');
+}
+
 async function handleAuthSignUp(){
   const pwd=signupForm.password||'';
   if (pwd.length<6 || pwd.length>20) { authFlowState='error'; authFlowError='Password must be 6 to 20 chars.'; return; }
@@ -4781,10 +4899,11 @@ async function handleAuthSignUp(){
       await cred.user.updateProfile({displayName:(signupForm.username||'Runner').trim()||'Runner'});
       await cred.user.sendEmailVerification();
       fbUser=cred.user;
-      auth={signedIn:true,name:cred.user.displayName||signupForm.username,email:cred.user.email||signupForm.email,uid:cred.user.uid,verified:false,bio:'',avatar:''};
+      auth={signedIn:true,name:cred.user.displayName||signupForm.username,email:cred.user.email||signupForm.email,uid:cred.user.uid,verified:false,bio:'',avatar:'',status:'online',statusPref:'online',lastSeen:Date.now()};
       isSignedIn=true; saveAuth(auth);
-      await writeCloudUserInfo({name:auth.name,email:auth.email,verified:false,createdAt:Date.now(),admin:false});
-      await syncProgressToCloud('signup');
+      resetLocalForNewAccount();
+      await writeCloudUserInfo({name:auth.name,email:auth.email,verified:false,createdAt:Date.now(),admin:false,status:'online',statusPref:'online',lastSeen:Date.now(),progress:{bestScore:0,gems:0,modeScores:{endless:0,adventure:0,impossible:0,ltm:0}}});
+      try { await syncSlopeMirror({bestScore:'0',endlessScore:'0',adventureScore:'0',impossibleScore:'0',ltmScore:'0',gems:'0',status:'online',updatedAt:String(Date.now())}); } catch(e) {}
       authFlowState='success';
       authFlowMsg='Verification email sent. Verify, then tap REFRESH GAME.';
     }
@@ -5027,8 +5146,9 @@ function drawProfileScreen(t){
   const avatarX=x+64, avatarY=y+104, avatarR=34;
   BTNS.profileAvatar={x:avatarX-avatarR-6,y:avatarY-avatarR-6,w:(avatarR+6)*2,h:(avatarR+6)*2,cx:avatarX,cy:avatarY,r:avatarR+6};
   ctx.save();
-  if (profileAvatar) {
-    const img=new Image(); img.src=profileAvatar;
+  const cardAvatar=playerCardPopup.isSelf?profileAvatar:String(cardUser.avatar||'');
+  if (cardAvatar) {
+    const img=new Image(); img.src=cardAvatar;
     ctx.beginPath(); ctx.arc(avatarX,avatarY,avatarR,0,Math.PI*2); ctx.clip();
     ctx.drawImage(img,avatarX-avatarR,avatarY-avatarR,avatarR*2,avatarR*2);
   } else {
@@ -5152,9 +5272,10 @@ function drawProfileScreen(t){
   BTNS.profileStatusIdle={x:x+14+(stW+4),y:statusY,w:stW,h:22};
   BTNS.profileStatusDnd={x:x+14+(stW+4)*2,y:statusY,w:stW,h:22};
   BTNS.profileStatusOffline={x:x+14+(stW+4)*3,y:statusY,w:stW,h:22};
-  drawNeonBtn(BTNS.profileStatusDefault.x,BTNS.profileStatusDefault.y,BTNS.profileStatusDefault.w,BTNS.profileStatusDefault.h,getStatusValue()==='online'?CFG.GR:'#2d4f2f','DEFAULT',7,1,0);
-  drawNeonBtn(BTNS.profileStatusIdle.x,BTNS.profileStatusIdle.y,BTNS.profileStatusIdle.w,BTNS.profileStatusIdle.h,getStatusValue()==='idle'?CFG.YL:'#5a5522','IDLE',7,1,0);
-  drawNeonBtn(BTNS.profileStatusDnd.x,BTNS.profileStatusDnd.y,BTNS.profileStatusDnd.w,BTNS.profileStatusDnd.h,getStatusValue()==='dnd'?CFG.PK:'#5a2230','DND',7,1,0);
+  const statusLocked=!isSignedIn || !navigator.onLine;
+  drawNeonBtn(BTNS.profileStatusDefault.x,BTNS.profileStatusDefault.y,BTNS.profileStatusDefault.w,BTNS.profileStatusDefault.h,statusLocked?'#3a3f47':(getStatusValue()==='online'?CFG.GR:'#2d4f2f'),statusLocked?'LOCK':'DEFAULT',7,1,0);
+  drawNeonBtn(BTNS.profileStatusIdle.x,BTNS.profileStatusIdle.y,BTNS.profileStatusIdle.w,BTNS.profileStatusIdle.h,statusLocked?'#3a3f47':(getStatusValue()==='idle'?CFG.YL:'#5a5522'),statusLocked?'LOCK':'IDLE',7,1,0);
+  drawNeonBtn(BTNS.profileStatusDnd.x,BTNS.profileStatusDnd.y,BTNS.profileStatusDnd.w,BTNS.profileStatusDnd.h,statusLocked?'#3a3f47':(getStatusValue()==='dnd'?CFG.PK:'#5a2230'),statusLocked?'LOCK':'DND',7,1,0);
   drawNeonBtn(BTNS.profileStatusOffline.x,BTNS.profileStatusOffline.y,BTNS.profileStatusOffline.w,BTNS.profileStatusOffline.h,getStatusValue()==='offline'?'#8a95a5':'#3f4650','OFFLINE',7,1,0);
   BTNS.profileBio={x:x+14,y:bioBtnY,w:w-28,h:btnH};
   drawNeonBtn(BTNS.profileBio.x,BTNS.profileBio.y,BTNS.profileBio.w,BTNS.profileBio.h,canEditProfile?CFG.GR:'#2f5f2f',canEditProfile?'EDIT PUBLIC PROFILE':'PUBLIC PROFILE LOCKED',10,1,0);
@@ -5162,14 +5283,8 @@ function drawProfileScreen(t){
   drawNeonBtn(BTNS.profileChangePassword.x,BTNS.profileChangePassword.y,BTNS.profileChangePassword.w,BTNS.profileChangePassword.h,canEditProfile?CFG.YL:'#6a6222',canEditProfile?'CHANGE PASSWORD':'PASSWORD LOCKED',10,1,0);
   BTNS.profileSignOut={x:x+14,y:signOutY,w:w-28,h:btnH};
   drawNeonBtn(BTNS.profileSignOut.x,BTNS.profileSignOut.y,BTNS.profileSignOut.w,BTNS.profileSignOut.h,isSignedIn?CFG.PK:CFG.CY,isSignedIn?'SIGN OUT':'GO TO SIGN IN',10,1,0);
-  const statsY=avatarY+48, statW=86, statH=24, statGap=8;
-  const statX=x+14;
-  const lockFriends=publicProfilePrefs.friends>=1;
-  const lockFollowers=publicProfilePrefs.followers>=1;
-  const lockFollowing=publicProfilePrefs.following>=1;
-  drawNeonBtn(statX,statsY,statW,statH,lockFriends?'#45535f':CFG.CY,`0 FRIENDS`,7,1,0);
-  drawNeonBtn(statX+statW+statGap,statsY,statW,statH,lockFollowers?'#45535f':CFG.GR,`0 FOLLOWERS`,7,1,0);
-  drawNeonBtn(statX+(statW+statGap)*2,statsY,statW,statH,lockFollowing?'#45535f':CFG.YL,`0 FOLLOWING`,7,1,0);
+  BTNS.profileDelete={x:x+14,y:signOutY-36,w:w-28,h:28};
+  drawNeonBtn(BTNS.profileDelete.x,BTNS.profileDelete.y,BTNS.profileDelete.w,BTNS.profileDelete.h,isSignedIn?'#ff3355':'#5a3238',isSignedIn?'DELETE ACCOUNT':'DELETE LOCKED',9,1,0);
 
   const minP=minProfileScroll();
   const sbX=infoX+infoW+4, sbY=infoY-2, sbH=uploadY-infoY-8;
@@ -5342,6 +5457,7 @@ function handleProfileTap(p){
     handleChangePassword();
     return;
   }
+  if (hitBtn(p,BTNS.profileDelete)) { SFX.click(); if (!isSignedIn) return; openConfirm('DELETE_ACCOUNT','DELETE ACCOUNT?','This is permanent and removes your cloud account.'); return; }
   if (hitBtn(p,BTNS.profileSignOut)) {
     SFX.click();
     if (!navigator.onLine) { addNotif('PLAYER OFFLINE',CFG.PK); return; }
@@ -5349,6 +5465,43 @@ function handleProfileTap(p){
     openConfirm('SIGNOUT','SIGN OUT?','Cloud session will end and guest local save will be used.');
     return;
   }
+}
+
+async function beginDeleteAccountFlow(){
+  if (!isSignedIn || !fbUser || !fbReady || !firebase.auth) return;
+  openInputDialog({title:'DELETE ACCOUNT',label:'Type your username to confirm',value:'',maxLen:32,onSubmit:v=>{
+    const name=String(v||'').trim();
+    if (name.toLowerCase()!==String(auth.name||'').trim().toLowerCase()) { addNotif('Username mismatch.',CFG.PK); return; }
+    openInputDialog({title:'DELETE ACCOUNT',label:'Type your password',value:'',maxLen:32,secret:true,onSubmit:async p=>{
+      const pwd=String(p||'');
+      if (!pwd) { addNotif('Password required.',CFG.PK); return; }
+      actionPopup={active:true,title:'REMOVING ACCOUNT',msg:'Please wait...',ok:true};
+      try {
+        const email=String((fbUser&&fbUser.email)||(auth&&auth.email)||'').trim();
+        if (!email) throw new Error('No email');
+        const cred=firebase.auth.EmailAuthProvider.credential(email,pwd);
+        await fbUser.reauthenticateWithCredential(cred);
+        const uid=fbUser.uid;
+        await Promise.allSettled([
+          fbDb.ref(`${CLOUD_SLOPE_ROOT}/${uid}`).remove(),
+          fbDb.ref(`${CLOUD_INFO_ROOT}/${uid}`).remove(),
+          fbDb.ref(`${CLOUD_LEADERBOARD_ROOT}/global/${uid}`).remove(),
+          fbDb.ref(`${CLOUD_LEADERBOARD_ROOT}/endless/${uid}`).remove(),
+          fbDb.ref(`${CLOUD_LEADERBOARD_ROOT}/adventure/${uid}`).remove(),
+          fbDb.ref(`${CLOUD_LEADERBOARD_ROOT}/impossible/${uid}`).remove(),
+          fbDb.ref(`${CLOUD_LEADERBOARD_ROOT}/ltm/${uid}`).remove(),
+          fbDb.ref(`${CLOUD_SOCIAL_ROOT}/friends/${uid}`).remove(),
+          fbDb.ref(`${CLOUD_SOCIAL_ROOT}/followers/${uid}`).remove(),
+          fbDb.ref(`${CLOUD_SOCIAL_ROOT}/following/${uid}`).remove(),
+          fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${uid}`).remove(),
+        ]);
+        await fbUser.delete();
+        actionPopup={active:true,title:'SUCCESS',msg:'Your account has been officially removed.',ok:true};
+        isSignedIn=false; auth={...AUTH_GUEST}; saveAuth(auth);
+        setTimeout(()=>{ actionPopup.active=false; goMenu(); doTransition('MENU'); },1200);
+      } catch(e) { actionPopup={active:true,title:'DELETE FAILED',msg:'Re-auth failed or cloud delete failed.',ok:false}; }
+    }});
+  }});
 }
 
 function doSignOut(){
@@ -5452,6 +5605,119 @@ let noAdsPopup=false;
 let adminLtmTestButtons=[];
 let ltmForcedIndex=-1;
 let ltmSelectedIndex=-1;
+let socialData={friends:[],followers:[],following:[],received:[],sent:[]};
+let socialCounters={friends:0,followers:0,following:0,received:0,sent:0};
+let socialView={mode:'friends',scroll:0,viewH:0,contentH:0,renderCount:0,loading:false};
+const CLOUD_SOCIAL_ROOT='SLOPE/social';
+function minSocialScroll(){ return Math.min(0,socialView.viewH-socialView.contentH); }
+function mapSocialSnapToList(snap,idxMap){
+  const v=(snap&&snap.val)?(snap.val()||{}):{};
+  if (!v||typeof v!=='object') return [];
+  const arr=[];
+  Object.keys(v).forEach(uid=>{
+    const meta=v[uid]||{};
+    const u=idxMap[uid]||{uid,name:'Runner',status:'offline',lastSeen:0,avatar:'',bestScore:0,bio:''};
+    arr.push({...u,uid,ts:Number(meta.ts||0)});
+  });
+  arr.sort((a,b)=>(b.ts||0)-(a.ts||0));
+  return arr;
+}
+async function fetchUserIndexMap(){
+  if (!fbReady || !fbDb) return {};
+  try {
+    const snap=await fbDb.ref(CLOUD_SLOPE_ROOT).get();
+    const all=snap&&snap.val?snap.val():{};
+    const out={};
+    Object.keys(all||{}).forEach(uid=>{ const u=all[uid]||{}; out[uid]={uid,name:u.displayName||u.name||u.email||'Runner',avatar:u.pfpLink||u.avatar||'',status:String(u.status||'offline').toLowerCase(),lastSeen:Number(u.lastSeen||0),bestScore:Number(u.bestScore||0),bio:String(u.bio||'')}; });
+    return out;
+  } catch(e){ return {}; }
+}
+async function fetchSocialData(){
+  if (!isSignedIn || !fbUser || !fbReady || !fbDb) { socialData={friends:[],followers:[],following:[],received:[],sent:[]}; socialCounters={friends:0,followers:0,following:0,received:0,sent:0}; return; }
+  socialView.loading=true; socialView.renderCount=0;
+  try {
+    const uid=fbUser.uid;
+    const [idx,fr,fo,fg,rc,st]=await Promise.all([
+      fetchUserIndexMap(),
+      fbDb.ref(`${CLOUD_SOCIAL_ROOT}/friends/${uid}`).get(),
+      fbDb.ref(`${CLOUD_SOCIAL_ROOT}/followers/${uid}`).get(),
+      fbDb.ref(`${CLOUD_SOCIAL_ROOT}/following/${uid}`).get(),
+      fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${uid}/received`).get(),
+      fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${uid}/sent`).get(),
+    ]);
+    socialData={
+      friends:mapSocialSnapToList(fr,idx),
+      followers:mapSocialSnapToList(fo,idx),
+      following:mapSocialSnapToList(fg,idx),
+      received:mapSocialSnapToList(rc,idx),
+      sent:mapSocialSnapToList(st,idx),
+    };
+    socialCounters={friends:socialData.friends.length,followers:socialData.followers.length,following:socialData.following.length,received:socialData.received.length,sent:socialData.sent.length};
+  } catch(e) {
+    socialData={friends:[],followers:[],following:[],received:[],sent:[]};
+    socialCounters={friends:0,followers:0,following:0,received:0,sent:0};
+  }
+  socialView.loading=false;
+}
+async function openMiniProfileByUsername(raw){
+  const q=String(raw||'').trim().toLowerCase();
+  if (!q) return;
+  if (!fbReady || !fbDb) { addNotif('Cloud unavailable.',CFG.PK); return; }
+  try {
+    const snap=await fbDb.ref(CLOUD_SLOPE_ROOT).get();
+    const all=snap&&snap.val?snap.val():{};
+    let foundUid='';
+    Object.keys(all||{}).some(uid=>{ const u=all[uid]||{}; const nm=String(u.displayName||u.name||u.email||'').toLowerCase(); if (nm===q) { foundUid=uid; return true; } return false; });
+    if (!foundUid) { addNotif('User not found.',CFG.PK); return; }
+    const u=all[foundUid]||{};
+    playerCardPopup.active=true; playerCardPopup.isSelf=!!(isSignedIn&&auth&&auth.uid===foundUid); playerCardPopup.fromMenu=false;
+    playerCardPopup.viewed={uid:foundUid,name:String(u.displayName||u.name||'Runner'),avatar:String(u.pfpLink||u.avatar||''),status:String(u.status||'offline'),lastSeen:Number(u.lastSeen||0),bio:String(u.bio||''),bestScore:Number(u.bestScore||0)};
+  } catch(e) { addNotif('Search failed.',CFG.PK); }
+}
+async function sendFriendRequestToViewed(){
+  const v=playerCardPopup.viewed||{};
+  if (!isSignedIn || !fbUser) { addNotif('Sign in required.',CFG.PK); return; }
+  if (!navigator.onLine) { addNotif('Offline.',CFG.PK); return; }
+  const toUid=String(v.uid||'');
+  if (!toUid || toUid===fbUser.uid) return;
+  const ts=Date.now();
+  try {
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${toUid}/received/${fbUser.uid}`).update({ts:String(ts)});
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${fbUser.uid}/sent/${toUid}`).update({ts:String(ts)});
+    addNotif('Friend request sent.',CFG.GR);
+    fetchSocialData();
+  } catch(e) { addNotif('Request failed.',CFG.PK); }
+}
+async function handleSocialPrimaryAction(){
+  const idx=(socialView.mode==='sent'?socialData.sent:socialData.received);
+  const item=idx[BTNS.socialActionA&&BTNS.socialActionA.idx]||null;
+  if (!item||!fbUser||!fbDb) return;
+  if (socialView.mode==='received') {
+    const uid=fbUser.uid, ou=item.uid, ts=Date.now();
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/friends/${uid}/${ou}`).update({ts:String(ts)});
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/friends/${ou}/${uid}`).update({ts:String(ts)});
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${uid}/received/${ou}`).remove();
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${ou}/sent/${uid}`).remove();
+    addNotif('Friend request accepted.',CFG.GR);
+    fetchSocialData();
+  } else {
+    playerCardPopup.active=true; playerCardPopup.isSelf=false; playerCardPopup.viewed=item;
+  }
+}
+async function handleSocialSecondaryAction(){
+  const idx=(socialView.mode==='sent'?socialData.sent:socialData.received);
+  const item=idx[BTNS.socialActionB&&BTNS.socialActionB.idx]||null;
+  if (!item||!fbUser||!fbDb) return;
+  const uid=fbUser.uid, ou=item.uid;
+  if (socialView.mode==='received') {
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${uid}/received/${ou}`).remove();
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${ou}/sent/${uid}`).remove();
+  } else {
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${uid}/sent/${ou}`).remove();
+    await fbDb.ref(`${CLOUD_SOCIAL_ROOT}/requests/${ou}/received/${uid}`).remove();
+  }
+  addNotif('Request removed.',CFG.PK); fetchSocialData();
+}
 let ltmGlobalUpdatedAt=0;
 let ltmConfigFetchAt=0;
 const CLOUD_LTM_CONFIG='SLOPE/config/ltm';
@@ -5523,38 +5789,42 @@ async function triggerLeaderboardFetch(force=false) {
   try {
     if (!fbReady || !fbDb) throw new Error('Sign in required');
     const cat=String(leaderboardCategory||'GLOBAL').toLowerCase();
+    const merged=new Map();
     const lbSnap=await fbDb.ref(`${CLOUD_LEADERBOARD_ROOT}/${cat}`).get();
     const lbVal=lbSnap&&lbSnap.val?lbSnap.val():null;
     if (lbVal && typeof lbVal==='object' && Object.keys(lbVal).length) {
-      const rows=Object.keys(lbVal).map(uid=>{ const v=lbVal[uid]||{}; return {uid,name:String(v.name||'Runner').slice(0,20),score:Number(v.score||0)}; });
-      rows.sort((a,b)=>b.score-a.score);
-      const top=rows.slice(0,100);
-      while (top.length<100) top.push({uid:`empty-${top.length}`,name:'—',score:0,empty:true});
-      leaderboardData=top;
-      leaderboardState='loaded';
-      return;
-    }
-    const root=await resolveCloudRoot(fbUser&&fbUser.uid,true);
-    const snap=await fbDb.ref(root).get();
-    let all=snap&&snap.val?snap.val():{};
-    if (!all || !Object.keys(all).length) {
-      const slopeSnap=await fbDb.ref(CLOUD_SLOPE_ROOT).get();
-      const slopeAll=slopeSnap&&slopeSnap.val?slopeSnap.val():{};
-      all={};
-      Object.keys(slopeAll||{}).forEach(uid=>{
-        const u=slopeAll[uid]||{};
-        all[uid]={name:u.displayName||u.name||u.email||'Runner',email:u.email||'',progress:{bestScore:Number(u.bestScore||0),modeScores:{endless:Number(u.endlessScore||0),adventure:Number(u.adventureScore||0),impossible:Number(u.impossibleScore||0),ltm:Number(u.ltmScore||0)}}};
+      Object.keys(lbVal).forEach(uid=>{
+        const v=lbVal[uid]||{};
+        merged.set(uid,{uid,name:String(v.name||'Runner').slice(0,20),score:Number(v.score||0)});
       });
     }
-    const rows=[];
+
+    const slopeSnap=await fbDb.ref(CLOUD_SLOPE_ROOT).get();
+    const slopeAll=slopeSnap&&slopeSnap.val?slopeSnap.val():{};
+    Object.keys(slopeAll||{}).forEach(uid=>{
+      const u=slopeAll[uid]||{};
+      const modeScores={endless:Number(u.endlessScore||0),adventure:Number(u.adventureScore||0),impossible:Number(u.impossibleScore||0),ltm:Number(u.ltmScore||0)};
+      const globalSum=Number(modeScores.endless||0)+Number(modeScores.adventure||0)+Number(modeScores.impossible||0)+Number(modeScores.ltm||0);
+      const score=leaderboardCategory==='ENDLESS'?Number(modeScores.endless||0):leaderboardCategory==='ADVENTURE'?Number(modeScores.adventure||0):leaderboardCategory==='IMPOSSIBLE'?Number(modeScores.impossible||0):leaderboardCategory==='LTM'?Number(modeScores.ltm||0):(globalSum>0?globalSum:Number(u.bestScore||0));
+      const cur=merged.get(uid);
+      const name=String((u.displayName||u.name||u.email||'Runner')).slice(0,20);
+      if (!cur || score>cur.score) merged.set(uid,{uid,name,score:Number.isFinite(score)?score:0});
+    });
+
+    const root=await resolveCloudRoot(fbUser&&fbUser.uid,true);
+    const snap=await fbDb.ref(root).get();
+    const all=snap&&snap.val?snap.val():{};
     Object.keys(all||{}).forEach(uid=>{
       const u=all[uid]||{};
       const p=(u.progress||{});
       const modeScores=(p.modeScores||{});
       const globalSum=Number(modeScores.endless||0)+Number(modeScores.adventure||0)+Number(modeScores.impossible||0)+Number(modeScores.ltm||0);
       const score=leaderboardCategory==='ENDLESS'?Number(modeScores.endless||0):leaderboardCategory==='ADVENTURE'?Number(modeScores.adventure||0):leaderboardCategory==='IMPOSSIBLE'?Number(modeScores.impossible||0):leaderboardCategory==='LTM'?Number(modeScores.ltm||0):(globalSum>0?globalSum:Number(p.bestScore||0));
-      rows.push({uid,name:(u.name||u.email||'Runner').toString().slice(0,20),score:Number.isFinite(score)?score:0});
+      const cur=merged.get(uid);
+      const name=(u.name||u.email||'Runner').toString().slice(0,20);
+      if (!cur || score>cur.score) merged.set(uid,{uid,name,score:Number.isFinite(score)?score:0});
     });
+    const rows=[...merged.values()];
     rows.sort((a,b)=>b.score-a.score);
     const top=rows.slice(0,100);
     while (top.length<100) top.push({uid:`empty-${top.length}`,name:'—',score:0,empty:true});
@@ -6444,6 +6714,13 @@ function loop(ts) {
 
   if (gs==='FRIEND_REQUESTS') {
     drawFriendRequestsScreen(menuT);
+    drawTransition();
+    drawTopOverlays(menuT);
+    requestAnimationFrame(loop); return;
+  }
+
+  if (gs==='FRIENDS_LIST') {
+    drawFriendsListScreen(menuT);
     drawTransition();
     drawTopOverlays(menuT);
     requestAnimationFrame(loop); return;
