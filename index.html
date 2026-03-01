@@ -436,9 +436,10 @@ function handleTap(e) {
   }
   if (gs === 'ADMIN_LTM') {
     if (hitBtn(p,BTNS.adminLtmBack)) { SFX.click(); doTransition('MODESELECT'); return; }
+    const pAdmin={x:p.x,y:p.y-adminLtmScroll};
     for (let i=0;i<adminLtmTestButtons.length;i++) {
       const b=adminLtmTestButtons[i];
-      if (hitBtn(p,b)) {
+      if (hitBtn(pAdmin,b)) {
         SFX.click();
         ltmForcedIndex=i;
         ltmSelectedIndex=i;
@@ -2333,7 +2334,8 @@ function drawModeSelect(t) {
     setFont(26,'900'); glow(c.col,14); txt(c.icon,x+cardW/2,y+100,c.col);
     setFont(8,'400',"'Share Tech Mono',monospace"); noGlow();
     c.feats.forEach((f,j)=>txt(`• ${f}`,x+10,y+136+j*16,c.col,'left'));
-    drawNeonBtn(x+10,y+cardH-38,cardW-20,28,c.col,c.btn,10,1,Math.sin(t*3+i));
+    const btnLbl=(c.key==='modeLtm'&&!isAdminUser)?'PLAY':c.btn;
+    drawNeonBtn(x+10,y+cardH-38,cardW-20,28,c.col,btnLbl,10,1,Math.sin(t*3+i));
     ctx.restore();
   });
 
