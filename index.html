@@ -327,7 +327,7 @@ function handleTap(e) {
     if (hitBtn(p, BTNS.modeImpossible)) { SFX.click(); openConfirm('IMPOSSIBLE_START','IMPOSSIBLE MODE WARNING','One life only. No starter powerups. Are you sure?'); return; }
     if (hitBtn(p, BTNS.modeLtm)) {
       if (!navigator.onLine) { addNotif('PLAYER OFFLINE',CFG.PK); return; }
-      SFX.click(); gameMode='LTM'; doTransition('SHOP'); return;
+      SFX.click(); gameMode='LTM'; ltmForcedIndex=-1; doTransition('SHOP'); return;
     }
     if (hitBtn(p, BTNS.adminViewLtm) && isAdminUser) { SFX.click(); doTransition('ADMIN_LTM'); return; }
     if (hitBtn(p, BTNS.back)) { SFX.click(); doTransition('MENU'); return; }
@@ -408,6 +408,16 @@ function handleTap(e) {
   }
   if (gs === 'ADMIN_LTM') {
     if (hitBtn(p,BTNS.adminLtmBack)) { SFX.click(); doTransition('MODESELECT'); return; }
+    for (let i=0;i<adminLtmTestButtons.length;i++) {
+      const b=adminLtmTestButtons[i];
+      if (hitBtn(p,b)) {
+        SFX.click();
+        ltmForcedIndex=i;
+        gameMode='LTM';
+        doTransition('SHOP');
+        return;
+      }
+    }
     return;
   }
   if (gs === 'CONTINUE') {
@@ -419,14 +429,10 @@ function handleTap(e) {
     if (hitBtn(p,BTNS.overLeaderboard)) { SFX.click(); leaderboardReturnState='OVER'; leaderboardCategory=(gameMode==='ADVENTURE'?'ADVENTURE':(gameMode==='IMPOSSIBLE'?'IMPOSSIBLE':(gameMode==='LTM'?'LTM':'ENDLESS'))); doTransition('LEADERBOARD'); triggerLeaderboardFetch(true); return; }
     if (hitBtn(p, BTNS.retry)) {
       SFX.click();
-      if (gameMode==='LTM') {
-    const mode=getActiveLtm();
-    const forced=(mode&&mode.forcedPowerups)||[];
-    if (forced.length) {
-      const map={X2_SCORE:'BOOST',JETPACK:'JETPACK',MINI_JETPACK:'MINI_JETPACK',SHIELD:'SHIELD',MAGNET:'MAGNET',REGEN:'REGEN',HEALTH_BOOST:'HEALTH_BOOST',IMMUNITY:'IMMUNITY',X2_GEMS:'X2_GEMS',X4_GEMS:'X2_GEMS',GEM_DROP:'GEM_DROP'};
-      const key=forced[rndI(0,forced.length-1)];
-      return map[key]||'BOOST';
-    }
+    
+  if (gameMode==='LTM') {
+    const st=currentStageConfig();
+    terrain.speed=st.spd||ADV_STAGES[0].spd;
   }
   if (gameMode==='IMPOSSIBLE') { openConfirm('IMPOSSIBLE_RETRY','RETRY IMPOSSIBLE?','Restart with intro screen and one life only.'); return; }
       doTransition('SHOP');
@@ -1276,7 +1282,16 @@ class Gem {
     const lx=w.left+pad,rx=w.right-pad;
     this.x=lx<rx?rnd(lx,rx):(w.left+w.right)/2; this.y=-12;
     const ti=Math.random()<0.6?0:Math.random()<0.6?1:2;
-    this.type=GEM_TYPES[ti]; this.rot=0; this.active=true; this.collected=false;
+    this.type=GEM_TYPES[ti];
+    if (gameMode==='LTM') {
+      const lm=getActiveLtm();
+      if (lm&&lm.id==='gold_rush'&&Array.isArray(lm.gemSet)&&lm.gemSet.length>=3) {
+        const r=Math.random();
+        const pick=r<0.62?lm.gemSet[0]:(r<0.88?lm.gemSet[1]:lm.gemSet[2]);
+        this.type={col:pick.col,pts:pick.score,gemVal:pick.gems};
+      }
+    }
+    this.rot=0; this.active=true; this.collected=false;
   }
   update(dt,speed) {
     if (this.collected){this.active=false;return;}
@@ -1339,14 +1354,10 @@ function randPwrKey() {
     pool=pool.filter(k=>k!=='BAD_LUCK');
     return pool[rndI(0,pool.length-1)];
   }
+
   if (gameMode==='LTM') {
-    const mode=getActiveLtm();
-    const forced=(mode&&mode.forcedPowerups)||[];
-    if (forced.length) {
-      const map={X2_SCORE:'BOOST',JETPACK:'JETPACK',MINI_JETPACK:'MINI_JETPACK',SHIELD:'SHIELD',MAGNET:'MAGNET',REGEN:'REGEN',HEALTH_BOOST:'HEALTH_BOOST',IMMUNITY:'IMMUNITY',X2_GEMS:'X2_GEMS',X4_GEMS:'X2_GEMS',GEM_DROP:'GEM_DROP'};
-      const key=forced[rndI(0,forced.length-1)];
-      return map[key]||'BOOST';
-    }
+    const st=currentStageConfig();
+    terrain.speed=st.spd||ADV_STAGES[0].spd;
   }
   if (gameMode==='IMPOSSIBLE') {
     let pool=PWR_WEIGHTED.filter(k=>!['REGEN','HEALTH_BOOST','NEW_STAGE'].includes(k));
@@ -2500,7 +2511,8 @@ function drawAdminLtmScreen(t){
   const x=20,y=90,w=LW-40,h=560;
   ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(x,y,w,h);
   ctx.strokeStyle='rgba(255,230,0,0.5)'; ctx.strokeRect(x,y,w,h);
-  const rowH=112;
+  const rowH=124;
+  adminLtmTestButtons=[];
   adminLtmViewH=h-10;
   adminLtmContentH=LTM_MODES.length*rowH+8;
   adminLtmScroll=clamp(adminLtmScroll,minAdminLtmScroll(),0);
@@ -2515,6 +2527,9 @@ function drawAdminLtmScreen(t){
     const st=(m.stages||[]).map(s=>`${s.name.split(' ')[1]||''}:${s.label}`).join(' | ').slice(0,60);
     txt(st,x+24,yy+54,'rgba(180,210,230,0.8)','left');
     txt(`Starter PWR: ${(m.forcedPowerups||[]).slice(0,5).join(', ')}`,x+24,yy+70,'rgba(160,255,180,0.8)','left');
+    const tb={x:x+w-138,y:yy+62,w:110,h:26};
+    adminLtmTestButtons[i]=tb;
+    drawNeonBtn(tb.x,tb.y,tb.w,tb.h,m.cardCol||CFG.CY,'TEST PLAY',9,1,Math.sin(t*2+i));
     txt('TEST MODE',x+w-34,yy+22,CFG.PK,'right');
   });
   ctx.restore();
@@ -4763,6 +4778,8 @@ let ltmRotationIndex=0;
 let ltmStage=0, ltmStageTimer=0;
 let adminLtmScroll=0, adminLtmViewH=0, adminLtmContentH=0;
 let noAdsPopup=false;
+let adminLtmTestButtons=[];
+let ltmForcedIndex=-1;
 function minAdminLtmScroll(){ return Math.min(0, adminLtmViewH-adminLtmContentH); }
 function getDailyLtmIndex(){
   const now=new Date();
@@ -4899,7 +4916,8 @@ function startGame(starterPwr=null, forceNoStarter=false) {
   jetpackCount=0; regenUsed=0;
   pwrCounts={JETPACK:0,MAGNET:0,BOOST:0,SHIELD:0,SLOW:0,HEALTH_BOOST:0,MINI_JETPACK:0,NEW_STAGE:0,REGEN:0,X2_GEMS:0,GEM_DROP:0,BAD_LUCK:0};
   // Adventure setup
-  adventureStage=0; adventureStageTimer=0; impossibleStage=0; ltmStage=0; ltmStageTimer=0; ltmRotationIndex=getDailyLtmIndex();
+  adventureStage=0; adventureStageTimer=0; impossibleStage=0; ltmStage=0; ltmStageTimer=0;
+  ltmRotationIndex=(ltmForcedIndex>=0?ltmForcedIndex:getDailyLtmIndex());
   miniJetpackActive=false; miniJetpackTimer=0;
   newStageActive=false; newStageTimer=0;
   stagePowerupNext=rnd(20,30); stagePowerupElapsed=0;
@@ -4911,14 +4929,10 @@ function startGame(starterPwr=null, forceNoStarter=false) {
     const st=ADV_STAGES[0];
     terrain.speed=st.spd;
   }
+
   if (gameMode==='LTM') {
-    const mode=getActiveLtm();
-    const forced=(mode&&mode.forcedPowerups)||[];
-    if (forced.length) {
-      const map={X2_SCORE:'BOOST',JETPACK:'JETPACK',MINI_JETPACK:'MINI_JETPACK',SHIELD:'SHIELD',MAGNET:'MAGNET',REGEN:'REGEN',HEALTH_BOOST:'HEALTH_BOOST',IMMUNITY:'IMMUNITY',X2_GEMS:'X2_GEMS',X4_GEMS:'X2_GEMS',GEM_DROP:'GEM_DROP'};
-      const key=forced[rndI(0,forced.length-1)];
-      return map[key]||'BOOST';
-    }
+    const st=currentStageConfig();
+    terrain.speed=st.spd||ADV_STAGES[0].spd;
   }
   if (gameMode==='IMPOSSIBLE') {
     const st=IMP_STAGES[0];
@@ -4929,8 +4943,9 @@ function startGame(starterPwr=null, forceNoStarter=false) {
 
   if (gameMode==='LTM') {
     const lm=getActiveLtm();
-    activePwr='BOOST'; pwrTimer=8;
-    gemDropActive=true; gemDropTimer=6; gemDropSpawnTimer=0.08;
+    activePwr='BOOST'; pwrTimer=10;
+    activatePwr('SHIELD',shieldDuration(90)); player.shield=true;
+    gemDropActive=true; gemDropTimer=7; gemDropSpawnTimer=0.08;
     gemDoubleActive=true; gemDoubleTimer=8;
     addNotif(`${lm.name} ACTIVE`,lm.cardCol||CFG.YL);
   }
@@ -4948,6 +4963,7 @@ function startGame(starterPwr=null, forceNoStarter=false) {
     }
     addNotif(`STARTED WITH ${PWR_TYPES[starterPwr]?.label||starterPwr}!`,PWR_TYPES[starterPwr]?.col||CFG.CY);
   }
+  if (gameMode==='LTM') ltmForcedIndex=-1;
   gs='PLAY'; SFX.start();
 }
 
@@ -5829,6 +5845,25 @@ function loop(ts) {
   drawAuraVisual();
   drawParticles(); drawRings();
   ctx.restore();
+
+  if (gameMode==='LTM') {
+    const lm=getActiveLtm();
+    if (lm&&lm.lowGravity) {
+      ctx.save(); ctx.globalAlpha=0.16;
+      for (let i=0;i<26;i++) {
+        const sx=(i*31+menuT*15)%LW, sy=(i*67+menuT*8)%LH;
+        circle(sx,sy,1.2+((i%3)*0.7),'rgba(170,220,255,0.8)');
+      }
+      ctx.restore();
+    }
+    if (lm&&lm.volcanoFX) {
+      ctx.save();
+      const a=0.08+0.08*Math.sin(menuT*8);
+      ctx.fillStyle=`rgba(255,60,30,${a})`; ctx.fillRect(0,0,LW,LH);
+      ctx.restore();
+      if (Math.random()<0.03) addShake(4.5,0.08);
+    }
+  }
 
   const hideImpossibleVfx = (transDir===0 && transAlpha<1);
   if (gameMode==='IMPOSSIBLE' && (gs==='PLAY'||gs==='PAUSE'||gs==='CONTINUE') && !hideImpossibleVfx) {
