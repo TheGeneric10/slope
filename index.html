@@ -893,6 +893,22 @@ function drawRainbowBorder(x,y,w,h,t,lineW=2.5) {
   ctx.restore();
 }
 
+function drawRoleBadgeSquare(cx,cy,size,col,t=0,withCheck=false){
+  const ang=t*2.4;
+  ctx.save();
+  ctx.translate(cx,cy); ctx.rotate(ang);
+  ctx.strokeStyle=col; ctx.lineWidth=2; glow(col,10);
+  ctx.strokeRect(-size/2,-size/2,size,size);
+  ctx.fillStyle=hexToRgba(col,0.12); ctx.fillRect(-size/2,-size/2,size,size);
+  ctx.restore();
+  if (withCheck) {
+    ctx.save();
+    setFont(Math.max(8,size-4),'900',"'Share Tech Mono',monospace");
+    noGlow(); txt('✓',cx,cy+size*0.22,'#fff');
+    ctx.restore();
+  }
+}
+
 // ── Screen shake ──────────────────────────────────────────────────
 let shakeX=0,shakeY=0,shakePow=0,shakeDur=0;
 function addShake(pow,dur) {
@@ -2167,7 +2183,12 @@ function drawStartScreen(t) {
   ctx.save();
   ctx.fillStyle='rgba(60,130,255,0.65)'; ctx.fillRect(LW-nameBannerW-14,10,nameBannerW,20);
   ctx.strokeStyle='rgba(180,220,255,0.85)'; ctx.lineWidth=1; ctx.strokeRect(LW-nameBannerW-14,10,nameBannerW,20);
-  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt((isSignedIn?(auth.name||'RUNNER'):'GUEST').slice(0,14),LW-20,24,'#fff','right');
+  const bannerName=(isSignedIn?(auth.name||'RUNNER'):'GUEST').slice(0,14);
+  setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt(bannerName,LW-20,24,'#fff','right');
+  const tw=ctx.measureText(bannerName).width;
+  let bx=LW-20-tw-10;
+  if (isSignedIn && auth && auth.admin===true) { drawRoleBadgeSquare(bx,19,9,CFG.YL,t,false); bx-=14; }
+  if (isSignedIn && auth && auth.verified===true) { drawRoleBadgeSquare(bx,19,9,'#33aaff',t,true); }
   ctx.restore();
   BTNS.noAds={x:8,y:8,w:28,h:28};
   ctx.save(); ctx.fillStyle='rgba(255,30,30,0.75)'; ctx.fillRect(8,8,28,28); ctx.strokeStyle='#ff9090'; ctx.strokeRect(8,8,28,28);
@@ -4562,10 +4583,15 @@ async function adminApplyVerifyStatus(){
   const uid=String(adminVerifyUid||'').trim();
   if (!uid) { addNotif('Admin: set target UID first.',CFG.PK); return; }
   if (!fbReady || !fbDb) { addNotif('Admin: cloud service unavailable.',CFG.PK); return; }
+  const ts=Date.now();
   try {
-    const root=cloudProfileRoot||CLOUD_INFO_ROOT;
-    await fbDb.ref(`${root}/${uid}`).update({verified:!!adminVerifyValue,updatedAt:Date.now()});
-    await fbDb.ref(`${CLOUD_SLOPE_ROOT}/${uid}`).update({verified:String(!!adminVerifyValue),updatedAt:String(Date.now())});
+    const roots=[CLOUD_INFO_ROOT,...CLOUD_INFO_ROOT_FALLBACKS,cloudProfileRoot].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+    const tasks=[];
+    roots.forEach(root=>tasks.push(fbDb.ref(`${root}/${uid}`).update({verified:!!adminVerifyValue,updatedAt:ts})));
+    tasks.push(fbDb.ref(`${CLOUD_SLOPE_ROOT}/${uid}`).update({verified:String(!!adminVerifyValue),updatedAt:String(ts)}));
+    const settled=await Promise.allSettled(tasks);
+    const ok=settled.some(r=>r.status==='fulfilled');
+    if (!ok) throw new Error('no updates applied');
     if (auth && auth.uid===uid) { auth={...auth,verified:!!adminVerifyValue}; saveAuth(auth); }
     addNotif(`Admin: verified for ${uid.slice(0,8)}... = ${adminVerifyValue?'TRUE':'FALSE'}`,CFG.YL);
   } catch (e) {
@@ -4675,7 +4701,7 @@ function handleAdminMenuTap(p){
   if (!adminSessionUnlocked) { doTransition('ADMIN_AUTH'); return; }
   if (hitAdminBtn(p,BTNS.adminSetGems)) {
     SFX.click();
-    openInputDialog({title:'ADMIN',label:'Set Gems (0 to 999999999)',value:String(Math.floor(loadBank())),maxLen:12,onSubmit:v=>{ const raw=String(v||'').trim(); if (!/^[+-]?\d+$/.test(raw)) { addNotif('Admin: enter a whole number.',CFG.PK); return; } const parsed=Number.parseInt(raw,10); if (!Number.isFinite(parsed)) { addNotif('Admin: invalid gems value.',CFG.PK); return; } const n=clamp(parsed,0,999999999); saveBank(n); totalGems=n; if (adminFlags.syncCloud) queueCloudSync(50); addNotif('Admin: gems set to '+n+'.',CFG.YL); }});
+    openInputDialog({title:'ADMIN',label:'Gems: 100=set, +100=add, -100=remove',value:String(Math.floor(loadBank())),maxLen:12,onSubmit:v=>{ const raw=String(v||'').trim(); if (!/^[+-]?\d+$/.test(raw)) { addNotif('Admin: enter a whole number.',CFG.PK); return; } const parsed=Number.parseInt(raw,10); if (!Number.isFinite(parsed)) { addNotif('Admin: invalid gems value.',CFG.PK); return; } const cur=Math.floor(loadBank()); const n=raw.startsWith('+')?clamp(cur+Math.abs(parsed),0,999999999):(raw.startsWith('-')?clamp(cur-Math.abs(parsed),0,999999999):clamp(parsed,0,999999999)); saveBank(n); totalGems=n; if (adminFlags.syncCloud) queueCloudSync(50); addNotif('Admin: gems now '+n+'.',CFG.YL); }});
     return;
   }
   if (hitAdminBtn(p,BTNS.adminT0)) { SFX.click(); adminFlags.syncCloud=!adminFlags.syncCloud; return; }
@@ -4771,10 +4797,19 @@ function drawProfileScreen(t){
   lines.forEach((entry,i)=>{
     const yy=infoY+10+i*34;
     setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); txt(entry[0],left,yy,'rgba(0,245,255,0.7)','left');
-    const isAdminLine=isAdminUser && entry[0]==='Display Name';
-    const vcol=isAdminLine?((Math.sin(t*7)>0)?CFG.YL:'#fff47a'):'#d8f6ff';
-    setFont(10,'700'); glow(vcol,6); txt(entry[1],left,yy+14,vcol,'left');
-    if (isAdminLine) { setFont(8,'900',"'Share Tech Mono',monospace"); glow(CFG.YL,8); txt('ADMIN',left+120,yy+14,CFG.YL,'left'); }
+    const isNameLine=entry[0]==='Display Name';
+    const hasAdmin=isNameLine && !!(auth&&auth.admin===true);
+    const hasVerified=isNameLine && !!(auth&&auth.verified===true);
+    const nameBase=String(entry[1]||'Player');
+    const roleTxt=isNameLine?(hasAdmin&&hasVerified?`${nameBase} | ADMIN | VERIFIED`:(hasAdmin?`${nameBase} | ADMIN`:(hasVerified?`${nameBase} | VERIFIED`:nameBase))):String(entry[1]||'');
+    const vcol=hasAdmin?((Math.sin(t*7)>0)?CFG.YL:'#fff47a'):'#d8f6ff';
+    setFont(10,'700'); glow(vcol,6); txt(roleTxt,left,yy+14,vcol,'left');
+    if (isNameLine) {
+      const tw=ctx.measureText(roleTxt).width;
+      let bx=left+tw+12;
+      if (hasAdmin) { drawRoleBadgeSquare(bx,yy+10,10,CFG.YL,t,false); bx+=16; }
+      if (hasVerified) drawRoleBadgeSquare(bx,yy+10,10,'#33aaff',t,true);
+    }
   });
   if (isSignedIn) {
     const bioY=infoY+10+lines.length*34+10;
@@ -4802,10 +4837,12 @@ function drawProfileScreen(t){
     drawNeonBtn(BTNS.profileTrash.x,BTNS.profileTrash.y,BTNS.profileTrash.w,BTNS.profileTrash.h,CFG.PK,'🗑',12,1,0);
   }
   refreshUsernameChangeState();
+  const usernameBtnY=uploadY-52;
+  const usernameInfoY=uploadY-14;
   setFont(8,'400',"'Share Tech Mono',monospace"); noGlow();
   const triesTxt=`Username tries: ${usernameChangeState.triesLeft}/2  •  Refresh: ${usernameCountdownStr()}`;
-  txt(triesTxt.slice(0,56),x+14,y+h-212,'rgba(190,230,255,0.75)','left');
-  BTNS.profileChangeUsername={x:x+14,y:y+h-206,w:w-28,h:34};
+  txt(triesTxt.slice(0,56),x+14,usernameInfoY,'rgba(190,230,255,0.75)','left');
+  BTNS.profileChangeUsername={x:x+14,y:usernameBtnY,w:w-28,h:34};
   drawNeonBtn(BTNS.profileChangeUsername.x,BTNS.profileChangeUsername.y,BTNS.profileChangeUsername.w,BTNS.profileChangeUsername.h,canEditProfile&&usernameChangeState.triesLeft>0?CFG.CY:'#3a5661',canEditProfile?(usernameChangeState.triesLeft>0?'CHANGE USERNAME':'USERNAME LOCKED (WAIT)'):'USERNAME LOCKED',10,1,0);
   BTNS.profileBio={x:x+14,y:y+h-164,w:w-28,h:34};
   drawNeonBtn(BTNS.profileBio.x,BTNS.profileBio.y,BTNS.profileBio.w,BTNS.profileBio.h,canEditProfile?CFG.GR:'#2f5f2f',canEditProfile?'UPDATE BIO':'BIO LOCKED (SIGN IN)',10,1,0);
