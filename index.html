@@ -272,6 +272,8 @@ let socialUserIndexCache={};
 let lastSocialSnapshot={statusByUid:{},received:new Set()};
 let socialPollTimer=0;
 let profileLiveRefreshTimer=0;
+let playerCardFriendMenu={open:false};
+let socialCountsCache={};
 
 let uidVisible=false;
 let playerCardPopup={active:false,isSelf:false,favorite:false,fromMenu:false,viewed:null};
@@ -390,6 +392,28 @@ function offlineMeta(ts){
     isLong:weeks>12,
   };
 }
+
+async function setPlayerStatus(next){
+  if (!isSignedIn) { addNotif('Guest status is locked to OFFLINE.',CFG.PK); return; }
+  const st=String(next||'online').toLowerCase();
+  if (!STATUS_COLORS[st]) return;
+  const now=Date.now();
+  if (!navigator.onLine) {
+    auth={...auth,status:'offline',statusPref:st,lastSeen:now};
+    saveAuth(auth);
+    addNotif('STATUS SAVED (OFFLINE)',CFG.YL);
+    return;
+  }
+  if (st==='online') lastPresenceActivityAt=now;
+  auth={...auth,status:st,statusPref:st,lastSeen:now};
+  saveAuth(auth);
+  if (fbUser) {
+    try { await writeCloudUserInfo({status:st,lastSeen:now,statusPref:st}); } catch(e){}
+    try { await syncSlopeMirror({status:String(st),lastSeen:String(now)}); } catch(e){}
+  }
+  addNotif(`STATUS: ${STATUS_LABELS[st].toUpperCase()}`,STATUS_COLORS[st]);
+}
+
 function drawStatusDot(x,y,status){
   const col=STATUS_COLORS[status]||STATUS_COLORS.offline;
   ctx.save();
@@ -428,7 +452,7 @@ function drawPlayerCardPopup(t){
     BTNS.playerCardEdit={x:x+10,y:y+10,w:56,h:24};
     BTNS.playerCardFav={x:x+72,y:y+10,w:28,h:24};
     BTNS.playerCardFind={x:x+106,y:y+10,w:56,h:24};
-    BTNS.playerCardAdd=null; BTNS.playerCardFollow=null; BTNS.playerCardUnfriend=null;
+    BTNS.playerCardAdd=null; BTNS.playerCardFollow=null; BTNS.playerCardUnfriend=null; BTNS.playerCardMenuUnfriend=null;
     drawNeonBtn(BTNS.playerCardEdit.x,BTNS.playerCardEdit.y,56,24,CFG.CY,'EDIT',8,1,0);
     drawNeonBtn(BTNS.playerCardFav.x,BTNS.playerCardFav.y,28,24,playerCardPopup.favorite?'#ff9a1a':CFG.YL,playerCardPopup.favorite?'★':'☆',10,1,0);
     drawNeonBtn(BTNS.playerCardFind.x,BTNS.playerCardFind.y,56,24,CFG.GR,'FIND',8,1,0);
@@ -436,7 +460,7 @@ function drawPlayerCardPopup(t){
     BTNS.playerCardEdit=null; BTNS.playerCardFind=null;
     BTNS.playerCardFav={x:x+146,y:y+10,w:28,h:24};
     BTNS.playerCardFollow={x:x+180,y:y+10,w:74,h:24};
-    BTNS.playerCardUnfriend=rel.friend?{x:x+260,y:y+10,w:24,h:24}:null;
+    BTNS.playerCardUnfriend=null;
     let actionLabel='ADD FRIEND';
     let actionCol=CFG.GR;
     if (rel.incoming) { actionLabel='VIEW FRIEND REQUEST'; actionCol=CFG.YL; }
@@ -446,7 +470,16 @@ function drawPlayerCardPopup(t){
     drawNeonBtn(BTNS.playerCardAdd.x,BTNS.playerCardAdd.y,130,24,actionCol,actionLabel,7,1,Math.sin(t*2));
     drawNeonBtn(BTNS.playerCardFav.x,BTNS.playerCardFav.y,28,24,rel.favorite?'#ff9a1a':CFG.YL,rel.favorite?'★':'☆',10,1,0);
     drawNeonBtn(BTNS.playerCardFollow.x,BTNS.playerCardFollow.y,74,24,rel.following?CFG.PK:CFG.CY,rel.following?'UNFOLLOW':'FOLLOW',8,1,0);
-    if (BTNS.playerCardUnfriend) drawNeonBtn(BTNS.playerCardUnfriend.x,BTNS.playerCardUnfriend.y,28,24,CFG.PK,'X',10,1,0);
+    if (rel.friend && playerCardFriendMenu.open) {
+      const mx=x+10,my=y+38,mw=130,mh=50;
+      ctx.fillStyle='rgba(0,0,0,0.92)'; ctx.fillRect(mx,my,mw,mh);
+      ctx.strokeStyle='rgba(255,0,110,0.55)'; ctx.lineWidth=1.5; glow(CFG.PK,10); ctx.strokeRect(mx,my,mw,mh);
+      BTNS.playerCardMenuUnfriend={x:mx+8,y:my+8,w:mw-16,h:16};
+      drawNeonBtn(BTNS.playerCardMenuUnfriend.x,BTNS.playerCardMenuUnfriend.y,BTNS.playerCardMenuUnfriend.w,BTNS.playerCardMenuUnfriend.h,CFG.PK,'UNFRIEND',8,1,Math.sin(t*2));
+      setFont(7,'700',"'Share Tech Mono',monospace"); noGlow(); txt('tap outside to close',mx+mw/2,my+42,'rgba(220,230,255,0.7)');
+    } else {
+      BTNS.playerCardMenuUnfriend=null;
+    }
   }
 
   const name=String((playerCardPopup.isSelf?(auth&&auth.name):cardUser.name)||'Player');
@@ -515,9 +548,12 @@ function drawPlayerCardPopup(t){
   const lockFriends=publicProfilePrefs.friends>=1;
   const lockFollowers=publicProfilePrefs.followers>=1;
   const lockFollowing=publicProfilePrefs.following>=1;
-  drawNeonBtn(statX,statY,statW,statH,lockFriends?'#45535f':CFG.CY,'0 FRIENDS',7,1,0);
-  drawNeonBtn(statX+statW+statGap,statY,statW,statH,lockFollowers?'#45535f':CFG.GR,'0 FOLLOWERS',7,1,0);
-  drawNeonBtn(statX+(statW+statGap)*2,statY,statW,statH,lockFollowing?'#45535f':CFG.YL,'0 FOLLOWING',7,1,0);
+  const fc=playerCardPopup.isSelf?socialCounters.friends:Number(cardUser.friendCount||0);
+  const foc=playerCardPopup.isSelf?socialCounters.followers:Number(cardUser.followerCount||0);
+  const fgc=playerCardPopup.isSelf?socialCounters.following:Number(cardUser.followingCount||0);
+  drawNeonBtn(statX,statY,statW,statH,lockFriends?'#45535f':CFG.CY,`${Math.max(0,fc)} FRIENDS`,7,1,0);
+  drawNeonBtn(statX+statW+statGap,statY,statW,statH,lockFollowers?'#45535f':CFG.GR,`${Math.max(0,foc)} FOLLOWERS`,7,1,0);
+  drawNeonBtn(statX+(statW+statGap)*2,statY,statW,statH,lockFollowing?'#45535f':CFG.YL,`${Math.max(0,fgc)} FOLLOWING`,7,1,0);
   ctx.restore();
 }
 function runConfirmAction() {
@@ -531,6 +567,7 @@ function runConfirmAction() {
   if (a==='SIGNOUT') { if (typeof doSignOut==='function') doSignOut(); return; }
   if (a==='REMOVE_PFP') { if (typeof clearProfileAvatar==='function') clearProfileAvatar(); return; }
   if (a==='DELETE_ACCOUNT') { if (typeof beginDeleteAccountFlow==='function') beginDeleteAccountFlow(); return; }
+  if (a==='UNFRIEND_VIEWED') { if (typeof removeFriendWithViewed==='function') removeFriendWithViewed(); return; }
   if (a==='RESET_EVERYTHING') {
     localStorage.clear();
     location.reload();
@@ -580,14 +617,15 @@ function handleTap(e) {
   const p = getCanvasXY(e);
 
   if (playerCardPopup.active) {
-    if (hitBtn(p,BTNS.playerCardClose)) { SFX.click(); playerCardPopup.active=false; return; }
+    if (hitBtn(p,BTNS.playerCardClose)) { SFX.click(); playerCardPopup.active=false; playerCardFriendMenu.open=false; return; }
     if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardEdit)) { SFX.click(); playerCardPopup.active=false; doTransition('PROFILE'); return; }
     if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFav)) { SFX.click(); playerCardPopup.favorite=!playerCardPopup.favorite; return; }
     if (playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFind)) { SFX.click(); playerCardPopup.active=false; openInputDialog({title:'FIND USER',label:'Username',value:'',maxLen:32,saveLabel:'FIND',cancelLabel:'CANCEL',onSubmit:async v=>{ await openMiniProfileByUsername(v||''); }}); return; }
     if (!playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFav)) { SFX.click(); toggleFavoriteViewed(); return; }
     if (!playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFollow)) { SFX.click(); toggleFollowViewed(); return; }
-    if (!playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardUnfriend)) { SFX.click(); removeFriendWithViewed(); return; }
+    if (!playerCardPopup.isSelf && BTNS.playerCardMenuUnfriend && hitBtn(p,BTNS.playerCardMenuUnfriend)) { SFX.click(); playerCardFriendMenu.open=false; openConfirm('UNFRIEND_VIEWED','REMOVE FRIEND?','This will remove this player from your friends list.'); return; }
     if (!playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardAdd)) { SFX.click(); handlePlayerCardPrimaryAction(); return; }
+    if (!playerCardPopup.isSelf && playerCardFriendMenu.open) { playerCardFriendMenu.open=false; return; }
     return;
   }
 
@@ -777,7 +815,7 @@ function handleTap(e) {
     for (let i=0;i<rowBtns.length;i++) if (rowBtns[i]&&hitBtn(p,rowBtns[i])) {
       const list=socialView.mode==='followers'?socialData.followers:(socialView.mode==='following'?socialData.following:socialData.friends);
       const item=list[rowBtns[i].idx]||null;
-      if (item) { SFX.click(); playerCardPopup.active=true; playerCardPopup.isSelf=!!(isSignedIn&&auth&&auth.uid===item.uid); playerCardPopup.fromMenu=false; playerCardPopup.viewed=item; }
+      if (item) { SFX.click(); playerCardPopup.active=true; playerCardPopup.isSelf=!!(isSignedIn&&auth&&auth.uid===item.uid); playerCardPopup.fromMenu=false; playerCardPopup.viewed=item; playerCardFriendMenu.open=false; hydrateViewedSocialCounts(); }
       return;
     }
     return;
@@ -2734,14 +2772,20 @@ function drawSocialRows(t,title,sub,list,mode){
     const it=list[i]||{};
     const ry=listY+8+i*58;
     ctx.fillStyle=(i%2===0)?'rgba(255,255,255,0.03)':'rgba(0,0,0,0.0)'; ctx.fillRect(listX,ry-12,listW,54);
-    setFont(10,'900'); glow(CFG.CY,6); txt((it.name||'Runner').slice(0,20),listX+12,ry+4,CFG.CY,'left');
+    const ax=listX+16, ay=ry+6, ar=11;
+    const av=String(it.avatar||'');
+    if (av) { const img=new Image(); img.src=av; ctx.save(); ctx.beginPath(); ctx.arc(ax,ay,ar,0,Math.PI*2); ctx.clip(); ctx.drawImage(img,ax-ar,ay-ar,ar*2,ar*2); ctx.restore(); }
+    else { circle(ax,ay,ar,'#1f2c36',true); drawDefaultProfileIcon(ax,ay,ar,'rgba(216,246,255,0.95)'); }
+    ctx.strokeStyle='rgba(0,245,255,0.55)'; ctx.lineWidth=1; circle(ax,ay,ar+1,CFG.CY,false);
+    drawStatusDot(ax+12,ay+10,resolveDisplayStatus(it));
+    setFont(10,'900'); glow(CFG.CY,6); txt((it.name||'Runner').slice(0,20),listX+34,ry+4,CFG.CY,'left');
     setFont(8,'700',"'Share Tech Mono',monospace"); noGlow(); const rowStatus=resolveDisplayStatus(it);
     if (rowStatus==='offline') {
       const om=offlineMeta(it.lastSeen||Date.now());
       const offText=om.isLong?'Offline':`Offline · was seen ${om.short} ago`;
-      txt(offText,listX+12,ry+20,'rgba(210,230,255,0.78)','left');
+      txt(offText,listX+34,ry+20,'rgba(210,230,255,0.78)','left');
     } else {
-      txt(`${STATUS_LABELS[rowStatus]||rowStatus}`,listX+12,ry+20,'rgba(210,230,255,0.78)','left');
+      txt(`${STATUS_LABELS[rowStatus]||rowStatus}`,listX+34,ry+20,'rgba(210,230,255,0.78)','left');
     }
     if (mode==='requests') {
       BTNS.socialActionAList[i]={x:listX+listW-88,y:ry-8,w:36,h:22,idx:i};
@@ -4794,7 +4838,7 @@ function initFirebase(){
       if (u) {
         isSignedIn=true;
         const keepVerified=(auth&&typeof auth.verified==='boolean')?auth.verified:!!u.emailVerified;
-        auth={signedIn:true,name:u.displayName||auth.name||'Runner',email:u.email||'',uid:u.uid||'',verified:!!keepVerified,bio:profileBio||'',avatar:profileAvatar||'',admin:!!(auth&&auth.admin),status:'online',statusPref:'online'};
+        auth={signedIn:true,name:u.displayName||auth.name||'Runner',email:u.email||'',uid:u.uid||'',verified:!!keepVerified,bio:profileBio||'',avatar:profileAvatar||'',admin:!!(auth&&auth.admin),status:String((auth&&auth.status)||'online'),statusPref:STATUS_COLORS[String((auth&&auth.statusPref)||'').toLowerCase()]?String(auth.statusPref).toLowerCase():'online'};
         saveAuth(auth);
         refreshAdminFlag();
         socialData={friends:[],followers:[],following:[],received:[],sent:[]};
@@ -5796,11 +5840,25 @@ if (!socialPollTimer) {
 }
 if (!profileLiveRefreshTimer) {
   profileLiveRefreshTimer=setInterval(()=>{
-    if (!playerCardPopup.active || playerCardPopup.isSelf) return;
-    const uid=String((playerCardPopup.viewed&&playerCardPopup.viewed.uid)||'');
-    if (!uid) return;
-    const live=socialUserIndexCache[uid]||null;
-    if (live) playerCardPopup.viewed={...playerCardPopup.viewed,...live};
+    if (playerCardPopup.active && !playerCardPopup.isSelf) {
+      const uid=String((playerCardPopup.viewed&&playerCardPopup.viewed.uid)||'');
+      if (uid) {
+        const live=socialUserIndexCache[uid]||null;
+        if (live) playerCardPopup.viewed={...playerCardPopup.viewed,...live};
+      }
+    }
+    const syncList=(arr)=>{
+      for (let i=0;i<arr.length;i++) {
+        const it=arr[i]||{}; const uid=String(it.uid||''); if (!uid) continue;
+        const live=socialUserIndexCache[uid]||null; if (live) arr[i]={...it,...live};
+      }
+    };
+    syncList(socialData.friends); syncList(socialData.followers); syncList(socialData.following); syncList(socialData.received); syncList(socialData.sent);
+    if (playerCardPopup.active && !playerCardPopup.isSelf) {
+      const uid=String((playerCardPopup.viewed&&playerCardPopup.viewed.uid)||'');
+      const c=socialCountsCache[uid];
+      if (c && uid) playerCardPopup.viewed={...playerCardPopup.viewed,...c};
+    }
   },50);
 }
 setInterval(()=>{ if (isSignedIn) refreshSelfPresence(false); },5000);
@@ -6010,11 +6068,41 @@ async function openMiniProfileByUsername(raw){
       playerCardPopup.isSelf=!!(isSignedIn&&auth&&auth.uid===pendingFoundProfile.uid);
       playerCardPopup.fromMenu=false;
       playerCardPopup.viewed={...pendingFoundProfile};
+      playerCardFriendMenu.open=false;
+      hydrateViewedSocialCounts();
       pendingFoundProfile=null;
     });
     return true;
   } catch(e) { openActionPopup('FIND USER','Search failed.',false,false); return false; }
   finally { socialView.loading=false; }
+}
+
+async function fetchSocialCountsForUid(uid){
+  const id=String(uid||'');
+  if (!id || !fbDb || !fbReady) return {friendCount:0,followerCount:0,followingCount:0};
+  try {
+    const [fr,fo,fg]=await Promise.all([
+      fbDb.ref(`${CLOUD_SOCIAL_ROOT}/friends/${id}`).get(),
+      fbDb.ref(`${CLOUD_SOCIAL_ROOT}/followers/${id}`).get(),
+      fbDb.ref(`${CLOUD_SOCIAL_ROOT}/following/${id}`).get(),
+    ]);
+    const count=(snap)=>{ const v=(snap&&snap.val)?(snap.val()||{}):{}; return Object.keys(v||{}).length; };
+    return {friendCount:count(fr),followerCount:count(fo),followingCount:count(fg)};
+  } catch(e){ return {friendCount:0,followerCount:0,followingCount:0}; }
+}
+async function hydrateViewedSocialCounts(){
+  if (!playerCardPopup.active || playerCardPopup.isSelf) return;
+  const uid=String((playerCardPopup.viewed&&playerCardPopup.viewed.uid)||'');
+  if (!uid) return;
+  const now=Date.now();
+  const cached=socialCountsCache[uid];
+  if (cached && (now-cached.ts)<8000) {
+    playerCardPopup.viewed={...playerCardPopup.viewed,...cached};
+    return;
+  }
+  const counts=await fetchSocialCountsForUid(uid);
+  socialCountsCache[uid]={...counts,ts:now};
+  if (playerCardPopup.active && String((playerCardPopup.viewed&&playerCardPopup.viewed.uid)||'')===uid) playerCardPopup.viewed={...playerCardPopup.viewed,...counts};
 }
 async function sendFriendRequestToViewed(){
   const v=playerCardPopup.viewed||{};
@@ -6115,7 +6203,7 @@ async function handlePlayerCardPrimaryAction(){
     return;
   }
   if (rel.outgoing) { await cancelFriendRequestToViewed(); return; }
-  if (rel.friend) { addNotif('Already friends.',CFG.CY); return; }
+  if (rel.friend) { playerCardFriendMenu.open=!playerCardFriendMenu.open; return; }
   await sendFriendRequestToViewed();
 }
 async function handleSocialPrimaryAction(idxOverride=-1){
@@ -6132,7 +6220,7 @@ async function handleSocialPrimaryAction(idxOverride=-1){
     addNotif('Friend request accepted.',CFG.GR);
     fetchSocialData();
   } else {
-    playerCardPopup.active=true; playerCardPopup.isSelf=false; playerCardPopup.viewed=item;
+    playerCardPopup.active=true; playerCardPopup.isSelf=false; playerCardPopup.viewed=item; playerCardFriendMenu.open=false; hydrateViewedSocialCounts();
   }
 }
 async function handleSocialSecondaryAction(idxOverride=-1){
