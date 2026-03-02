@@ -230,7 +230,7 @@ const BTNS = {
   authAction:null, authBack:null, authSubmit:null, authRestart:null,
   pauseOptions:null, optionsBack:null, optionsToggleQuests:null, optionsToggleTutorials:null, hudOptions:null,
   signinEmail:null, signinPass:null, signupName:null, signupEmail:null, signupPass:null, signupConfirm:null, signupSwitch:null, signinSwitch:null, signinGoogle:null, signupGoogle:null,
-  profileChangeUsername:null, profileChangePassword:null, profileAvatar:null, profileTrash:null, profileUploadOk:null, profileUploadCancel:null, profileUploadZoomIn:null, profileUploadZoomOut:null, profileUploadReset:null, profileUploadErrOk:null, profileInfoBox:null, profileUidToggle:null, profileUidCopy:null, profileStatusDefault:null, profileStatusIdle:null, profileStatusDnd:null, profileStatusOffline:null, usernameTryAgain:null, usernameExit:null, usernameContinue:null, playerCardClose:null, playerCardEdit:null, playerCardFav:null, menuProfileBox:null, guestPromptSignIn:null, guestPromptContinue:null, publicProfileBack:null, publicProfileRequests:null, publicProfileFriends:null, playerCardFind:null, playerCardAdd:null, playerCardFollow:null, playerCardUnfriend:null, socialTabFriends:null, socialTabFollowers:null, socialTabFollowing:null, socialActionA:null, socialActionB:null, profileDelete:null,
+  profileChangeUsername:null, profileChangePassword:null, profileAvatar:null, profileTrash:null, profileUploadOk:null, profileUploadCancel:null, profileUploadZoomIn:null, profileUploadZoomOut:null, profileUploadReset:null, profileUploadErrOk:null, profileInfoBox:null, profileUidToggle:null, profileUidCopy:null, profileStatusDefault:null, profileStatusIdle:null, profileStatusDnd:null, profileStatusOffline:null, usernameTryAgain:null, usernameExit:null, usernameContinue:null, playerCardClose:null, playerCardEdit:null, playerCardFav:null, menuProfileBox:null, guestPromptSignIn:null, guestPromptContinue:null, publicProfileBack:null, publicProfileRequests:null, publicProfileFriends:null, playerCardFind:null, playerCardAdd:null, playerCardFollow:null, playerCardUnfriend:null, playerCardFriends:null, playerCardFollowers:null, playerCardFollowing:null, socialTabFriends:null, socialTabFollowers:null, socialTabFollowing:null, socialActionA:null, socialActionB:null, profileDelete:null,
   adminBack:null, adminAuthInput:null, adminAuthSubmit:null, adminSetGems:null, adminGrantSelected:null, adminUnlockAll:null, adminLockAll:null, adminLockSelectedSkin:null, adminLockSelectedAura:null, adminLockSelectedTheme:null, adminVerifyUid:null, adminVerifyToggle:null, adminVerifyApply:null, adminViewLtm:null, adminLtmBack:null,
   controls:null, controlsBack:null, touchJoyL:null, touchJoyR:null, noAds:null, noAdsBuy:null, noAdsContinue:null, overLeaderboard:null,
 };
@@ -256,6 +256,9 @@ function openActionPopup(title,msg,ok=true,loading=false,onContinue=null){
 }
 
 let pendingFoundProfile=null;
+
+let socialBackState='PUBLIC_PROFILE';
+let socialBackTarget='PROFILE';
 
 
 const CARD_FAV_KEY='slope_profile_card_favs';
@@ -454,6 +457,28 @@ function getCardRelation(uid){
     favorite:cardFavUids.has(id),
   };
 }
+function getEffectivePublicPrefs(cardUser,isSelfCard){
+  if (isSelfCard) return {...publicProfilePrefs};
+  const meta=cardUser||{};
+  return {
+    bio:clamp(Number.isFinite(meta.publicBio)?meta.publicBio:2,0,2),
+    friends:clamp(Number.isFinite(meta.publicFriends)?meta.publicFriends:2,0,2),
+    followers:clamp(Number.isFinite(meta.publicFollowers)?meta.publicFollowers:2,0,2),
+    following:clamp(Number.isFinite(meta.publicFollowing)?meta.publicFollowing:2,0,2),
+  };
+}
+function canViewPublicSection(level,rel,isSelfCard){
+  if (isSelfCard) return true;
+  const n=clamp(Number(level||0),0,2);
+  if (n===2) return false;
+  if (n===1) return !!(rel&&rel.friend);
+  return !!(rel&&(rel.friend||rel.following||rel.follower));
+}
+function fmtJoinedDate(ts){
+  const n=Number(ts||0);
+  if (!Number.isFinite(n) || n<=0) return 'Unknown';
+  return new Date(n).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
+}
 function resolveDisplayStatus(meta){
   return computeEffectiveStatus(meta||{});
 }
@@ -554,6 +579,13 @@ function drawPlayerCardPopup(t){
     setFont(10,'900'); noGlow(); txt(`${STATUS_LABELS[cardStatus]||'Offline'}`,x+30,y+62,'#d8f6ff','left');
   }
   setFont(16,'900'); glow(CFG.CY,10); txt(name,x+14,y+96,CFG.CY,'left');
+  const joinedAt=playerCardPopup.isSelf?cloudJoinedAt:Number(cardUser.createdAt||0);
+  const hasAdminBadge=playerCardPopup.isSelf?!!(auth&&auth.admin):!!cardUser.admin;
+  const hasVerifiedBadge=playerCardPopup.isSelf?!!(auth&&auth.verified):!!cardUser.verified;
+  const nameW=ctx.measureText(name).width;
+  let badgeX=x+14+nameW+12;
+  if (hasAdminBadge) { drawRoleBadgeSquare(badgeX,y+90,10,CFG.YL,t,false); badgeX+=16; }
+  if (hasVerifiedBadge) drawRoleBadgeSquare(badgeX,y+90,10,'#33aaff',t,true);
   setFont(8,'700',"'Share Tech Mono',monospace"); noGlow();
   const cardBest=playerCardPopup.isSelf?bestScore:Number(cardUser.bestScore||0);
   txt(`Best: ${Math.floor(cardBest||0)}`,x+14,y+122,'rgba(220,240,255,0.9)','left');
@@ -564,17 +596,22 @@ function drawPlayerCardPopup(t){
   txt(`Aura: ${auraName}`,x+14,y+158,'rgba(220,240,255,0.85)','left');
   txt(`Theme: ${themeName}`,x+14,y+176,'rgba(220,240,255,0.85)','left');
   txt(`Bio: ${((playerCardPopup.isSelf?profileBio:cardUser.bio)||'No bio').slice(0,60)}`,x+14,y+196,'rgba(190,220,235,0.8)','left');
+  txt(`Joined SLOPE: ${fmtJoinedDate(joinedAt)}`,x+14,y+214,'rgba(190,220,235,0.72)','left');
   const statW=88, statH=20, statGap=8, statY=y+h-28;
   const statX=x+12;
-  const lockFriends=publicProfilePrefs.friends>=1;
-  const lockFollowers=publicProfilePrefs.followers>=1;
-  const lockFollowing=publicProfilePrefs.following>=1;
+  const effectivePrefs=getEffectivePublicPrefs(cardUser,playerCardPopup.isSelf);
+  const canOpenFriends=canViewPublicSection(effectivePrefs.friends,rel,playerCardPopup.isSelf);
+  const canOpenFollowers=canViewPublicSection(effectivePrefs.followers,rel,playerCardPopup.isSelf);
+  const canOpenFollowing=canViewPublicSection(effectivePrefs.following,rel,playerCardPopup.isSelf);
   const fc=playerCardPopup.isSelf?socialCounters.friends:Number(cardUser.friendCount||0);
   const foc=playerCardPopup.isSelf?socialCounters.followers:Number(cardUser.followerCount||0);
   const fgc=playerCardPopup.isSelf?socialCounters.following:Number(cardUser.followingCount||0);
-  drawNeonBtn(statX,statY,statW,statH,lockFriends?'#45535f':CFG.CY,`${Math.max(0,fc)} FRIENDS`,7,1,0);
-  drawNeonBtn(statX+statW+statGap,statY,statW,statH,lockFollowers?'#45535f':CFG.GR,`${Math.max(0,foc)} FOLLOWERS`,7,1,0);
-  drawNeonBtn(statX+(statW+statGap)*2,statY,statW,statH,lockFollowing?'#45535f':CFG.YL,`${Math.max(0,fgc)} FOLLOWING`,7,1,0);
+  BTNS.playerCardFriends={x:statX,y:statY,w:statW,h:statH};
+  BTNS.playerCardFollowers={x:statX+statW+statGap,y:statY,w:statW,h:statH};
+  BTNS.playerCardFollowing={x:statX+(statW+statGap)*2,y:statY,w:statW,h:statH};
+  drawNeonBtn(BTNS.playerCardFriends.x,BTNS.playerCardFriends.y,statW,statH,canOpenFriends?CFG.CY:'#45535f',`${Math.max(0,fc)} FRIENDS`,7,1,0);
+  drawNeonBtn(BTNS.playerCardFollowers.x,BTNS.playerCardFollowers.y,statW,statH,canOpenFollowers?CFG.GR:'#45535f',`${Math.max(0,foc)} FOLLOWERS`,7,1,0);
+  drawNeonBtn(BTNS.playerCardFollowing.x,BTNS.playerCardFollowing.y,statW,statH,canOpenFollowing?CFG.YL:'#45535f',`${Math.max(0,fgc)} FOLLOWING`,7,1,0);
   ctx.restore();
 }
 function runConfirmAction() {
@@ -646,6 +683,57 @@ function handleTap(e) {
     if (!playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardFollow)) { SFX.click(); toggleFollowViewed(); return; }
     if (!playerCardPopup.isSelf && BTNS.playerCardMenuUnfriend && hitBtn(p,BTNS.playerCardMenuUnfriend)) { SFX.click(); playerCardFriendMenu.open=false; openConfirm('UNFRIEND_VIEWED','REMOVE FRIEND?','This will remove this player from your friends list.'); return; }
     if (!playerCardPopup.isSelf && hitBtn(p,BTNS.playerCardAdd)) { SFX.click(); handlePlayerCardPrimaryAction(); return; }
+    if (hitBtn(p,BTNS.playerCardFriends)) {
+      const v=playerCardPopup.viewed||{};
+      const rel=getCardRelation(v.uid);
+      const prefs=getEffectivePublicPrefs(v,playerCardPopup.isSelf);
+      if (!canViewPublicSection(prefs.friends,rel,playerCardPopup.isSelf)) { SFX.deny(); return; }
+      SFX.click();
+      playerCardPopup.active=false;
+      socialBackState='PLAYER_CARD';
+      socialBackTarget='MENU';
+      socialView.ownerUid=String(v.uid||'');
+      socialView.ownerName=String(v.name||'Player');
+      socialView.ownerIsSelf=!!playerCardPopup.isSelf;
+      socialView.mode='friends'; socialView.scroll=0;
+      doTransition('FRIENDS_LIST');
+      fetchSocialData(socialView.ownerUid);
+      return;
+    }
+    if (hitBtn(p,BTNS.playerCardFollowers)) {
+      const v=playerCardPopup.viewed||{};
+      const rel=getCardRelation(v.uid);
+      const prefs=getEffectivePublicPrefs(v,playerCardPopup.isSelf);
+      if (!canViewPublicSection(prefs.followers,rel,playerCardPopup.isSelf)) { SFX.deny(); return; }
+      SFX.click();
+      playerCardPopup.active=false;
+      socialBackState='PLAYER_CARD';
+      socialBackTarget='MENU';
+      socialView.ownerUid=String(v.uid||'');
+      socialView.ownerName=String(v.name||'Player');
+      socialView.ownerIsSelf=!!playerCardPopup.isSelf;
+      socialView.mode='followers'; socialView.scroll=0;
+      doTransition('FRIENDS_LIST');
+      fetchSocialData(socialView.ownerUid);
+      return;
+    }
+    if (hitBtn(p,BTNS.playerCardFollowing)) {
+      const v=playerCardPopup.viewed||{};
+      const rel=getCardRelation(v.uid);
+      const prefs=getEffectivePublicPrefs(v,playerCardPopup.isSelf);
+      if (!canViewPublicSection(prefs.following,rel,playerCardPopup.isSelf)) { SFX.deny(); return; }
+      SFX.click();
+      playerCardPopup.active=false;
+      socialBackState='PLAYER_CARD';
+      socialBackTarget='MENU';
+      socialView.ownerUid=String(v.uid||'');
+      socialView.ownerName=String(v.name||'Player');
+      socialView.ownerIsSelf=!!playerCardPopup.isSelf;
+      socialView.mode='following'; socialView.scroll=0;
+      doTransition('FRIENDS_LIST');
+      fetchSocialData(socialView.ownerUid);
+      return;
+    }
     if (!playerCardPopup.isSelf && playerCardFriendMenu.open) { playerCardFriendMenu.open=false; return; }
     return;
   }
@@ -805,8 +893,8 @@ function handleTap(e) {
   }
   if (gs === 'PUBLIC_PROFILE') {
     if (hitBtn(p,BTNS.publicProfileBack)) { SFX.click(); doTransition('PROFILE'); return; }
-    if (hitBtn(p,BTNS.publicProfileRequests)) { SFX.click(); socialView.mode='received'; socialView.scroll=0; doTransition('FRIEND_REQUESTS'); fetchSocialData(); return; }
-    if (hitBtn(p,BTNS.publicProfileFriends)) { SFX.click(); socialView.mode='friends'; socialView.scroll=0; doTransition('FRIENDS_LIST'); fetchSocialData(); return; }
+    if (hitBtn(p,BTNS.publicProfileRequests)) { SFX.click(); socialBackState='PUBLIC_PROFILE'; socialBackTarget='PUBLIC_PROFILE'; socialView.ownerUid=(auth&&auth.uid)||''; socialView.ownerName=(auth&&auth.name)||'Player'; socialView.ownerIsSelf=true; socialView.mode='received'; socialView.scroll=0; doTransition('FRIEND_REQUESTS'); fetchSocialData(socialView.ownerUid); return; }
+    if (hitBtn(p,BTNS.publicProfileFriends)) { SFX.click(); socialBackState='PUBLIC_PROFILE'; socialBackTarget='PUBLIC_PROFILE'; socialView.ownerUid=(auth&&auth.uid)||''; socialView.ownerName=(auth&&auth.name)||'Player'; socialView.ownerIsSelf=true; socialView.mode='friends'; socialView.scroll=0; doTransition('FRIENDS_LIST'); fetchSocialData(socialView.ownerUid); return; }
     const rows=['publicBioBtn','publicFriendsBtn','publicFollowersBtn','publicFollowingBtn'];
     for (const k of rows) if (hitBtn(p,BTNS[k])) { SFX.click();
       if (k==='publicBioBtn') publicProfilePrefs.bio=(publicProfilePrefs.bio+1)%3;
@@ -814,11 +902,12 @@ function handleTap(e) {
       if (k==='publicFollowersBtn') publicProfilePrefs.followers=(publicProfilePrefs.followers+1)%3;
       if (k==='publicFollowingBtn') publicProfilePrefs.following=(publicProfilePrefs.following+1)%3;
       savePublicProfilePrefs();
+      writeCloudUserInfo({publicBio:publicProfilePrefs.bio,publicFriends:publicProfilePrefs.friends,publicFollowers:publicProfilePrefs.followers,publicFollowing:publicProfilePrefs.following}).catch(()=>{});
       return; }
     return;
   }
   if (gs === 'FRIEND_REQUESTS') {
-    if (hitBtn(p,BTNS.publicProfileBack)) { SFX.click(); doTransition('PUBLIC_PROFILE'); return; }
+    if (hitBtn(p,BTNS.publicProfileBack)) { SFX.click(); doTransition(socialBackTarget||'PUBLIC_PROFILE'); return; }
     if (hitBtn(p,BTNS.socialTabFriends)) { SFX.click(); socialView.mode='received'; socialView.scroll=0; return; }
     if (hitBtn(p,BTNS.socialTabFollowers)) { SFX.click(); socialView.mode='sent'; socialView.scroll=0; return; }
     const aList=Array.isArray(BTNS.socialActionAList)?BTNS.socialActionAList:[];
@@ -828,7 +917,14 @@ function handleTap(e) {
     return;
   }
   if (gs === 'FRIENDS_LIST') {
-    if (hitBtn(p,BTNS.publicProfileBack)) { SFX.click(); doTransition('PUBLIC_PROFILE'); return; }
+    if (hitBtn(p,BTNS.publicProfileBack)) {
+      SFX.click();
+      if (socialBackState==='PLAYER_CARD') {
+        playerCardPopup.active=true;
+      }
+      doTransition(socialBackTarget||'PUBLIC_PROFILE');
+      return;
+    }
     if (hitBtn(p,BTNS.socialTabFriends)) { SFX.click(); socialView.mode='friends'; socialView.scroll=0; return; }
     if (hitBtn(p,BTNS.socialTabFollowers)) { SFX.click(); socialView.mode='followers'; socialView.scroll=0; return; }
     if (hitBtn(p,BTNS.socialTabFollowing)) { SFX.click(); socialView.mode='following'; socialView.scroll=0; return; }
@@ -925,6 +1021,7 @@ canvas.addEventListener('touchstart', e => {
   leaderboardTouchY = t.clientY;
   adminLtmTouchY = t.clientY;
   shopTouchY = t.clientY;
+  socialTouchY = t.clientY;
   touchSwipe = 0; touchSwipeTarget = 0;
 }, { passive:false });
 
@@ -981,6 +1078,16 @@ canvas.addEventListener('touchmove', e => {
       shopScroll=clamp(shopScroll+dy, minShopScroll(), 0);
     }
     shopTouchY=t.clientY;
+    return;
+  }
+  if (gs==='FRIEND_REQUESTS' || gs==='FRIENDS_LIST') {
+    const t=e.touches[0];
+    if (socialTouchY!==null) {
+      const dy=t.clientY-socialTouchY;
+      if (Math.abs(dy)>2) touchMoved=true;
+      socialView.scroll=clamp(socialView.scroll+dy,minSocialScroll(),0);
+    }
+    socialTouchY=t.clientY;
     return;
   }
   if (gs==='ADMIN_MENU') {
@@ -1186,8 +1293,8 @@ window.addEventListener('keydown', e => {
   if (e.key==='Escape' && gs==='SIGNUP')    { doTransition('SIGNIN'); }
   if (e.key==='Escape' && gs==='PROFILE')   { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='PUBLIC_PROFILE') { doTransition('PROFILE'); }
-  if (e.key==='Escape' && gs==='FRIEND_REQUESTS') { doTransition('PUBLIC_PROFILE'); }
-  if (e.key==='Escape' && gs==='FRIENDS_LIST') { doTransition('PUBLIC_PROFILE'); }
+  if (e.key==='Escape' && gs==='FRIEND_REQUESTS') { doTransition(socialBackTarget||'PUBLIC_PROFILE'); }
+  if (e.key==='Escape' && gs==='FRIENDS_LIST') { doTransition(socialBackTarget||'PUBLIC_PROFILE'); }
   if (e.key==='Escape' && gs==='ADMIN_AUTH') { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='ADMIN_MENU') { doTransition('MENU'); }
   if (e.key==='Escape' && gs==='ADMIN_LTM') { doTransition('MODESELECT'); }
@@ -2831,8 +2938,8 @@ function drawSocialRows(t,title,sub,list,mode){
     ctx.fillStyle='rgba(0,245,255,0.78)'; ctx.fillRect(sbX,ty,4,th);
   }
 
-  BTNS.publicProfileBack={x:(LW-180)/2,y:LH-52,w:180,h:34};
-  drawNeonBtn(BTNS.publicProfileBack.x,BTNS.publicProfileBack.y,BTNS.publicProfileBack.w,BTNS.publicProfileBack.h,CFG.PK,'← BACK',11,1,Math.sin(t*2));
+  BTNS.publicProfileBack={x:(LW-230)/2,y:LH-52,w:230,h:34};
+  drawNeonBtn(BTNS.publicProfileBack.x,BTNS.publicProfileBack.y,BTNS.publicProfileBack.w,BTNS.publicProfileBack.h,CFG.PK,'← BACK TO PROFILE',10,1,Math.sin(t*2));
 }
 
 function drawFriendRequestsScreen(t){
@@ -2846,7 +2953,8 @@ function drawFriendsListScreen(t){
   ctx.fillStyle='#000'; ctx.fillRect(0,0,LW,LH);
   drawPerspGrid(terrain.scrollY*0.07,0.03); drawBgSquares();
   const list=socialView.mode==='followers'?socialData.followers:(socialView.mode==='following'?socialData.following:socialData.friends);
-  drawSocialRows(t,'SOCIAL LISTS',`FRIENDS ${socialCounters.friends} | FOLLOWERS ${socialCounters.followers} | FOLLOWING ${socialCounters.following}`,list,'list');
+  const head=String(socialView.ownerName||'PLAYER').toUpperCase().slice(0,18);
+  drawSocialRows(t,`${head} · SOCIAL`,`${socialCounters.friends} FRIENDS | ${socialCounters.followers} FOLLOWERS | ${socialCounters.following} FOLLOWING`,list,'list');
 }
 
 function drawFooter() {
@@ -5022,6 +5130,10 @@ async function writeCloudUserInfo(extra={}) {
     cloudRoot:cloudProfileRoot||CLOUD_INFO_ROOT,
     updatedAt:Date.now(),
     admin:!!(auth&&auth.admin),
+    publicBio:clamp(Number(publicProfilePrefs.bio||0),0,2),
+    publicFriends:clamp(Number(publicProfilePrefs.friends||0),0,2),
+    publicFollowers:clamp(Number(publicProfilePrefs.followers||0),0,2),
+    publicFollowing:clamp(Number(publicProfilePrefs.following||0),0,2),
     ...extra,
   };
   await fbDb.ref(`${cloudProfileRoot}/${fbUser.uid}`).update(payload);
@@ -5112,6 +5224,14 @@ async function loadCloudProfileAndProgress() {
     const isAdminDb=(String(val.admin??(slopeMirror&&slopeMirror.admin)??'false')==='true') || val.admin===true || (slopeMirror&&slopeMirror.admin===true);
     const dbVerifiedRaw=(val.verified??(slopeMirror&&slopeMirror.verified));
     const dbVerified=(dbVerifiedRaw===true||String(dbVerifiedRaw)==='true');
+    publicProfilePrefs={
+      ...publicProfilePrefs,
+      bio:clamp(Number.isFinite(Number(val.publicBio))?Number(val.publicBio):publicProfilePrefs.bio,0,2),
+      friends:clamp(Number.isFinite(Number(val.publicFriends))?Number(val.publicFriends):publicProfilePrefs.friends,0,2),
+      followers:clamp(Number.isFinite(Number(val.publicFollowers))?Number(val.publicFollowers):publicProfilePrefs.followers,0,2),
+      following:clamp(Number.isFinite(Number(val.publicFollowing))?Number(val.publicFollowing):publicProfilePrefs.following,0,2),
+    };
+    savePublicProfilePrefs();
     auth={...auth,signedIn:true,name:val.name||auth.name,email:val.email||auth.email,uid:fbUser.uid,verified:dbVerified,bio:profileBio,avatar:profileAvatar,admin:isAdminDb,status:STATUS_COLORS[dbStatus]?dbStatus:'online',statusPref:STATUS_COLORS[String(val.statusPref||'').toLowerCase()]?String(val.statusPref).toLowerCase():(STATUS_COLORS[dbStatus]?dbStatus:'online'),lastSeen:dbLastSeen};
     saveAuth(auth);
     refreshAdminFlag();
@@ -5974,7 +6094,7 @@ let ltmForcedIndex=-1;
 let ltmSelectedIndex=-1;
 let socialData={friends:[],followers:[],following:[],received:[],sent:[]};
 let socialCounters={friends:0,followers:0,following:0,received:0,sent:0};
-let socialView={mode:'friends',scroll:0,viewH:0,contentH:0,renderCount:0,loading:false};
+let socialView={mode:'friends',scroll:0,viewH:0,contentH:0,renderCount:0,loading:false,ownerUid:'',ownerName:'',ownerIsSelf:true};
 const CLOUD_SOCIAL_ROOT='SLOPE/social';
 function minSocialScroll(){ return Math.min(0,socialView.viewH-socialView.contentH); }
 function mapSocialSnapToList(snap,idxMap){
@@ -5995,7 +6115,7 @@ async function fetchUserIndexMap(){
     const snap=await fbDb.ref(CLOUD_SLOPE_ROOT).get();
     const all=snap&&snap.val?snap.val():{};
     const out={};
-    Object.keys(all||{}).forEach(uid=>{ const u=all[uid]||{}; out[uid]={uid,name:u.displayName||u.name||u.email||'Runner',avatar:u.pfpLink||u.avatar||'',status:String(u.status||'offline').toLowerCase(),statusPref:String(u.statusPref||u.status||'online').toLowerCase(),lastSeen:Number(u.lastSeen||0),bestScore:Number(u.bestScore||0),bio:String(u.bio||''),selectedSkin:String(u.selectedSkin||u.skin||''),selectedAura:String(u.selectedAura||u.aura||''),selectedTheme:String(u.selectedTheme||u.theme||'')}; });
+    Object.keys(all||{}).forEach(uid=>{ const u=all[uid]||{}; out[uid]={uid,name:u.displayName||u.name||u.email||'Runner',avatar:u.pfpLink||u.avatar||'',status:String(u.status||'offline').toLowerCase(),statusPref:String(u.statusPref||u.status||'online').toLowerCase(),lastSeen:Number(u.lastSeen||0),bestScore:Number(u.bestScore||0),bio:String(u.bio||''),selectedSkin:String(u.selectedSkin||u.skin||''),selectedAura:String(u.selectedAura||u.aura||''),selectedTheme:String(u.selectedTheme||u.theme||''),createdAt:Number(u.createdAt||0),admin:(u.admin===true||String(u.admin)==='true'),verified:(u.verified===true||String(u.verified)==='true'),publicBio:clamp(Number(u.publicBio||2),0,2),publicFriends:clamp(Number(u.publicFriends||2),0,2),publicFollowers:clamp(Number(u.publicFollowers||2),0,2),publicFollowing:clamp(Number(u.publicFollowing||2),0,2)}; });
     return out;
   } catch(e){ return {}; }
 }
@@ -6031,7 +6151,7 @@ function emitFriendRequestToasts(){
   });
   lastSocialSnapshot.received=next;
 }
-async function fetchSocialData(){
+async function fetchSocialData(targetUid=''){
   if (!isSignedIn || !fbUser || !fbReady || !fbDb) {
     socialData={friends:[],followers:[],following:[],received:[],sent:[]};
     socialCounters={friends:0,followers:0,following:0,received:0,sent:0};
@@ -6040,7 +6160,8 @@ async function fetchSocialData(){
   }
   socialView.loading=true; socialView.renderCount=0;
   try {
-    const uid=fbUser.uid;
+    const uid=String(targetUid||fbUser.uid||'');
+    if (!uid) throw new Error('missing uid');
     const [idx,fr,fo,fg,rc,st]=await Promise.all([
       fetchUserIndexMap(),
       fbDb.ref(`${CLOUD_SOCIAL_ROOT}/friends/${uid}`).get(),
@@ -6082,7 +6203,7 @@ async function openMiniProfileByUsername(raw){
     Object.keys(all||{}).some(uid=>{ const u=all[uid]||{}; const nm=String(u.displayName||u.name||u.email||'').toLowerCase(); if (nm===q) { foundUid=uid; return true; } return false; });
     if (!foundUid) { openActionPopup('FIND USER','Cannot find user.',false,false); return false; }
     const u=all[foundUid]||{};
-    pendingFoundProfile={uid:foundUid,name:String(u.displayName||u.name||'Runner'),avatar:String(u.pfpLink||u.avatar||''),status:String(u.status||'offline'),statusPref:String(u.statusPref||u.status||'online'),lastSeen:Number(u.lastSeen||0),bio:String(u.bio||''),bestScore:Number(u.bestScore||0),selectedSkin:String(u.selectedSkin||u.skin||''),selectedAura:String(u.selectedAura||u.aura||''),selectedTheme:String(u.selectedTheme||u.theme||'')};
+    pendingFoundProfile={uid:foundUid,name:String(u.displayName||u.name||'Runner'),avatar:String(u.pfpLink||u.avatar||''),status:String(u.status||'offline'),statusPref:String(u.statusPref||u.status||'online'),lastSeen:Number(u.lastSeen||0),bio:String(u.bio||''),bestScore:Number(u.bestScore||0),selectedSkin:String(u.selectedSkin||u.skin||''),selectedAura:String(u.selectedAura||u.aura||''),selectedTheme:String(u.selectedTheme||u.theme||''),createdAt:Number(u.createdAt||0),admin:(u.admin===true||String(u.admin)==='true'),verified:(u.verified===true||String(u.verified)==='true'),publicBio:clamp(Number(u.publicBio||2),0,2),publicFriends:clamp(Number(u.publicFriends||2),0,2),publicFollowers:clamp(Number(u.publicFollowers||2),0,2),publicFollowing:clamp(Number(u.publicFollowing||2),0,2)};
     openActionPopup('FIND USER',`Found: ${pendingFoundProfile.name} • Best ${Math.floor(pendingFoundProfile.bestScore||0)}`,true,false,()=>{
       if (!pendingFoundProfile) return;
       playerCardPopup.active=true;
