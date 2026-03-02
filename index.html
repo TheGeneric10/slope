@@ -341,17 +341,38 @@ async function refreshSelfPresence(force=false){
     if (pref==='dnd' || pref==='idle' || pref==='offline') target=pref;
     else target=(now-lastPresenceActivityAt)>=10*60*1000?'idle':'online';
   }
-  const changed=String(auth.status||'')!==target;
+  const curStatus=String(auth.status||'offline');
+  const changed=curStatus!==target;
   const heartbeatDue=(now-lastPresenceSyncAt)>45000;
-  if (!changed && !force && !heartbeatDue) return;
-  auth={...auth,status:target,lastSeen:now};
+  const shouldHeartbeat=(target!=='offline')&&heartbeatDue;
+  if (!changed && !force && !shouldHeartbeat) return;
+  const keepOfflineTs=(target==='offline' && !changed);
+  const nextLastSeen=keepOfflineTs?(Number(auth.lastSeen||0)||now):now;
+  auth={...auth,status:target,lastSeen:nextLastSeen};
   saveAuth(auth);
   lastPresenceSyncAt=now;
-  if (fbUser && fbReady && (changed || force || ((now-lastPresenceCloudSyncAt)>20000))) {
+  if (fbUser && fbReady && (changed || force || ((now-lastPresenceCloudSyncAt)>20000 && target!=='offline'))) {
     lastPresenceCloudSyncAt=now;
-    try { await writeCloudUserInfo({status:target,lastSeen:now,statusPref:pref}); } catch(e){}
-    try { await syncSlopeMirror({status:String(target),lastSeen:String(now)}); } catch(e){}
+    try { await writeCloudUserInfo({status:target,lastSeen:nextLastSeen,statusPref:pref}); } catch(e){}
+    try { await syncSlopeMirror({status:String(target),lastSeen:String(nextLastSeen)}); } catch(e){}
   }
+}
+async function applyConnectivityStatus(syncCloud=false){
+  if (!isSignedIn) {
+    auth={...auth,status:'offline',statusPref:'offline',lastSeen:Date.now()};
+    saveAuth(auth);
+  }
+  if (!navigator.onLine) {
+    const keepTs=(String(auth.status||'')==='offline' && Number(auth.lastSeen||0)>0)?Number(auth.lastSeen):Date.now();
+    auth={...auth,status:'offline',lastSeen:keepTs};
+    saveAuth(auth);
+    if (syncCloud && fbUser && fbReady) {
+      try { await writeCloudUserInfo({status:'offline',lastSeen:keepTs,statusPref:getStatusPref()}); } catch(e){}
+      try { await syncSlopeMirror({status:'offline',lastSeen:String(keepTs)}); } catch(e){}
+    }
+    return;
+  }
+  await refreshSelfPresence(syncCloud);
 }
 async function applyConnectivityStatus(syncCloud=false){
   if (!isSignedIn) {
