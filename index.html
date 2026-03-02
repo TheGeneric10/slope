@@ -361,7 +361,6 @@ async function applyConnectivityStatus(syncCloud=false){
   if (!isSignedIn) {
     auth={...auth,status:'offline',statusPref:'offline',lastSeen:Date.now()};
     saveAuth(auth);
-    return;
   }
   if (!navigator.onLine) {
     const keepTs=(String(auth.status||'')==='offline' && Number(auth.lastSeen||0)>0)?Number(auth.lastSeen):Date.now();
@@ -370,6 +369,23 @@ async function applyConnectivityStatus(syncCloud=false){
     if (syncCloud && fbUser && fbReady) {
       try { await writeCloudUserInfo({status:'offline',lastSeen:keepTs,statusPref:getStatusPref()}); } catch(e){}
       try { await syncSlopeMirror({status:'offline',lastSeen:String(keepTs)}); } catch(e){}
+    }
+    return;
+  }
+  await refreshSelfPresence(syncCloud);
+}
+async function applyConnectivityStatus(syncCloud=false){
+  if (!isSignedIn) {
+    auth={...auth,status:'offline',statusPref:'offline',lastSeen:Date.now()};
+    saveAuth(auth);
+    return;
+  }
+  if (!navigator.onLine) {
+    auth={...auth,status:'offline',lastSeen:Date.now()};
+    saveAuth(auth);
+    if (syncCloud && fbUser && fbReady) {
+      try { await writeCloudUserInfo({status:'offline',lastSeen:Date.now(),statusPref:getStatusPref()}); } catch(e){}
+      try { await syncSlopeMirror({status:'offline',lastSeen:String(Date.now())}); } catch(e){}
     }
     return;
   }
